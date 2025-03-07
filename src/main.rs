@@ -111,7 +111,7 @@ impl LightConfig {
     }
 
     fn find() -> Result<PathBuf, io::Error> {
-        read_dir(openmw_cfg::config_path())?
+        read_dir(absolute_path_to_openmw_cfg())?
             .filter_map(|entry| entry.ok())
             .find(|entry| entry.file_name().eq_ignore_ascii_case(DEFAULT_CONFIG_NAME))
             .map(|entry| entry.path())
