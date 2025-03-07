@@ -14,15 +14,8 @@ use palette::{rgb::Srgb, FromColor, Hsv, IntoColor};
 use serde::{Deserialize, Serialize};
 use tes3::esp::*;
 
-const CONFIG_SHOULD_ALWAYS_PARSE_ERR: &str =
-    "Config was already loaded and should never fail to parse!";
 const DEFAULT_CONFIG_NAME: &str = "lightconfig.toml";
-const EMPTY_HEADER_ERR: &str = "The generated plugin was not found to have any master files! It's empty! Try running lightfixes again using the S3L_DEBUG environment variable";
-const GET_CONFIG_ERR: &str = "Failed to read openmw.cfg from";
-const GET_PLUGINS_ERR: &str = "Failed to read plugins in openmw.cfg from";
 const LOG_NAME: &str = "lightconfig.log";
-const NO_PLUGINS_ERR: &str = "No plugins were found in openmw.cfg! No lights to fix!";
-const PLUGIN_LOAD_FAILED_ERR: &str = "Failed to load plugin from";
 const PLUGIN_NAME: &str = "S3LightFixes.omwaddon";
 const PLUGINS_MUST_EXIST_ERR: &str = "Plugins must exist to be loaded by openmw-cfg crate!";
 
@@ -149,7 +142,7 @@ fn main() -> io::Result<()> {
         Err(error) => {
             notification_box(
                 &"Failed to read configuration file!",
-                &format!("{} {:#?}!", GET_CONFIG_ERR, error),
+                &format!("{} {:#?}!", "Failed to read openmw.cfg from", error),
             );
             exit(127);
         }
@@ -160,7 +153,10 @@ fn main() -> io::Result<()> {
         Err(error) => {
             notification_box(
                 &"Failed to read plugins from config!",
-                &format!("{} {:#?}!", GET_PLUGINS_ERR, error),
+                &format!(
+                    "{} {:#?}!",
+                    "Failed to read plugins in openmw.cfg from", error
+                ),
             );
             exit(127);
         }
@@ -175,7 +171,10 @@ fn main() -> io::Result<()> {
         );
     }
 
-    assert!(plugins.len() > 0, "{}", NO_PLUGINS_ERR);
+    assert!(
+        plugins.len() > 0,
+        "No plugins were found in openmw.cfg! No lights to fix!"
+    );
 
     let userdata_dir = get_data_local_dir(&config);
 
@@ -221,8 +220,7 @@ fn main() -> io::Result<()> {
             Ok(plugin) => plugin,
             Err(e) => {
                 eprintln!(
-                    "{} {}: {}",
-                    PLUGIN_LOAD_FAILED_ERR,
+                    "WARNING: Plugin {}: could not be loaded due to error: {}. Continuing light fixes without this mod . . .",
                     plugin_path.display(),
                     e
                 );
@@ -329,7 +327,7 @@ fn main() -> io::Result<()> {
         dbg!(&header);
     }
 
-    assert!(header.masters.len() > 0, "{}", EMPTY_HEADER_ERR);
+    assert!(header.masters.len() > 0, "The generated plugin was not found to have any master files! It's empty! Try running lightfixes again using the S3L_DEBUG environment variable");
 
     generated_plugin.objects.push(TES3Object::Header(header));
     generated_plugin.sort_objects();
@@ -345,7 +343,7 @@ fn main() -> io::Result<()> {
     if light_config.auto_install {
         let has_lightfixes_iter = config
             .section_mut::<String>(None)
-            .expect(CONFIG_SHOULD_ALWAYS_PARSE_ERR)
+            .expect("CRITICAL ERROR: CONFIG WAS ALREADY LOADED AND SHOULD NEVER FAIL PARSING!")
             .get_all("content")
             .find(|s| *s == PLUGIN_NAME);
 
