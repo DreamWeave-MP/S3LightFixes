@@ -349,7 +349,6 @@ fn main() -> io::Result<()> {
                 .file_name()
                 .expect("Plugins must exist to be loaded by openmw-cfg crate!")
                 .to_string_lossy()
-                .to_owned()
                 .to_string();
             header.masters.insert(0, (plugin_string, plugin_size))
         }
@@ -376,6 +375,7 @@ fn main() -> io::Result<()> {
         remove_file(legacy_path)?;
     };
 
+    // Wtf? We can't save it in the openmw.cfg dir . . .
     let plugin_path = &openmw_config_dir.join(PLUGIN_NAME);
     let _ = generated_plugin.save_path(plugin_path);
 
