@@ -115,7 +115,7 @@ impl LightConfig {
             .filter_map(|entry| entry.ok())
             .find(|entry| entry.file_name().eq_ignore_ascii_case(DEFAULT_CONFIG_NAME))
             .map(|entry| entry.path())
-            .ok_or_else(|| io::Error::new(std::io::ErrorKind::NotFound, "Light config not found"))
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Light config not found"))
     }
 
     pub fn get() -> Result<LightConfig, io::Error> {
