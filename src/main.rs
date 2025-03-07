@@ -17,7 +17,6 @@ use tes3::esp::*;
 const DEFAULT_CONFIG_NAME: &str = "lightconfig.toml";
 const LOG_NAME: &str = "lightconfig.log";
 const PLUGIN_NAME: &str = "S3LightFixes.omwaddon";
-const PLUGINS_MUST_EXIST_ERR: &str = "Plugins must exist to be loaded by openmw-cfg crate!";
 
 mod default {
     pub fn standard_hue() -> f32 {
@@ -345,7 +344,7 @@ fn main() -> io::Result<()> {
             let plugin_size = std::fs::metadata(plugin_path)?.len();
             let plugin_string = plugin_path
                 .file_name()
-                .expect(PLUGINS_MUST_EXIST_ERR)
+                .expect("Plugins must exist to be loaded by openmw-cfg crate!")
                 .to_string_lossy()
                 .to_owned()
                 .to_string();
