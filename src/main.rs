@@ -344,7 +344,7 @@ fn main() -> io::Result<()> {
         }
 
         if used_objects > 0 {
-            let plugin_size = std::fs::metadata(plugin_path)?.len();
+            let plugin_size = metadata(plugin_path)?.len();
             let plugin_string = plugin_path
                 .file_name()
                 .expect("Plugins must exist to be loaded by openmw-cfg crate!")
