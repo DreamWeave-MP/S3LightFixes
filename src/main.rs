@@ -291,6 +291,8 @@ fn main() -> io::Result<()> {
                 continue;
             }
 
+            let mut light = std::mem::take(light);
+
             if light_config.disable_flickering {
                 light
                     .data
@@ -338,7 +340,7 @@ fn main() -> io::Result<()> {
 
             generated_plugin
                 .objects
-                .push(TES3Object::Light(light.clone()));
+                .push(TES3Object::Light(light));
             used_ids.push(light_id);
             used_objects += 1;
         }
