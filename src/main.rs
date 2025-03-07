@@ -126,15 +126,18 @@ fn to_io_error<E: std::fmt::Display>(err: E) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, err.to_string())
 }
 
+/// Displays a notification taking title and message as argument
+/// Should be behind an argument and not an env
 fn notification_box(title: &str, message: &str) {
+    #[cfg(target_os = "android")]
+    println!("{}", message);
+
+    #[cfg(not(target_os = "android"))]
     if var("S3L_NO_NOTIFICATIONS").is_err() {
-        #[cfg(not(target_os = "android"))]
         let _ = native_dialog::MessageDialog::new()
             .set_title(title)
             .set_text(message)
             .show_alert();
-        #[cfg(target_os = "android")]
-        println!("{}", message);
     } else {
         println!("{}", message);
     }
