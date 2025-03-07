@@ -57,6 +57,10 @@ mod default {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct LightConfig {
+    /// This parameter is DANGEROUS
+    /// It's only meant to be used with vtastek's experimental shaders for openmw 0.47
+    /// https://discord.com/channels/260439894298460160/718892786157617163/966468825321177148
+    disable_interior_sun: bool,
     disable_flickering: bool,
     save_log: bool,
 
@@ -90,6 +94,7 @@ struct LightConfig {
 impl LightConfig {
     fn classic() -> LightConfig {
         LightConfig {
+            disable_interior_sun: true,
             disable_flickering: true,
             save_log: true,
             standard_hue: default::standard_hue(),
@@ -129,6 +134,7 @@ impl LightConfig {
 impl Default for LightConfig {
     fn default() -> LightConfig {
         LightConfig {
+            disable_interior_sun: false,
             disable_flickering: true,
             save_log: false,
             standard_hue: default::standard_hue(),
@@ -257,27 +263,28 @@ fn main() -> io::Result<()> {
 
         // Disable sunlight color for true interiors
         // Only do this for `classic` mode
-        for cell in plugin.objects_of_type::<Cell>() {
-            let cell_id = cell.editor_id_ascii_lowercase().to_string();
+        if light_config.disable_interior_sun {
+            for cell in plugin.objects_of_type_mut::<Cell>() {
+                let cell_id = cell.editor_id_ascii_lowercase().to_string();
 
-            if !cell.data.flags.contains(CellFlags::IS_INTERIOR) || used_ids.contains(&cell_id) {
-                continue;
-            };
+                if !cell.data.flags.contains(CellFlags::IS_INTERIOR) || used_ids.contains(&cell_id)
+                {
+                    continue;
+                };
 
-            let mut cell_copy = cell.clone();
-            cell_copy.references.clear();
-            if let Some(atmosphere) = &cell_copy.atmosphere_data {
-                cell_copy.atmosphere_data = Some(AtmosphereData {
-                    sunlight_color: [0, 0, 0, 0],
-                    fog_density: atmosphere.fog_density,
-                    fog_color: atmosphere.fog_color,
-                    ambient_color: atmosphere.ambient_color,
-                })
+                // Take the cell for ourselves instead of cloning it
+                let mut owned_cell = std::mem::take(cell);
+                owned_cell.references.clear();
+
+                if let Some(mut atmosphere) = owned_cell.atmosphere_data.take() {
+                    atmosphere.sunlight_color = [0, 0, 0, 0];
+                    owned_cell.atmosphere_data = Some(atmosphere);
+                }
+
+                generated_plugin.objects.push(TES3Object::Cell(owned_cell));
+                used_ids.push(cell_id);
+                used_objects += 1;
             }
-
-            generated_plugin.objects.push(TES3Object::Cell(cell_copy));
-            used_ids.push(cell_id);
-            used_objects += 1;
         }
 
         for light in plugin.objects_of_type_mut::<Light>() {
