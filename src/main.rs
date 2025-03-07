@@ -13,10 +13,6 @@ use openmw_cfg::{
 use palette::{rgb::Srgb, FromColor, Hsv, IntoColor};
 use serde::{Deserialize, Serialize};
 use tes3::esp::*;
-use toml::{
-    Table,
-    Value::{Boolean, Float},
-};
 
 const CONFIG_SHOULD_ALWAYS_PARSE_ERR: &str =
     "Config was already loaded and should never fail to parse!";
@@ -32,7 +28,6 @@ const NO_PLUGINS_ERR: &str = "No plugins were found in openmw.cfg! No lights to 
 const PLUGIN_LOAD_FAILED_ERR: &str = "Failed to load plugin from";
 const PLUGIN_NAME: &str = "S3LightFixes.omwaddon";
 const PLUGINS_MUST_EXIST_ERR: &str = "Plugins must exist to be loaded by openmw-cfg crate!";
-const SHIT_GOT_REAL: &str = "Invalid value found when parsing light config!";
 const STD_DEFAULT_HUE: f32 = 0.6;
 const STD_DEFAULT_SAT: f32 = 0.8;
 const STD_DEFAULT_VAL: f32 = 0.57;
@@ -75,108 +70,16 @@ impl Default for LightConfig {
     }
 }
 
-fn openmw_config_path() -> String {
-    let config_path = absolute_path_to_openmw_cfg();
-
-    if config_path
-        .to_string_lossy()
-        .to_ascii_lowercase()
-        .contains("openmw.cfg")
-    {
-        config_path
-            .parent()
-            .unwrap_or(&config_path)
-            .to_string_lossy()
-            .to_string()
-    } else {
-        config_path.to_string_lossy().to_string()
-    }
+fn find_light_config() -> Result<PathBuf, io::Error> {
+    std::fs::read_dir(openmw_cfg::config_path())?
+        .filter_map(|entry| entry.ok())
+        .find(|entry| entry.file_name().eq_ignore_ascii_case(DEFAULT_CONFIG_NAME))
+        .map(|entry| entry.path())
+        .ok_or_else(|| io::Error::new(std::io::ErrorKind::NotFound, "Light config not found"))
 }
 
-fn find_light_config(data_local: &String) -> Option<String> {
-    let directories = [
-        std::env::current_exe()
-            .ok()?
-            .to_path_buf()
-            .to_str()?
-            .to_string(),
-        openmw_config_path(),
-        data_local.to_string(),
-    ];
-
-    for dir in directories.iter() {
-        let file_path = std::path::Path::new(dir.as_str()).join(DEFAULT_CONFIG_NAME);
-        if file_path.exists() {
-            if let Ok(content) = read_to_string(&file_path) {
-                return Some(content);
-            }
-        }
-    }
-    None
-}
-
-fn load_light_config(config_data: String) -> LightConfig {
-    if let Ok(mut config_toml) = config_data.parse::<Table>() {
-        LightConfig {
-            auto_install: config_toml
-                .remove("auto_install")
-                .unwrap_or(Boolean(DEFAULT_AUTO_INSTALL))
-                .as_bool()
-                .expect(SHIT_GOT_REAL),
-            disable_flickering: config_toml
-                .remove("disable_flickering")
-                .unwrap_or(Boolean(DEFAULT_DISABLE_FLICKER))
-                .as_bool()
-                .expect(SHIT_GOT_REAL),
-            save_log: config_toml
-                .remove("save_log")
-                .unwrap_or(Boolean(DEFAULT_DO_LOG))
-                .as_bool()
-                .expect(SHIT_GOT_REAL),
-            standard_hue: config_toml
-                .remove("standard_hue")
-                .unwrap_or(Float(STD_DEFAULT_HUE.into()))
-                .as_float()
-                .expect(SHIT_GOT_REAL) as f32,
-            standard_saturation: config_toml
-                .remove("standard_desaturation")
-                .unwrap_or(Float(STD_DEFAULT_SAT.into()))
-                .as_float()
-                .expect(SHIT_GOT_REAL) as f32,
-            standard_value: config_toml
-                .remove("standard_value")
-                .unwrap_or(Float(STD_DEFAULT_VAL.into()))
-                .as_float()
-                .expect(SHIT_GOT_REAL) as f32,
-            standard_radius: config_toml
-                .remove("standard_radius")
-                .unwrap_or(Float(STD_DEFAULT_RAD.into()))
-                .as_float()
-                .expect(SHIT_GOT_REAL) as f32,
-            colored_hue: config_toml
-                .remove("colored_hue")
-                .unwrap_or(Float(STD_COLORED_HUE.into()))
-                .as_float()
-                .expect(SHIT_GOT_REAL) as f32,
-            colored_saturation: config_toml
-                .remove("colored_desaturation")
-                .unwrap_or(Float(STD_COLORED_SAT.into()))
-                .as_float()
-                .expect(SHIT_GOT_REAL) as f32,
-            colored_value: config_toml
-                .remove("colored_value")
-                .unwrap_or(Float(STD_COLORED_VAL.into()))
-                .as_float()
-                .expect(SHIT_GOT_REAL) as f32,
-            colored_radius: config_toml
-                .remove("colored_radius")
-                .unwrap_or(Float(STD_COLORED_RAD.into()))
-                .as_float()
-                .expect(SHIT_GOT_REAL) as f32,
-        }
-    } else {
-        LightConfig::default()
-    }
+fn to_io_error<E: std::fmt::Display>(err: E) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, err.to_string())
 }
 
 fn notification_box(title: &str, message: &str) {
@@ -193,7 +96,7 @@ fn notification_box(title: &str, message: &str) {
     }
 }
 
-fn main() -> Result<()> {
+fn main() -> io::Result<()> {
     let mut config = match get_openmw_cfg() {
         Ok(config) => config,
         Err(error) => {
@@ -229,22 +132,11 @@ fn main() -> Result<()> {
 
     let userdata_dir = get_data_local_dir(&config);
 
-    let light_config = if let Some(light_config) = find_light_config(&userdata_dir) {
-        load_light_config(light_config)
+    let light_config: LightConfig = if let Ok(config_path) = find_light_config() {
+        let config_contents = std::fs::read_to_string(config_path)?;
+
+        toml::from_str(&config_contents).map_err(to_io_error)?
     } else {
-        let openmw_config_dir = PathBuf::from(&absolute_path_to_openmw_cfg())
-            .parent()
-            .expect("Unable to get config parent directory!")
-            .to_string_lossy()
-            .to_string();
-
-        let path: PathBuf = PathBuf::from(&openmw_config_dir).join(DEFAULT_CONFIG_NAME);
-
-        let _ = write!(
-            File::create(path).expect("Failed to create file"),
-            "{}",
-            toml_to_string(&LightConfig::default()).unwrap()
-        );
         LightConfig::default()
     };
 
