@@ -244,6 +244,8 @@ fn main() -> io::Result<()> {
         masters: Vec::new(),
     };
 
+
+    let mut used_objects = 0;
     for plugin_path in plugins.iter().rev() {
         if !is_fixable_plugin(&plugin_path) {
             continue;
@@ -260,7 +262,6 @@ fn main() -> io::Result<()> {
                 continue;
             }
         };
-        let mut used_objects = 0;
 
         // Disable sunlight color for true interiors
         // Only do this for `classic` mode
@@ -365,6 +366,7 @@ fn main() -> io::Result<()> {
 
     assert!(header.masters.len() > 0, "The generated plugin was not found to have any master files! It's empty! Try running lightfixes again using the S3L_DEBUG environment variable");
 
+    header.num_objects = used_objects;
     generated_plugin.objects.push(TES3Object::Header(header));
     generated_plugin.sort_objects();
 
