@@ -16,10 +16,7 @@ use tes3::esp::*;
 
 const CONFIG_SHOULD_ALWAYS_PARSE_ERR: &str =
     "Config was already loaded and should never fail to parse!";
-const DEFAULT_AUTO_INSTALL: bool = true;
 const DEFAULT_CONFIG_NAME: &str = "lightconfig.toml";
-const DEFAULT_DISABLE_FLICKER: bool = true;
-const DEFAULT_DO_LOG: bool = false;
 const EMPTY_HEADER_ERR: &str = "The generated plugin was not found to have any master files! It's empty! Try running lightfixes again using the S3L_DEBUG environment variable";
 const GET_CONFIG_ERR: &str = "Failed to read openmw.cfg from";
 const GET_PLUGINS_ERR: &str = "Failed to read plugins in openmw.cfg from";
@@ -28,44 +25,91 @@ const NO_PLUGINS_ERR: &str = "No plugins were found in openmw.cfg! No lights to 
 const PLUGIN_LOAD_FAILED_ERR: &str = "Failed to load plugin from";
 const PLUGIN_NAME: &str = "S3LightFixes.omwaddon";
 const PLUGINS_MUST_EXIST_ERR: &str = "Plugins must exist to be loaded by openmw-cfg crate!";
-const STD_DEFAULT_HUE: f32 = 0.6;
-const STD_DEFAULT_SAT: f32 = 0.8;
-const STD_DEFAULT_VAL: f32 = 0.57;
-const STD_DEFAULT_RAD: f32 = 2.0;
-const STD_COLORED_HUE: f32 = 1.0;
-const STD_COLORED_SAT: f32 = 0.9;
-const STD_COLORED_VAL: f32 = 0.7;
-const STD_COLORED_RAD: f32 = 1.1;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct LightConfig {
     auto_install: bool,
     disable_flickering: bool,
     save_log: bool,
+
+    #[serde(default = "LightConfig::default_standard_hue")]
     standard_hue: f32,
+
+    #[serde(default = "LightConfig::default_standard_saturation")]
     standard_saturation: f32,
+
+    #[serde(default = "LightConfig::default_standard_value")]
     standard_value: f32,
+
+    #[serde(default = "LightConfig::default_standard_radius")]
     standard_radius: f32,
+
+    #[serde(default = "LightConfig::default_colored_hue")]
     colored_hue: f32,
+
+    #[serde(default = "LightConfig::default_colored_saturation")]
     colored_saturation: f32,
+
+    #[serde(default = "LightConfig::default_colored_value")]
     colored_value: f32,
+
+    #[serde(default = "LightConfig::default_colored_radius")]
     colored_radius: f32,
+}
+
+/// Primarily exists to provide default implementations
+/// for field values
+impl LightConfig {
+    fn default_standard_hue() -> f32 {
+        0.6
+    }
+
+    fn default_standard_saturation() -> f32 {
+        0.8
+    }
+
+    fn default_standard_value() -> f32 {
+        0.57
+    }
+
+    /// Original default radius was 2.0
+    /// But was only appropriate for vtastek shaders
+    /// MOMW configs use 1.2
+    fn default_standard_radius() -> f32 {
+        1.2
+    }
+
+    fn default_colored_hue() -> f32 {
+        1.0
+    }
+
+    fn default_colored_saturation() -> f32 {
+        0.9
+    }
+
+    fn default_colored_value() -> f32 {
+        0.7
+    }
+
+    fn default_colored_radius() -> f32 {
+        1.1
+    }
 }
 
 impl Default for LightConfig {
     fn default() -> LightConfig {
         LightConfig {
-            auto_install: DEFAULT_AUTO_INSTALL,
-            disable_flickering: DEFAULT_DISABLE_FLICKER,
-            save_log: DEFAULT_DO_LOG,
-            standard_hue: STD_DEFAULT_HUE,
-            standard_saturation: STD_DEFAULT_SAT,
-            standard_value: STD_DEFAULT_VAL,
-            standard_radius: STD_DEFAULT_RAD,
-            colored_hue: STD_COLORED_HUE,
-            colored_saturation: STD_COLORED_SAT,
-            colored_value: STD_COLORED_VAL,
-            colored_radius: STD_COLORED_RAD,
+            auto_install: true,
+            disable_flickering: true,
+            save_log: false,
+            standard_hue: Self::default_standard_hue(),
+            standard_saturation: Self::default_standard_saturation(),
+            standard_value: Self::default_standard_value(),
+            standard_radius: Self::default_standard_radius(),
+            colored_hue: Self::default_colored_hue(),
+            colored_saturation: Self::default_colored_saturation(),
+            colored_value: Self::default_colored_value(),
+            colored_radius: Self::default_colored_radius(),
         }
     }
 }
