@@ -93,24 +93,6 @@ struct LightConfig {
 /// Primarily exists to provide default implementations
 /// for field values
 impl LightConfig {
-    fn classic() -> LightConfig {
-        LightConfig {
-            disable_interior_sun: true,
-            disable_flickering: true,
-            save_log: true,
-            standard_hue: default::standard_hue(),
-            standard_saturation: default::standard_saturation(),
-            standard_value: default::standard_value(),
-            // This particular radius is set to match vtastek's old shaders for OpenMW 0.47 only
-            // For this configuration interior sunlight should also be disabled
-            standard_radius: 2.0,
-            colored_hue: default::colored_hue(),
-            colored_saturation: default::colored_saturation(),
-            colored_value: default::colored_value(),
-            colored_radius: default::colored_radius(),
-        }
-    }
-
     fn find() -> Result<PathBuf, io::Error> {
         read_dir(absolute_path_to_openmw_cfg())?
             .filter_map(|entry| entry.ok())
@@ -119,14 +101,28 @@ impl LightConfig {
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Light config not found"))
     }
 
-    pub fn get() -> Result<LightConfig, io::Error> {
-        let light_config: LightConfig = if let Ok(config_path) = Self::find() {
+    /// Gives back the lightconfig adjacent to openmw.cfg when called
+    /// use_classic dictates whether or not a fixed radius of 2.0 will be used on orange-y lights
+    /// and whether or not to disable interior sunlight
+    /// the latter field is not de/serializable and can only be used via the --classic argument
+    pub fn get(use_classic: bool) -> Result<LightConfig, io::Error> {
+        let mut light_config: LightConfig = if let Ok(config_path) = Self::find() {
             let config_contents = read_to_string(config_path)?;
 
             toml::from_str(&config_contents).map_err(to_io_error)?
         } else {
             LightConfig::default()
         };
+
+        // This parameter indicates whether the user requested
+        // To use compatibility mode for vtastek's old 0.47 shaders
+        // via startup arguments
+        // Drastically increases light radii
+        // and disables interior sunlight
+        if use_classic {
+            light_config.standard_radius = 2.0;
+            light_config.disable_interior_sun = true;
+        }
 
         Ok(light_config)
     }
@@ -225,7 +221,7 @@ fn main() -> io::Result<()> {
         "No plugins were found in openmw.cfg! No lights to fix!"
     );
 
-    let light_config = LightConfig::get()?;
+    let light_config = LightConfig::get(false)?;
 
     let mut generated_plugin = Plugin::new();
     let mut used_ids: Vec<String> = Vec::new();
