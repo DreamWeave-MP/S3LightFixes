@@ -1,7 +1,7 @@
 use std::{
     env::var,
     fs::{create_dir_all, read_to_string, File, OpenOptions},
-    io::{Result, Write},
+    io::{self, Write},
     path::{Path, PathBuf},
     process::exit,
 };
@@ -14,7 +14,7 @@ use palette::{rgb::Srgb, FromColor, Hsv, IntoColor};
 use serde::{Deserialize, Serialize};
 use tes3::esp::*;
 use toml::{
-    to_string as toml_to_string, Table,
+    Table,
     Value::{Boolean, Float},
 };
 
