@@ -66,6 +66,9 @@ struct LightArgs {
     /// NOT available on android
     #[arg(short = 'n', long = "no-notifications")]
     no_notifications: bool,
+
+    #[arg(short = 'd', long = "debug")]
+    debug: bool,
 }
 
 mod default {
@@ -286,7 +289,7 @@ fn main() -> io::Result<()> {
         }
     };
 
-    if var("S3L_DEBUG").is_ok() {
+    if var("S3L_DEBUG").is_ok() || args.debug {
         dbg!(&openmw_cfg::config_path(), &config);
     }
 
