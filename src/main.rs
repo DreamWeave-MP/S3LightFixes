@@ -204,7 +204,6 @@ fn to_io_error<E: std::fmt::Display>(err: E) -> io::Error {
 }
 
 /// Displays a notification taking title and message as argument
-/// Should be behind an argument and not an env
 fn notification_box(title: &str, message: &str) {
     #[cfg(target_os = "android")]
     println!("{}", message);
