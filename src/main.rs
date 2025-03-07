@@ -59,7 +59,7 @@ mod default {
 struct LightConfig {
     /// This parameter is DANGEROUS
     /// It's only meant to be used with vtastek's experimental shaders for openmw 0.47
-    /// https://discord.com/channels/260439894298460160/718892786157617163/966468825321177148
+    /// <https://discord.com/channels/260439894298460160/718892786157617163/966468825321177148>
     disable_interior_sun: bool,
     disable_flickering: bool,
     save_log: bool,
