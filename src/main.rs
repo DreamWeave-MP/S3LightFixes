@@ -6,6 +6,7 @@ use std::{
     process::exit,
 };
 
+use clap::Parser;
 use openmw_cfg::{
     config_path as absolute_path_to_openmw_cfg, get_config as get_openmw_cfg, get_data_local_dir,
     get_plugins,
@@ -17,6 +18,55 @@ use tes3::esp::*;
 const DEFAULT_CONFIG_NAME: &str = "lightconfig.toml";
 const LOG_NAME: &str = "lightconfig.log";
 const PLUGIN_NAME: &str = "S3LightFixes.omwaddon";
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "S3 Lightfixes",
+    about = "A tool for modifying light values globally across an OpenMW installation."
+)]
+struct LightArgs {
+    /// Path to openmw.cfg
+    /// By default, uses the system paths defined by:
+    ///
+    /// https://openmw.readthedocs.io/en/latest/reference/modding/paths.html
+    ///
+    /// Alternatively, responds to both the `OPENMW_CONFIG` and `OPENMW_CONFIG_DIR`
+    /// environment variables.
+    #[arg(short = 'c', long = "openmw-cfg")]
+    openmw_cfg: Option<PathBuf>,
+
+    /// Enables classic mode using vtastek shaders.
+    /// ONLY for openmw 0.47. Relevant shaders can be found in the OpenMW discord:
+    ///
+    /// https://discord.com/channels/260439894298460160/718892786157617163/966468825321177148
+    #[arg(short = 'v', long = "classic")]
+    use_classic: bool,
+
+    /// Output file path.
+    /// Accepts relative and absolute terms.
+    #[arg(short = 'o', long = "output")]
+    output: Option<PathBuf>,
+
+    /// Whether to save a text form of the generated plugin.
+    /// Extremely verbose!
+    ///
+    /// You probably don't want to enable this unless asked specifically to do so.
+    #[arg(short = 'v', long = "verbose")]
+    write_log: bool,
+
+    /// Whether to automatically enable the output plugin in openmw.cfg.
+    /// Disabled by default, and only available via CLI.
+    ///
+    /// Typically lightfixes is ran under momw-configurator, making this param
+    /// unnecessary for many users.
+    #[arg(short = 'e', long = "auto-enable")]
+    auto_enable: bool,
+
+    /// Whether to use notifications at runtime
+    /// NOT available on android
+    #[arg(short = 'n', long = "no-notifications")]
+    notifications: bool,
+}
 
 mod default {
     pub fn standard_hue() -> f32 {
@@ -221,7 +271,8 @@ fn main() -> io::Result<()> {
         "No plugins were found in openmw.cfg! No lights to fix!"
     );
 
-    let light_config = LightConfig::get(false)?;
+    let args = LightArgs::parse();
+    let light_config = LightConfig::get(args.use_classic)?;
 
     let mut generated_plugin = Plugin::new();
     let mut used_ids: Vec<String> = Vec::new();
