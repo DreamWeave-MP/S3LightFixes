@@ -1,5 +1,5 @@
 use std::{
-    env::var,
+    env::{current_dir, var},
     fs::{metadata, read_dir, read_to_string, remove_file, File, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
@@ -378,8 +378,9 @@ fn main() -> io::Result<()> {
         remove_file(legacy_path)?;
     };
 
-    // Wtf? We can't save it in the openmw.cfg dir . . .
-    let plugin_path = &openmw_config_dir.join(PLUGIN_NAME);
+    let cwd = current_dir().expect("CRITICAL FAILURE: COULD NOT READ CURRENT WORKING DIRECTORY!");
+
+    let plugin_path = cwd.join(PLUGIN_NAME);
     let _ = generated_plugin.save_path(plugin_path);
 
     // Handle this arg via clap
