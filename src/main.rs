@@ -57,7 +57,6 @@ mod default {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct LightConfig {
-    auto_install: bool,
     disable_flickering: bool,
     save_log: bool,
 
@@ -91,7 +90,6 @@ struct LightConfig {
 impl LightConfig {
     fn classic() -> LightConfig {
         LightConfig {
-            auto_install: true,
             disable_flickering: true,
             save_log: true,
             standard_hue: default::standard_hue(),
@@ -131,7 +129,6 @@ impl LightConfig {
 impl Default for LightConfig {
     fn default() -> LightConfig {
         LightConfig {
-            auto_install: true,
             disable_flickering: true,
             save_log: false,
             standard_hue: default::standard_hue(),
@@ -259,6 +256,7 @@ fn main() -> io::Result<()> {
         let mut used_objects = 0;
 
         // Disable sunlight color for true interiors
+        // Only do this for `classic` mode
         for cell in plugin.objects_of_type::<Cell>() {
             let cell_id = cell.editor_id_ascii_lowercase().to_string();
 
@@ -369,7 +367,8 @@ fn main() -> io::Result<()> {
     let plugin_path = Path::new(&userdata_dir).join(PLUGIN_NAME);
     let _ = generated_plugin.save_path(plugin_path);
 
-    if light_config.auto_install {
+    // Handle this arg via clap
+    if false {
         let has_lightfixes_iter = config
             .section_mut::<String>(None)
             .expect("CRITICAL ERROR: CONFIG WAS ALREADY LOADED AND SHOULD NEVER FAIL PARSING!")
