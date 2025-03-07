@@ -1,6 +1,6 @@
 use std::{
     env::var,
-    fs::{create_dir_all, read_dir, read_to_string, File, OpenOptions},
+    fs::{metadata, read_dir, read_to_string, remove_file, File, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
     process::exit,
@@ -229,8 +229,6 @@ fn main() -> io::Result<()> {
         "No plugins were found in openmw.cfg! No lights to fix!"
     );
 
-    let userdata_dir = get_data_local_dir(&config);
-
     let light_config = LightConfig::get()?;
 
     let mut generated_plugin = Plugin::new();
@@ -366,12 +364,19 @@ fn main() -> io::Result<()> {
     generated_plugin.objects.push(TES3Object::Header(header));
     generated_plugin.sort_objects();
 
-    let userdata_path = Path::new(&userdata_dir);
-    if !userdata_path.exists() {
-        create_dir_all(userdata_path)?;
-    }
+    let openmw_config_path = absolute_path_to_openmw_cfg();
+    let openmw_config_dir = openmw_config_path
+        .parent()
+        .expect("Unable to read parent directory of openmw.cfg!");
 
-    let plugin_path = Path::new(&userdata_dir).join(PLUGIN_NAME);
+    // If the old plugin format exists, remove it
+    // Do it before serializing the new plugin, as the target dir may still be the old one
+    let legacy_path = Path::new(&get_data_local_dir(&config)).join(PLUGIN_NAME);
+    if metadata(&legacy_path).is_ok() {
+        remove_file(legacy_path)?;
+    };
+
+    let plugin_path = &openmw_config_dir.join(PLUGIN_NAME);
     let _ = generated_plugin.save_path(plugin_path);
 
     // Handle this arg via clap
@@ -383,11 +388,11 @@ fn main() -> io::Result<()> {
             .find(|s| *s == PLUGIN_NAME);
 
         if let None = has_lightfixes_iter {
-            let config_path = absolute_path_to_openmw_cfg();
+            // let config_path = absolute_path_to_openmw_cfg();
 
-            let config_string = read_to_string(&config_path)?;
+            let config_string = read_to_string(&openmw_config_path)?;
             if !config_string.contains(PLUGIN_NAME) {
-                let mut file = OpenOptions::new().append(true).open(&config_path)?;
+                let mut file = OpenOptions::new().append(true).open(&openmw_config_path)?;
                 if !config_string.ends_with('\n') {
                     write!(file, "{}", '\n')?
                 }
@@ -397,13 +402,7 @@ fn main() -> io::Result<()> {
     }
 
     if light_config.save_log {
-        let config_path = absolute_path_to_openmw_cfg();
-
-        let config_dir = config_path
-            .parent()
-            .expect("Unable to get config path parent!");
-
-        let path = config_dir.join(LOG_NAME);
+        let path = openmw_config_dir.join(LOG_NAME);
         let mut file = File::create(path)?;
         let _ = write!(file, "{}", format!("{:#?}", &generated_plugin));
     }
