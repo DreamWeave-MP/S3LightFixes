@@ -87,6 +87,24 @@ impl LightConfig {
     fn default_colored_radius() -> f32 {
         1.1
     }
+
+    fn classic() -> Self {
+        LightConfig {
+            auto_install: true,
+            disable_flickering: true,
+            save_log: true,
+            standard_hue: Self::default_standard_hue(),
+            standard_saturation: Self::default_standard_saturation(),
+            standard_value: Self::default_standard_value(),
+            // This particular radius is set to match vtastek's old shaders for OpenMW 0.47 only
+            // For this configuration interior sunlight should also be disabled
+            standard_radius: 2.0,
+            colored_hue: Self::default_colored_hue(),
+            colored_saturation: Self::default_colored_saturation(),
+            colored_value: Self::default_colored_value(),
+            colored_radius: Self::default_colored_radius(),
+        }
+    }
 }
 
 impl Default for LightConfig {
