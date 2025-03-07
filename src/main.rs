@@ -20,7 +20,7 @@ const PLUGIN_NAME: &str = "S3LightFixes.omwaddon";
 
 mod default {
     pub fn standard_hue() -> f32 {
-        0.6
+        0.62
     }
 
     pub fn standard_saturation() -> f32 {
