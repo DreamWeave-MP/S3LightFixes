@@ -1,6 +1,6 @@
 use std::{
     env::var,
-    fs::{create_dir_all, read_to_string, File, OpenOptions},
+    fs::{create_dir_all, read_dir, read_to_string, File, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
     process::exit,
@@ -19,91 +19,101 @@ const LOG_NAME: &str = "lightconfig.log";
 const PLUGIN_NAME: &str = "S3LightFixes.omwaddon";
 const PLUGINS_MUST_EXIST_ERR: &str = "Plugins must exist to be loaded by openmw-cfg crate!";
 
-#[derive(Debug, Deserialize, Serialize)]
-struct LightConfig {
-    auto_install: bool,
-    disable_flickering: bool,
-    save_log: bool,
-
-    #[serde(default = "LightConfig::default_standard_hue")]
-    standard_hue: f32,
-
-    #[serde(default = "LightConfig::default_standard_saturation")]
-    standard_saturation: f32,
-
-    #[serde(default = "LightConfig::default_standard_value")]
-    standard_value: f32,
-
-    #[serde(default = "LightConfig::default_standard_radius")]
-    standard_radius: f32,
-
-    #[serde(default = "LightConfig::default_colored_hue")]
-    colored_hue: f32,
-
-    #[serde(default = "LightConfig::default_colored_saturation")]
-    colored_saturation: f32,
-
-    #[serde(default = "LightConfig::default_colored_value")]
-    colored_value: f32,
-
-    #[serde(default = "LightConfig::default_colored_radius")]
-    colored_radius: f32,
-}
-
-/// Primarily exists to provide default implementations
-/// for field values
-impl LightConfig {
-    fn default_standard_hue() -> f32 {
+mod default {
+    pub fn standard_hue() -> f32 {
         0.6
     }
 
-    fn default_standard_saturation() -> f32 {
+    pub fn standard_saturation() -> f32 {
         0.8
     }
 
-    fn default_standard_value() -> f32 {
+    pub fn standard_value() -> f32 {
         0.57
     }
 
     /// Original default radius was 2.0
     /// But was only appropriate for vtastek shaders
     /// MOMW configs use 1.2
-    fn default_standard_radius() -> f32 {
+    pub fn standard_radius() -> f32 {
         1.2
     }
 
-    fn default_colored_hue() -> f32 {
+    pub fn colored_hue() -> f32 {
         1.0
     }
 
-    fn default_colored_saturation() -> f32 {
+    pub fn colored_saturation() -> f32 {
         0.9
     }
 
-    fn default_colored_value() -> f32 {
+    pub fn colored_value() -> f32 {
         0.7
     }
 
-    fn default_colored_radius() -> f32 {
+    pub fn colored_radius() -> f32 {
         1.1
     }
+}
 
-    fn classic() -> Self {
+#[derive(Debug, Deserialize, Serialize)]
+struct LightConfig {
+    auto_install: bool,
+    disable_flickering: bool,
+    save_log: bool,
+
+    #[serde(default = "default::standard_hue")]
+    standard_hue: f32,
+
+    #[serde(default = "default::standard_saturation")]
+    standard_saturation: f32,
+
+    #[serde(default = "default::standard_value")]
+    standard_value: f32,
+
+    #[serde(default = "default::standard_radius")]
+    standard_radius: f32,
+
+    #[serde(default = "default::colored_hue")]
+    colored_hue: f32,
+
+    #[serde(default = "default::colored_saturation")]
+    colored_saturation: f32,
+
+    #[serde(default = "default::colored_value")]
+    colored_value: f32,
+
+    #[serde(default = "default::colored_radius")]
+    colored_radius: f32,
+}
+
+/// Primarily exists to provide default implementations
+/// for field values
+impl LightConfig {
+    fn classic() -> LightConfig {
         LightConfig {
             auto_install: true,
             disable_flickering: true,
             save_log: true,
-            standard_hue: Self::default_standard_hue(),
-            standard_saturation: Self::default_standard_saturation(),
-            standard_value: Self::default_standard_value(),
+            standard_hue: default::standard_hue(),
+            standard_saturation: default::standard_saturation(),
+            standard_value: default::standard_value(),
             // This particular radius is set to match vtastek's old shaders for OpenMW 0.47 only
             // For this configuration interior sunlight should also be disabled
             standard_radius: 2.0,
-            colored_hue: Self::default_colored_hue(),
-            colored_saturation: Self::default_colored_saturation(),
-            colored_value: Self::default_colored_value(),
-            colored_radius: Self::default_colored_radius(),
+            colored_hue: default::colored_hue(),
+            colored_saturation: default::colored_saturation(),
+            colored_value: default::colored_value(),
+            colored_radius: default::colored_radius(),
         }
+    }
+
+    fn find() -> Result<PathBuf, io::Error> {
+        read_dir(openmw_cfg::config_path())?
+            .filter_map(|entry| entry.ok())
+            .find(|entry| entry.file_name().eq_ignore_ascii_case(DEFAULT_CONFIG_NAME))
+            .map(|entry| entry.path())
+            .ok_or_else(|| io::Error::new(std::io::ErrorKind::NotFound, "Light config not found"))
     }
 }
 
@@ -113,14 +123,14 @@ impl Default for LightConfig {
             auto_install: true,
             disable_flickering: true,
             save_log: false,
-            standard_hue: Self::default_standard_hue(),
-            standard_saturation: Self::default_standard_saturation(),
-            standard_value: Self::default_standard_value(),
-            standard_radius: Self::default_standard_radius(),
-            colored_hue: Self::default_colored_hue(),
-            colored_saturation: Self::default_colored_saturation(),
-            colored_value: Self::default_colored_value(),
-            colored_radius: Self::default_colored_radius(),
+            standard_hue: default::standard_hue(),
+            standard_saturation: default::standard_saturation(),
+            standard_value: default::standard_value(),
+            standard_radius: default::standard_radius(),
+            colored_hue: default::colored_hue(),
+            colored_saturation: default::colored_saturation(),
+            colored_value: default::colored_value(),
+            colored_radius: default::colored_radius(),
         }
     }
 }
