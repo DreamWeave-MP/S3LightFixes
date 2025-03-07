@@ -216,12 +216,7 @@ fn main() -> io::Result<()> {
     };
 
     if var("S3L_DEBUG").is_ok() {
-        dbg!(
-            &openmw_cfg::config_path(),
-            &config,
-            &plugins,
-            &openmw_cfg::get_data_dirs(&config)
-        );
+        dbg!(&openmw_cfg::config_path(), &config);
     }
 
     assert!(
