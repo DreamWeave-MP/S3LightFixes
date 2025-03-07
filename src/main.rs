@@ -115,6 +115,18 @@ impl LightConfig {
             .map(|entry| entry.path())
             .ok_or_else(|| io::Error::new(std::io::ErrorKind::NotFound, "Light config not found"))
     }
+
+    pub fn get() -> Result<LightConfig, io::Error> {
+        let light_config: LightConfig = if let Ok(config_path) = Self::find() {
+            let config_contents = read_to_string(config_path)?;
+
+            toml::from_str(&config_contents).map_err(to_io_error)?
+        } else {
+            LightConfig::default()
+        };
+
+        Ok(light_config)
+    }
 }
 
 impl Default for LightConfig {
@@ -133,14 +145,6 @@ impl Default for LightConfig {
             colored_radius: default::colored_radius(),
         }
     }
-}
-
-fn find_light_config() -> Result<PathBuf, io::Error> {
-    std::fs::read_dir(openmw_cfg::config_path())?
-        .filter_map(|entry| entry.ok())
-        .find(|entry| entry.file_name().eq_ignore_ascii_case(DEFAULT_CONFIG_NAME))
-        .map(|entry| entry.path())
-        .ok_or_else(|| io::Error::new(std::io::ErrorKind::NotFound, "Light config not found"))
 }
 
 fn to_io_error<E: std::fmt::Display>(err: E) -> io::Error {
@@ -164,6 +168,25 @@ fn notification_box(title: &str, message: &str) {
     }
 }
 
+fn is_fixable_plugin(plug_path: &PathBuf) -> bool {
+    // If path doesn't exist
+    if std::fs::metadata(plug_path).is_err() {
+        return false;
+    // If path is the lightfixes plugin
+    } else if plug_path.to_string_lossy().contains(PLUGIN_NAME) {
+        return false;
+    } else {
+        // Don't match extensionless files
+        // And also do the match in case-insensitive fashion
+        match plug_path.extension() {
+            None => return false,
+            Some(ext) => match ext.to_ascii_lowercase().to_str().unwrap_or_default() {
+                "esp" | "esm" | "omwaddon" | "omwgame" => return true,
+                _ => return false,
+            },
+        }
+    }
+}
 fn main() -> io::Result<()> {
     let mut config = match get_openmw_cfg() {
         Ok(config) => config,
@@ -206,13 +229,7 @@ fn main() -> io::Result<()> {
 
     let userdata_dir = get_data_local_dir(&config);
 
-    let light_config: LightConfig = if let Ok(config_path) = find_light_config() {
-        let config_contents = std::fs::read_to_string(config_path)?;
-
-        toml::from_str(&config_contents).map_err(to_io_error)?
-    } else {
-        LightConfig::default()
-    };
+    let light_config = LightConfig::get()?;
 
     let mut generated_plugin = Plugin::new();
     let mut used_ids: Vec<String> = Vec::new();
@@ -225,24 +242,9 @@ fn main() -> io::Result<()> {
     };
 
     for plugin_path in plugins.iter().rev() {
-        if plugin_path.to_string_lossy().contains(PLUGIN_NAME) {
+        if !is_fixable_plugin(&plugin_path) {
             continue;
-        }
-
-        let extension = match plugin_path.extension() {
-            Some(extension) => extension.to_ascii_lowercase(),
-            None => continue,
         };
-
-        // You really should only have elder scrolls plugins as content entries
-        // but I simply do not trust these people
-        if extension != "esp"
-            && extension != "esm"
-            && extension != "omwaddon"
-            && extension != "omwgame"
-        {
-            continue;
-        }
 
         let mut plugin = match Plugin::from_path(plugin_path) {
             Ok(plugin) => plugin,
