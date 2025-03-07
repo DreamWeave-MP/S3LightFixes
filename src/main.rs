@@ -397,13 +397,13 @@ fn main() -> io::Result<()> {
     }
 
     if light_config.save_log {
-        let config_path = absolute_path_to_openmw_cfg()
-            .parent()
-            .expect("Unable to get config path parent!")
-            .to_string_lossy()
-            .to_string();
+        let config_path = absolute_path_to_openmw_cfg();
 
-        let path: PathBuf = Path::new(&config_path).join(LOG_NAME);
+        let config_dir = config_path
+            .parent()
+            .expect("Unable to get config path parent!");
+
+        let path = config_dir.join(LOG_NAME);
         let mut file = File::create(path)?;
         let _ = write!(file, "{}", format!("{:#?}", &generated_plugin));
     }
