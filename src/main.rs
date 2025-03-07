@@ -270,9 +270,9 @@ fn main() -> io::Result<()> {
                     continue;
                 };
 
+                cell.references.clear();
                 // Take the cell for ourselves instead of cloning it
                 let mut owned_cell = std::mem::take(cell);
-                owned_cell.references.clear();
 
                 if let Some(mut atmosphere) = owned_cell.atmosphere_data.take() {
                     atmosphere.sunlight_color = [0, 0, 0, 0];
