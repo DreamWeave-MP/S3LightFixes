@@ -275,6 +275,8 @@ fn main() -> io::Result<()> {
     // whatever they've provided
     if let Some(dir) = args.openmw_cfg {
         let dir_metadata = metadata(&dir);
+        let default_location = absolute_path_to_openmw_cfg();
+
         if dir_metadata.is_ok() && dir_metadata.unwrap().is_dir() {
             if let Some(config_path) = read_dir(&dir)?
                 .filter_map(|entry| entry.ok())
@@ -282,11 +284,13 @@ fn main() -> io::Result<()> {
                 .map(|entry| entry.path())
             {
                 env::set_var("OPENMW_CONFIG", &config_path);
+            } else {
+                eprintln!("An openmw.cfg could not be located in {}! Lightfixes will use the system default location of {} instead.", dir.display(), &default_location.display());
             };
         } else {
             eprintln!("The requested openmw.cfg dir {} does not exist! Using the system default location of {} instead.",
                 dir.display(),
-                absolute_path_to_openmw_cfg().display()
+               &default_location.display(),
             )
         }
     }
