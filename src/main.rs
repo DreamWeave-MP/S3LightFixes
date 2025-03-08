@@ -51,7 +51,7 @@ struct LightArgs {
     /// Extremely verbose!
     ///
     /// You probably don't want to enable this unless asked specifically to do so.
-    #[arg(short = 'v', long = "verbose")]
+    #[arg(short = 'l', long = "write-log")]
     write_log: bool,
 
     /// Whether to automatically enable the output plugin in openmw.cfg.
