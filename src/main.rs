@@ -587,8 +587,8 @@ fn main() -> io::Result<()> {
                     light_as_hsv.value * value,
                 );
 
-                let rgbf_color: Srgb = light_as_hsv.into_color();
-                let rgb8_color: Srgb<u8> = rgbf_color.into_format();
+                let rgb8_color: Srgb<u8> =
+                    <Hsv as IntoColor<Srgb>>::into_color(light_as_hsv).into_format();
 
                 light.data.color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
             }
