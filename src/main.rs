@@ -500,7 +500,7 @@ fn main() -> io::Result<()> {
             Ok(plugin) => plugin,
             Err(e) => {
                 eprintln!(
-                    "WARNING: Plugin {}: could not be loaded due to error: {}. Continuing light fixes without this mod . . .",
+                    "WARNING: Plugin {}: could not be loaded due to error: {}. Continuing light fixes without this mod . . .\n",
                     plugin_path.display(),
                     e
                 );
