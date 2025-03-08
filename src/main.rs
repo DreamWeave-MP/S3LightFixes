@@ -271,12 +271,18 @@ fn main() -> io::Result<()> {
         None => current_dir().expect("CRITICAL FAILURE: FAILED TO READ CURRENT WORKING DIRECTORY!"),
     };
 
-    // If the openmw.cfg path is provided by the user, force the crate to use whatever
-    // they've provided
-    // NOTE: No validation of any arguments is done.
-    // :)
+    // If the openmw.cfg path is provided by the user, force the crate to use
+    // whatever they've provided
     if let Some(dir) = args.openmw_cfg {
-        env::set_var("OPENMW_CONFIG", &dir.to_string_lossy().to_string());
+        let dir_metadata = metadata(&dir);
+        if dir_metadata.is_ok() && dir_metadata.unwrap().is_dir() {
+            env::set_var("OPENMW_CONFIG", &dir.to_string_lossy().to_string());
+        } else {
+            eprintln!("The requested openmw.cfg dir {} does not exist! Using the system default location of {} instead.",
+                dir.display(),
+                absolute_path_to_openmw_cfg().display()
+            )
+        }
     }
 
     let mut config = match get_openmw_cfg() {
