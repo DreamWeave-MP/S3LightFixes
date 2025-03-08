@@ -382,7 +382,7 @@ fn validate_config_dir(dir: &PathBuf) -> io::Result<()> {
     let default_location = absolute_path_to_openmw_cfg();
 
     let config_arg_fail = match dir_metadata.is_ok() && dir_metadata.unwrap().is_dir() {
-            false => Some(format!("The requested openmw.cfg dir {} is not a directory! Using the system default location of {} instead.",
+            false => Some(format!("[ WARNING ]: The requested openmw.cfg dir {} is not a directory! Using the system default location of {} instead.",
                 dir.display(),
                &default_location.display())),
             true => {
@@ -390,7 +390,7 @@ fn validate_config_dir(dir: &PathBuf) -> io::Result<()> {
                 .filter_map(|entry| entry.ok())
                 .find(|entry| entry.file_name().eq_ignore_ascii_case("openmw.cfg"))
                 .map(|entry| entry.path()) {
-                    None => Some(format!("An openmw.cfg could not be located in {}! Lightfixes will use the system default location of {} instead.", dir.display(), &default_location.display())),
+                    None => Some(format!("[ WARNING ]: An openmw.cfg could not be located in {}! Lightfixes will use the system default location of {} instead.", dir.display(), &default_location.display())),
                     Some(dir) => {
                         env::set_var("OPENMW_CONFIG", &dir);
                         None
@@ -422,7 +422,7 @@ fn main() -> io::Result<()> {
     let output_dir = match args.output {
         Some(ref dir) => dir,
         None => {
-            &current_dir().expect("CRITICAL FAILURE: FAILED TO READ CURRENT WORKING DIRECTORY!")
+            &current_dir().expect("[ CRITICAL FAILURE ]: FAILED TO READ CURRENT WORKING DIRECTORY!")
         }
     };
 
@@ -431,7 +431,7 @@ fn main() -> io::Result<()> {
     if let Some(dir) = &args.openmw_cfg {
         if let Err(error) = validate_config_dir(&dir) {
             eprintln!(
-                "WARNING: Failed setting config directory to {} due to : {} . Lightfixes will use the default config directory of {} instead.",
+                "[ WARNING ]: Failed setting config directory to {} due to : {} . Lightfixes will use the default config directory of {} instead.",
                 &dir.display(),
                 error.to_string(),
                 absolute_path_to_openmw_cfg().display(),
@@ -500,7 +500,7 @@ fn main() -> io::Result<()> {
             Ok(plugin) => plugin,
             Err(e) => {
                 eprintln!(
-                    "WARNING: Plugin {}: could not be loaded due to error: {}. Continuing light fixes without this mod . . .\n",
+                    "[ WARNING ]: Plugin {}: could not be loaded due to error: {}. Continuing light fixes without this mod . . .\n",
                     plugin_path.display(),
                     e
                 );
@@ -639,7 +639,7 @@ fn main() -> io::Result<()> {
     if args.auto_enable {
         let has_lightfixes_iter = config
             .section_mut::<String>(None)
-            .expect("CRITICAL ERROR: CONFIG WAS ALREADY LOADED AND SHOULD NEVER FAIL PARSING!")
+            .expect("[ CRITICAL ERROR ]: CONFIG WAS ALREADY LOADED AND SHOULD NEVER FAIL PARSING!")
             .get_all("content")
             .find(|s| *s == PLUGIN_NAME);
 
