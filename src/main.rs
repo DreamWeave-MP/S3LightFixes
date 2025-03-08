@@ -225,7 +225,7 @@ impl LightConfig {
     /// use_classic dictates whether or not a fixed radius of 2.0 will be used on orange-y lights
     /// and whether or not to disable interior sunlight
     /// the latter field is not de/serializable and can only be used via the --classic argument
-    pub fn get(use_classic: bool) -> Result<LightConfig, io::Error> {
+    pub fn get(light_args: &LightArgs) -> Result<LightConfig, io::Error> {
         let mut light_config: LightConfig = if let Ok(config_path) = Self::find() {
             let config_contents = read_to_string(config_path)?;
 
@@ -234,12 +234,40 @@ impl LightConfig {
             LightConfig::default()
         };
 
+        // Replace any values provided as CLI args in the config
+        // use_classic will always override the standard_radius and disable_interior_sun
+        [
+            (&mut light_config.standard_hue, light_args.standard_hue),
+            (
+                &mut light_config.standard_saturation,
+                light_args.standard_saturation,
+            ),
+            (&mut light_config.standard_value, light_args.standard_value),
+            (
+                &mut light_config.standard_radius,
+                light_args.standard_radius,
+            ),
+            (&mut light_config.colored_hue, light_args.colored_hue),
+            (
+                &mut light_config.colored_saturation,
+                light_args.colored_saturation,
+            ),
+            (&mut light_config.colored_value, light_args.colored_value),
+            (&mut light_config.colored_radius, light_args.colored_radius),
+        ]
+        .iter_mut()
+        .for_each(|(field, value)| {
+            if let Some(v) = value {
+                **field = std::mem::take(v);
+            }
+        });
+
         // This parameter indicates whether the user requested
         // To use compatibility mode for vtastek's old 0.47 shaders
         // via startup arguments
         // Drastically increases light radii
         // and disables interior sunlight
-        if use_classic {
+        if light_args.use_classic {
             light_config.standard_radius = 2.0;
             light_config.disable_interior_sun = true;
         }
@@ -369,13 +397,15 @@ fn main() -> io::Result<()> {
     };
 
     let output_dir = match args.output {
-        Some(dir) => dir,
-        None => current_dir().expect("CRITICAL FAILURE: FAILED TO READ CURRENT WORKING DIRECTORY!"),
+        Some(ref dir) => dir,
+        None => {
+            &current_dir().expect("CRITICAL FAILURE: FAILED TO READ CURRENT WORKING DIRECTORY!")
+        }
     };
 
     // If the openmw.cfg path is provided by the user, force the crate to use
     // whatever they've provided
-    if let Some(dir) = args.openmw_cfg {
+    if let Some(dir) = &args.openmw_cfg {
         if let Err(error) = validate_config_dir(&dir) {
             eprintln!(
                 "WARNING: Failed setting config directory to {} due to : {} . Lightfixes will use the default config directory of {} instead.",
@@ -428,7 +458,7 @@ fn main() -> io::Result<()> {
         "No plugins were found in openmw.cfg! No lights to fix!"
     );
 
-    let light_config = LightConfig::get(args.use_classic)?;
+    let light_config = LightConfig::get(&args)?;
 
     let mut generated_plugin = Plugin::new();
     let mut used_ids: Vec<String> = Vec::new();
