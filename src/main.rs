@@ -415,6 +415,10 @@ fn main() -> io::Result<()> {
         exit(0);
     };
 
+    if args.no_notifications {
+        env::set_var("S3L_NO_NOTIFICATIONS", "Daddy pls")
+    }
+
     let output_dir = match args.output {
         Some(ref dir) => dir,
         None => {
@@ -440,11 +444,7 @@ fn main() -> io::Result<()> {
         Err(error) => {
             let config_fail = format!("{} {:#?}!", "Failed to read openmw.cfg from", error);
 
-            if !args.no_notifications {
-                notification_box(&"Failed to read configuration file!", &config_fail);
-            } else {
-                eprintln!("{}", config_fail);
-            }
+            notification_box(&"Failed to read configuration file!", &config_fail);
 
             exit(127);
         }
@@ -458,11 +458,7 @@ fn main() -> io::Result<()> {
                 "Failed to read plugins in openmw.cfg from", error
             );
 
-            if !args.no_notifications {
-                notification_box(&"Failed to read plugins from config!", plugin_fail);
-            } else {
-                eprintln!("{}", plugin_fail);
-            }
+            notification_box(&"Failed to read plugins from config!", plugin_fail);
 
             exit(127);
         }
@@ -668,11 +664,7 @@ fn main() -> io::Result<()> {
         output_dir.display()
     );
 
-    if !args.no_notifications {
-        notification_box(&"Lightfixes successful!", &lights_fixed);
-    } else {
-        println!("{}", lights_fixed);
-    };
+    notification_box(&"Lightfixes successful!", &lights_fixed);
 
     Ok(())
 }
