@@ -67,9 +67,13 @@ struct LightArgs {
     #[arg(short = 'n', long = "no-notifications")]
     no_notifications: bool,
 
+    /// Output debugging information during lightfixes generation
+    /// Primarily displays output related to the openmw.cfg being used for generation
     #[arg(short = 'd', long = "debug")]
     debug: bool,
 
+    /// Outputs version info
+    // Might be more later?
     #[arg(short = 'i', long = "info")]
     info: bool,
 }
