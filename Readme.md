@@ -90,47 +90,78 @@ Additionally, S3LightFixes will perform the following:
 ```sh
   -c, --openmw-cfg <OPENMW_CFG>
           Path to openmw.cfg By default, uses the system paths defined by:
+
+          https://openmw.readthedocs.io/en/latest/reference/modding/paths.html
+
+          Alternatively, responds to both the `OPENMW_CONFIG` and `OPENMW_CONFIG_DIR` environment variables.
+
   -7, --classic
           Enables classic mode using vtastek shaders. ONLY for openmw 0.47. Relevant shaders can be found in the OpenMW discord:
+
+          https://discord.com/channels/260439894298460160/718892786157617163/966468825321177148
+
   -o, --output <OUTPUT>
           Output file path. Accepts relative and absolute terms
+
   -l, --write-log
           Whether to save a text form of the generated plugin. Extremely verbose!
+
+          You probably don't want to enable this unless asked specifically to do so.
+
   -e, --auto-enable
-          Whether to automatically enable the output plugin in openmw.cfg. Disabled by default, and only available via CLI
+          Whether to automatically enable the output plugin in openmw.cfg. Disabled by default, and only available via CLI.
+
+          Typically lightfixes is ran under momw-configurator, making this param unnecessary for many users.
+
   -n, --no-notifications
-          If used, print to stdout instead of using native GUI dialogs
+          If used, print to stdout instead of using native GUI dialogs.
+
+          Not available on android.
+
   -d, --debug
           Output debugging information during lightfixes generation Primarily displays output related to the openmw.cfg being used for generation
+
   -i, --info
           Outputs version info
+
   -f, --no-flicker <DISABLE_FLICKERING>
-          Whether to disable flickering lights during lightfixes generation [possible values: true, false]
+          Whether to disable flickering lights during lightfixes generation
+
+          [possible values: true, false]
+
       --standard-hue <STANDARD_HUE>
           For lights in the orange range, multiply their HSV hue by this value.
           If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 0.62.
           This argument has no short form due to a conflict with -h.
+
   -s, --standard-saturation <STANDARD_SATURATION>
           For lights in the orange range, multiply their HSV saturation by this amount.
           If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 0.8.
+
   -v, --standard-value <STANDARD_VALUE>
           For lights in the orange range, multiply their HSV value by this amount.
           If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 0.57.
+
   -r, --standard-radius <STANDARD_RADIUS>
           For lights in the orange range, multiply their radius by this value.
           If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 1.2.
+
   -H, --colored-hue <COLORED_HUE>
           For lights that are red, purple, blue, green, or yellow, multiply their HSV hue by this value.
           If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 1.
+
   -S, --colored-saturation <COLORED_SATURATION>
           For lights that are red, purple, blue, green, or yellow, multiply their HSV saturation by this amount.
           If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 0.9.
+
   -V, --colored-value <COLORED_VALUE>
           For lights that are red, purple, blue, green, or yellow, multiply their HSV value by this amount.
           If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 0.7.
+
   -R, --colored-radius <COLORED_RADIUS>
           For lights that are red, purple, blue, green, or yellow, multiply their radius by this value.
           If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 1.1.
+
   -h, --help
-          Print help (see more with '--help')
-  ```
+          Print help (see a summary with '-h')
+```
