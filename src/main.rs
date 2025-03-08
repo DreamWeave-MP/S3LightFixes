@@ -240,12 +240,16 @@ fn is_fixable_plugin(plug_path: &PathBuf) -> bool {
 }
 
 fn save_plugin(output_dir: &PathBuf, generated_plugin: &mut Plugin) -> io::Result<()> {
+    let mut plugin_path = output_dir.join(PLUGIN_NAME);
+
     match metadata(output_dir) {
         Ok(metadata) if !metadata.is_dir() => {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Output path is not a directory",
-            ))
+            let cwd =
+                current_dir().expect("CRITICAL FAILURE: FAILED TO READ CURRENT WORKING DIRECTORY!");
+
+            eprintln!("WARNING: Couldn't use {} as an output directory, as it isn't a directory. Using the current working directory, {}, instead!", output_dir.display(), cwd.display());
+
+            plugin_path = cwd.join(PLUGIN_NAME);
         }
         Ok(_) => {}
         Err(err) if err.kind() == io::ErrorKind::NotFound => {
@@ -254,7 +258,6 @@ fn save_plugin(output_dir: &PathBuf, generated_plugin: &mut Plugin) -> io::Resul
         Err(err) => return Err(err),
     }
 
-    let plugin_path = output_dir.join(PLUGIN_NAME);
     generated_plugin.save_path(plugin_path)?;
 
     Ok(())
