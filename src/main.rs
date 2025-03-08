@@ -69,6 +69,9 @@ struct LightArgs {
 
     #[arg(short = 'd', long = "debug")]
     debug: bool,
+
+    #[arg(short = 'i', long = "info")]
+    info: bool,
 }
 
 mod default {
@@ -295,6 +298,11 @@ fn validate_config_dir(dir: &PathBuf) -> io::Result<()> {
 
 fn main() -> io::Result<()> {
     let args = LightArgs::parse();
+
+    if args.info {
+        println!("S3LightFixes Version: {}", env!("CARGO_PKG_VERSION"),);
+        exit(0);
+    };
 
     let output_dir = match args.output {
         Some(dir) => dir,
