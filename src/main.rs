@@ -80,7 +80,7 @@ struct LightArgs {
 
     /// Whether to disable flickering lights during lightfixes generation
     #[arg(short = 'f', long = "no-flicker")]
-    disable_flickering: bool,
+    disable_flickering: Option<bool>,
 
     #[arg(
         long = "standard-hue",
@@ -261,6 +261,10 @@ impl LightConfig {
                 **field = std::mem::take(v);
             }
         });
+
+        if let Some(status) = light_args.disable_flickering {
+            light_config.disable_flickering = status
+        }
 
         // This parameter indicates whether the user requested
         // To use compatibility mode for vtastek's old 0.47 shaders
