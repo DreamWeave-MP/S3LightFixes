@@ -277,22 +277,28 @@ fn main() -> io::Result<()> {
         let dir_metadata = metadata(&dir);
         let default_location = absolute_path_to_openmw_cfg();
 
-        if dir_metadata.is_ok() && dir_metadata.unwrap().is_dir() {
-            if let Some(config_path) = read_dir(&dir)?
+        let config_arg_fail = match dir_metadata.is_ok() && dir_metadata.unwrap().is_dir() {
+            false => Some(format!("The requested openmw.cfg dir {} does not exist! Using the system default location of {} instead.",
+                dir.display(),
+               &default_location.display())),
+            true => {
+                match read_dir(&dir)?
                 .filter_map(|entry| entry.ok())
                 .find(|entry| entry.file_name().eq_ignore_ascii_case("openmw.cfg"))
-                .map(|entry| entry.path())
-            {
-                env::set_var("OPENMW_CONFIG", &config_path);
-            } else {
-                eprintln!("An openmw.cfg could not be located in {}! Lightfixes will use the system default location of {} instead.", dir.display(), &default_location.display());
-            };
-        } else {
-            eprintln!("The requested openmw.cfg dir {} does not exist! Using the system default location of {} instead.",
-                dir.display(),
-               &default_location.display(),
-            )
-        }
+                .map(|entry| entry.path()) {
+                    None => Some(format!("An openmw.cfg could not be located in {}! Lightfixes will use the system default location of {} instead.", dir.display(), &default_location.display())),
+                    Some(dir) => {
+                        env::set_var("OPENMW_CONFIG", &dir);
+                        None
+                    }
+                }
+            }
+
+        };
+
+        if let Some(fail_message) = config_arg_fail {
+            eprintln!("{}", fail_message);
+        };
     }
 
     let mut config = match get_openmw_cfg() {
