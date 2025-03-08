@@ -22,7 +22,7 @@ const PLUGIN_NAME: &str = "S3LightFixes.omwaddon";
 #[derive(Parser, Debug)]
 #[command(
     name = "S3 Lightfixes",
-    about = "A tool for modifying light values globally across an OpenMW installation."
+    about = "A tool for modifying light values globally across an OpenMW installation.\nPlease note that arguments provided here, which also exist in lightConfig.toml, will override any values in lightConfig.toml when used.\nAdditionally, if the lightConfig.toml does not exist, the used values will be saved into the new lightConfig.toml."
 )]
 struct LightArgs {
     /// Path to openmw.cfg
@@ -62,8 +62,9 @@ struct LightArgs {
     #[arg(short = 'e', long = "auto-enable")]
     auto_enable: bool,
 
-    /// Whether to use notifications at runtime
-    /// NOT available on android
+    /// Whether to use notifications at runtime.
+    ///
+    /// Not available on android.
     #[arg(short = 'n', long = "no-notifications")]
     no_notifications: bool,
 
@@ -76,6 +77,65 @@ struct LightArgs {
     // Might be more later?
     #[arg(short = 'i', long = "info")]
     info: bool,
+
+    /// Whether to disable flickering lights during lightfixes generation
+    #[arg(short = 'f', long = "no-flicker")]
+    disable_flickering: bool,
+
+    #[arg(
+        long = "standard-hue",
+        help = &format!("For lights in the orange range, multiply their HSV hue by this value.\nIf this argument is not used, the value will be derived from lightConfig.toml or use the default value of {}.\nThis argument has no short form due to a conflict with -h.", default::standard_hue())
+    )]
+    standard_hue: Option<f32>,
+
+    #[arg(
+        short = 's',
+        long = "standard-saturation",
+        help = &format!("For lights in the orange range, multiply their HSV saturation by this amount.\nIf this argument is not used, the value will be derived from lightConfig.toml or use the default value of {}.", default::standard_saturation())
+    )]
+    standard_saturation: Option<f32>,
+
+    #[arg(
+        short = 'v',
+        long = "standard-value",
+        help = &format!("For lights in the orange range, multiply their HSV value by this amount.\nIf this argument is not used, the value will be derived from lightConfig.toml or use the default value of {}.", default::standard_value())
+    )]
+    standard_value: Option<f32>,
+
+    #[arg(
+        short = 'r',
+        long = "standard-radius",
+        help = &format!("For lights in the orange range, multiply their radius by this value.\nIf this argument is not used, the value will be derived from lightConfig.toml or use the default value of {}.", default::standard_radius())
+    )]
+    standard_radius: Option<f32>,
+
+    #[arg(
+        short = 'H',
+        long = "colored-hue",
+        help = &format!("For lights in the orange range, multiply their HSV hue by this value.\nIf this argument is not used, the value will be derived from lightConfig.toml or use the default value of {}.", default::colored_hue())
+    )]
+    colored_hue: Option<f32>,
+
+    #[arg(
+        short = 'S',
+        long = "colored-saturation",
+        help = &format!("For lights in the orange range, multiply their HSV saturation by this amount.\nIf this argument is not used, the value will be derived from lightConfig.toml or use the default value of {}.", default::colored_saturation())
+    )]
+    colored_saturation: Option<f32>,
+
+    #[arg(
+        short = 'V',
+        long = "colored-value",
+        help = &format!("For lights in the orange range, multiply their HSV value by this amount.\nIf this argument is not used, the value will be derived from lightConfig.toml or use the default value of {}.", default::colored_value())
+    )]
+    colored_value: Option<f32>,
+
+    #[arg(
+        short = 'R',
+        long = "colored-radius",
+        help = &format!("For lights in the orange range, multiply their radius by this value.\nIf this argument is not used, the value will be derived from lightConfig.toml or use the default value of {}.", default::colored_radius())
+    )]
+    colored_radius: Option<f32>,
 }
 
 mod default {
