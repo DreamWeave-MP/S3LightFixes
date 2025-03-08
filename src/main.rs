@@ -464,8 +464,10 @@ fn main() -> io::Result<()> {
         }
     };
 
-    if var("S3L_DEBUG").is_ok() || args.debug {
-        dbg!(&openmw_cfg::config_path(), &config);
+    let use_debug = var("S3L_DEBUG").is_ok() || args.debug;
+
+    if use_debug {
+        dbg!(&args, &openmw_cfg::config_path(), &config);
     }
 
     assert!(
@@ -609,7 +611,7 @@ fn main() -> io::Result<()> {
         }
     }
 
-    if var("S3L_DEBUG").is_ok() {
+    if use_debug {
         dbg!(&header);
     }
 
