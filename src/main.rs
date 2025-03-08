@@ -278,7 +278,7 @@ fn main() -> io::Result<()> {
         let default_location = absolute_path_to_openmw_cfg();
 
         let config_arg_fail = match dir_metadata.is_ok() && dir_metadata.unwrap().is_dir() {
-            false => Some(format!("The requested openmw.cfg dir {} does not exist! Using the system default location of {} instead.",
+            false => Some(format!("The requested openmw.cfg dir {} is not a directory! Using the system default location of {} instead.",
                 dir.display(),
                &default_location.display())),
             true => {
