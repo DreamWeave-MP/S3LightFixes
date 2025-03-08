@@ -226,11 +226,14 @@ impl LightConfig {
     /// and whether or not to disable interior sunlight
     /// the latter field is not de/serializable and can only be used via the --classic argument
     pub fn get(light_args: &LightArgs) -> Result<LightConfig, io::Error> {
+        let mut write_config = false;
+
         let mut light_config: LightConfig = if let Ok(config_path) = Self::find() {
             let config_contents = read_to_string(config_path)?;
 
             toml::from_str(&config_contents).map_err(to_io_error)?
         } else {
+            write_config = true;
             LightConfig::default()
         };
 
@@ -274,6 +277,18 @@ impl LightConfig {
         if light_args.use_classic {
             light_config.standard_radius = 2.0;
             light_config.disable_interior_sun = true;
+        }
+
+        // If the configuration file didn't exist when we tried to find it,
+        // serialize it here
+        if write_config {
+            let config_serialized = toml::to_string_pretty(&light_config).map_err(to_io_error)?;
+            let config_path = absolute_path_to_openmw_cfg()
+                .parent()
+                .expect("CRITICAL FAILURE: FAILED TO READ PARENT DIR OF OPENMW.CFG!")
+                .join(DEFAULT_CONFIG_NAME);
+            let mut config_file = File::create(config_path)?;
+            write!(config_file, "{}", config_serialized)?;
         }
 
         Ok(light_config)
