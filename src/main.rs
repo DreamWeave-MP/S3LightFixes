@@ -449,7 +449,9 @@ fn main() -> io::Result<()> {
                 .expect("Plugins must exist to be loaded by openmw-cfg crate!")
                 .to_string_lossy()
                 .to_string();
-            header.masters.insert(0, (plugin_string, plugin_size))
+            header.masters.insert(0, (plugin_string, plugin_size));
+
+            used_objects = 0;
         }
     }
 
