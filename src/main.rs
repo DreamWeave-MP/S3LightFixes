@@ -410,12 +410,14 @@ fn main() -> io::Result<()> {
                 let light_hue = light_as_hsv.hue.into_degrees();
 
                 let (radius, hue, saturation, value) = match light_hue > 64. || light_hue < 14. {
+                    // Red, purple, blue, green, yellow
                     true => (
                         light_config.colored_radius,
                         light_config.colored_hue,
                         light_config.colored_saturation,
                         light_config.colored_value,
                     ),
+                    // Everything else
                     false => (
                         light_config.standard_radius,
                         light_config.standard_hue,
