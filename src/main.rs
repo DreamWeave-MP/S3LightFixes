@@ -1,6 +1,6 @@
 use std::{
     env::{self, current_dir, var},
-    fs::{metadata, read_dir, read_to_string, remove_file, File, OpenOptions},
+    fs::{create_dir_all, metadata, read_dir, read_to_string, remove_file, File, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
     process::exit,
@@ -239,6 +239,27 @@ fn is_fixable_plugin(plug_path: &PathBuf) -> bool {
     }
 }
 
+fn save_plugin(output_dir: &PathBuf, generated_plugin: &mut Plugin) -> io::Result<()> {
+    match metadata(output_dir) {
+        Ok(metadata) if !metadata.is_dir() => {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Output path is not a directory",
+            ))
+        }
+        Ok(_) => {}
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            create_dir_all(output_dir)?;
+        }
+        Err(err) => return Err(err),
+    }
+
+    let plugin_path = output_dir.join(PLUGIN_NAME);
+    generated_plugin.save_path(plugin_path)?;
+
+    Ok(())
+}
+
 fn main() -> io::Result<()> {
     let args = LightArgs::parse();
 
@@ -451,8 +472,7 @@ fn main() -> io::Result<()> {
         remove_file(legacy_path)?;
     };
 
-    let plugin_path = output_dir.join(PLUGIN_NAME);
-    let _ = generated_plugin.save_path(plugin_path);
+    save_plugin(&output_dir, &mut generated_plugin)?;
 
     // Handle this arg via clap
     if args.auto_enable {
