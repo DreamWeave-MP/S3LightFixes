@@ -263,21 +263,11 @@ fn save_plugin(output_dir: &PathBuf, generated_plugin: &mut Plugin) -> io::Resul
     Ok(())
 }
 
-fn main() -> io::Result<()> {
-    let args = LightArgs::parse();
+fn validate_config_dir(dir: &PathBuf) -> io::Result<()> {
+    let dir_metadata = metadata(&dir);
+    let default_location = absolute_path_to_openmw_cfg();
 
-    let output_dir = match args.output {
-        Some(dir) => dir,
-        None => current_dir().expect("CRITICAL FAILURE: FAILED TO READ CURRENT WORKING DIRECTORY!"),
-    };
-
-    // If the openmw.cfg path is provided by the user, force the crate to use
-    // whatever they've provided
-    if let Some(dir) = args.openmw_cfg {
-        let dir_metadata = metadata(&dir);
-        let default_location = absolute_path_to_openmw_cfg();
-
-        let config_arg_fail = match dir_metadata.is_ok() && dir_metadata.unwrap().is_dir() {
+    let config_arg_fail = match dir_metadata.is_ok() && dir_metadata.unwrap().is_dir() {
             false => Some(format!("The requested openmw.cfg dir {} is not a directory! Using the system default location of {} instead.",
                 dir.display(),
                &default_location.display())),
@@ -296,8 +286,31 @@ fn main() -> io::Result<()> {
 
         };
 
-        if let Some(fail_message) = config_arg_fail {
-            eprintln!("{}", fail_message);
+    if let Some(fail_message) = config_arg_fail {
+        eprintln!("{}", fail_message);
+    };
+
+    Ok(())
+}
+
+fn main() -> io::Result<()> {
+    let args = LightArgs::parse();
+
+    let output_dir = match args.output {
+        Some(dir) => dir,
+        None => current_dir().expect("CRITICAL FAILURE: FAILED TO READ CURRENT WORKING DIRECTORY!"),
+    };
+
+    // If the openmw.cfg path is provided by the user, force the crate to use
+    // whatever they've provided
+    if let Some(dir) = args.openmw_cfg {
+        if let Err(error) = validate_config_dir(&dir) {
+            eprintln!(
+                "WARNING: Failed setting config directory to {} due to : {} . Lightfixes will use the default config directory of {} instead.",
+                &dir.display(),
+                error.to_string(),
+                absolute_path_to_openmw_cfg().display(),
+            )
         };
     }
 
