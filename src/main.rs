@@ -62,7 +62,7 @@ struct LightArgs {
     #[arg(short = 'e', long = "auto-enable")]
     auto_enable: bool,
 
-    /// Whether to use notifications at runtime.
+    /// If used, print to stdout instead of using native GUI dialogs.
     ///
     /// Not available on android.
     #[arg(short = 'n', long = "no-notifications")]
