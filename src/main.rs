@@ -552,6 +552,7 @@ fn main() -> io::Result<()> {
             if light.data.flags.contains(LightFlags::NEGATIVE) {
                 light.data.flags.remove(LightFlags::NEGATIVE);
                 light.data.radius = 0;
+                light.data.color = [0, 0, 0, 0];
             } else {
                 let light_as_rgb = Srgb::new(
                     light.data.color[0],
