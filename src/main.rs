@@ -540,7 +540,7 @@ fn main() -> io::Result<()> {
                 continue;
             }
 
-            let mut light = std::mem::take(light);
+            let mut light = light.clone();
 
             if light_config.disable_flickering {
                 light
