@@ -67,6 +67,7 @@ jobs:
           # Get the release ID
           RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" | jq -r '.id')
+          cat release_body.txt
 
           # Append the hash to the release body
           curl -s -X PATCH -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
