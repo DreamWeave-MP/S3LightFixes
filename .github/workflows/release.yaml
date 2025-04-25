@@ -44,17 +44,6 @@ jobs:
       - name: compress
         run: 7z a -tzip ${{matrix.archive}} S3LF-${{ matrix.os }}.bundle ./target/release/${{matrix.binary}}
 
-      - name: Compute SHA512 
-        shell: bash
-        run: |
-          # Compute SHA512 hash
-          sha512sum ${{ matrix.archive }} > sha512sum.txt
-
-          # Format the hash for the release body
-          HASH=$(cat sha512sum.txt | awk '{print $1}')
-          FILENAME=$(cat sha512sum.txt | awk '{print $2}')
-          echo -e "{\n\"${FILENAME}\": \"${HASH}\"\n}" >> release_body.txt
-
       - name: upload
         uses: softprops/action-gh-release@v2
         env:
