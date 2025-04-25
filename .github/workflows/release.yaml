@@ -61,8 +61,7 @@ jobs:
           # Format the hash for the release body
           HASH=$(cat sha512sum.txt | awk '{print $1}')
           FILENAME=$(cat sha512sum.txt | awk '{print $2}')
-          echo -e '{\n"${FILENAME}": "${HASH}"\n}' >> release_body.txt
-          cat release_body.txt
+          echo -e "{\n\"${FILENAME}\": \"${HASH}\"\n}" >> release_body.txt
 
           # Get the release ID
           RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
