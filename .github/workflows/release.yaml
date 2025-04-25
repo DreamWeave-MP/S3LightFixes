@@ -17,12 +17,12 @@ jobs:
     needs: setup
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-20.04, windows-latest]
+        os: [macos-latest, ubuntu-22.04, windows-latest]
         include:
           - os: macos-latest
             binary: s3lightfixes
             archive: macos-latest.zip
-          - os: ubuntu-20.04
+          - os: ubuntu-22.04
             binary: s3lightfixes
             archive: ubuntu-latest.zip
           - os: windows-latest
