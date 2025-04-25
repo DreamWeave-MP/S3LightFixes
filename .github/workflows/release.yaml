@@ -52,6 +52,27 @@ jobs:
           files: |
             ${{ matrix.archive }}
 
+      - name: Compute SHA512 and update release body
+        run: |
+          # Compute SHA512 hash
+          sha512sum ${{ matrix.archive }} > sha512sum.txt
+
+          # Format the hash for the release body
+          HASH=$(cat sha512sum.txt | awk '{print $1}')
+          FILENAME=$(cat sha512sum.txt | awk '{print $2}')
+          echo "File: $FILENAME" >> release_body.txt
+          echo "SHA512: $HASH" >> release_body.txt
+
+          # Get the release ID
+          RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" | jq -r '.id')
+
+          # Append the hash to the release body
+          curl -s -X PATCH -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"body\": \"$(cat release_body.txt)\"}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID"
+      
       - name: VirusTotal Scan
         uses: crazy-max/ghaction-virustotal@v4
         with:
