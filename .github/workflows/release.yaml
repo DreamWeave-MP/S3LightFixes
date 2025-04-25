@@ -28,8 +28,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-              $CARGO_HOME
-              target
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: build
