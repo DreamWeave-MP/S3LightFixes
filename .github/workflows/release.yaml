@@ -53,6 +53,7 @@ jobs:
             ${{ matrix.archive }}
 
       - name: Compute SHA512 and update release body
+        shell: bash
         run: |
           # Compute SHA512 hash
           sha512sum ${{ matrix.archive }} > sha512sum.txt
