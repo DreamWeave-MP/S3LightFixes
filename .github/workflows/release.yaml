@@ -44,15 +44,7 @@ jobs:
       - name: compress
         run: 7z a -tzip ${{matrix.archive}} S3LF-${{ matrix.os }}.bundle ./target/release/${{matrix.binary}}
 
-      - name: upload
-        uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          files: |
-            ${{ matrix.archive }}
-
-      - name: Compute SHA512 and update release body
+      - name: Compute SHA512 
         shell: bash
         run: |
           # Compute SHA512 hash
@@ -63,16 +55,14 @@ jobs:
           FILENAME=$(cat sha512sum.txt | awk '{print $2}')
           echo -e "{\n\"${FILENAME}\": \"${HASH}\"\n}" >> release_body.txt
 
-          # Get the release ID
-          RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" | jq -r '.id')
-          cat release_body.txt
-
-          # Append the hash to the release body
-          curl -s -X PATCH -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d "{\"body\": \"$(cat release_body.txt)\"}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID"
+      - name: upload
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          body_path: release_body.txt
+          files: |
+            ${{ matrix.archive }}
       
       - name: VirusTotal Scan
         uses: crazy-max/ghaction-virustotal@v4
