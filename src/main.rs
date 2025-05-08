@@ -214,7 +214,7 @@ struct LightConfig {
 /// for field values
 impl LightConfig {
     fn find() -> Result<PathBuf, io::Error> {
-        read_dir(absolute_path_to_openmw_cfg())?
+        read_dir(absolute_path_to_openmw_cfg().parent().expect("Failed to read directory of openmw.cfg!"))?
             .filter_map(|entry| entry.ok())
             .find(|entry| entry.file_name().eq_ignore_ascii_case(DEFAULT_CONFIG_NAME))
             .map(|entry| entry.path())
