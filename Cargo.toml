@@ -5,17 +5,19 @@ version = "0.3.0"
 edition = "2024"
 
 [dependencies]
-clap = { version = "4.5.38", features = ["derive"] }
+clap = { version = "4.5.40", features = ["derive"] }
 palette = "0.7.6"
 serde = { version = "1.0.215", features = ["derive"] }
-toml = "0.8.22"
+toml = "0.8.23"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 native-dialog = "0.9.0"
 
-[dependencies.openmw-cfg]
-git = "https://gitlab.com/magicaldave1/openmw-cfg"
-branch = "master"
+[dependencies.openmw-config]
+path = "../openmw-cfg"
+
+[dependencies.vfstool_lib]
+version = "0.1.0"
 
 [dependencies.tes3]
 git = "https://github.com/Greatness7/tes3"

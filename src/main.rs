@@ -1,19 +1,18 @@
 use std::{
-    env::{self, current_dir, var},
-    fs::{create_dir_all, metadata, read_dir, read_to_string, remove_file, File, OpenOptions},
+    env::{current_dir, var},
+    fs::{File, create_dir_all, metadata, read_dir, read_to_string, remove_file},
     io::{self, Write},
     path::{Path, PathBuf},
     process::exit,
 };
 
 use clap::Parser;
-use openmw_cfg::{
-    config_path as absolute_path_to_openmw_cfg, get_config as get_openmw_cfg, get_data_local_dir,
-    get_plugins,
-};
-use palette::{rgb::Srgb, FromColor, Hsv, IntoColor};
+
+use openmw_config::OpenMWConfiguration;
+use palette::{FromColor, Hsv, IntoColor, rgb::Srgb};
 use serde::{Deserialize, Serialize};
 use tes3::esp::*;
+use vfstool_lib::VFS;
 
 const DEFAULT_CONFIG_NAME: &str = "lightconfig.toml";
 const LOG_NAME: &str = "lightconfig.log";
@@ -213,8 +212,8 @@ struct LightConfig {
 /// Primarily exists to provide default implementations
 /// for field values
 impl LightConfig {
-    fn find() -> Result<PathBuf, io::Error> {
-        read_dir(absolute_path_to_openmw_cfg().parent().expect("Failed to read directory of openmw.cfg!"))?
+    fn find(root_path: &PathBuf) -> Result<PathBuf, io::Error> {
+        read_dir(root_path)?
             .filter_map(|entry| entry.ok())
             .find(|entry| entry.file_name().eq_ignore_ascii_case(DEFAULT_CONFIG_NAME))
             .map(|entry| entry.path())
@@ -225,17 +224,21 @@ impl LightConfig {
     /// use_classic dictates whether or not a fixed radius of 2.0 will be used on orange-y lights
     /// and whether or not to disable interior sunlight
     /// the latter field is not de/serializable and can only be used via the --classic argument
-    pub fn get(light_args: &LightArgs) -> Result<LightConfig, io::Error> {
+    pub fn get(
+        light_args: &LightArgs,
+        openmw_config: &OpenMWConfiguration,
+    ) -> Result<LightConfig, io::Error> {
         let mut write_config = false;
 
-        let mut light_config: LightConfig = if let Ok(config_path) = Self::find() {
-            let config_contents = read_to_string(config_path)?;
+        let mut light_config: LightConfig =
+            if let Ok(config_path) = Self::find(&openmw_config.user_config_path()) {
+                let config_contents = read_to_string(config_path)?;
 
-            toml::from_str(&config_contents).map_err(to_io_error)?
-        } else {
-            write_config = true;
-            LightConfig::default()
-        };
+                toml::from_str(&config_contents).map_err(to_io_error)?
+            } else {
+                write_config = true;
+                LightConfig::default()
+            };
 
         // Replace any values provided as CLI args in the config
         // use_classic will always override the standard_radius and disable_interior_sun
@@ -283,10 +286,7 @@ impl LightConfig {
         // serialize it here
         if write_config {
             let config_serialized = toml::to_string_pretty(&light_config).map_err(to_io_error)?;
-            let config_path = absolute_path_to_openmw_cfg()
-                .parent()
-                .expect("CRITICAL FAILURE: FAILED TO READ PARENT DIR OF OPENMW.CFG!")
-                .join(DEFAULT_CONFIG_NAME);
+            let config_path = openmw_config.user_config_path().join(DEFAULT_CONFIG_NAME);
             let mut config_file = File::create(config_path)?;
             write!(config_file, "{}", config_serialized)?;
         }
@@ -318,24 +318,25 @@ fn to_io_error<E: std::fmt::Display>(err: E) -> io::Error {
 }
 
 /// Displays a notification taking title and message as argument
-fn notification_box(title: &str, message: &str) {
+fn notification_box(title: &str, message: &str, no_notifications: bool) {
     #[cfg(target_os = "android")]
     println!("{}", message);
 
     #[cfg(not(target_os = "android"))]
-    if var("S3L_NO_NOTIFICATIONS").is_err() {
-        let _ = native_dialog::MessageDialog::new()
+    if !no_notifications {
+        let _ = native_dialog::DialogBuilder::message()
             .set_title(title)
             .set_text(message)
-            .show_alert();
+            .alert()
+            .show();
     } else {
         println!("{}", message);
     }
 }
 
-fn is_fixable_plugin(plug_path: &PathBuf) -> bool {
+fn is_fixable_plugin(plug_path: &Path) -> bool {
     // If path doesn't exist
-    if std::fs::metadata(plug_path).is_err() {
+    if metadata(plug_path).is_err() {
         return false;
     // If path is the lightfixes plugin
     } else if plug_path.to_string_lossy().contains(PLUGIN_NAME) {
@@ -361,7 +362,11 @@ fn save_plugin(output_dir: &PathBuf, generated_plugin: &mut Plugin) -> io::Resul
             let cwd =
                 current_dir().expect("CRITICAL FAILURE: FAILED TO READ CURRENT WORKING DIRECTORY!");
 
-            eprintln!("WARNING: Couldn't use {} as an output directory, as it isn't a directory. Using the current working directory, {}, instead!", output_dir.display(), cwd.display());
+            eprintln!(
+                "WARNING: Couldn't use {} as an output directory, as it isn't a directory. Using the current working directory, {}, instead!",
+                output_dir.display(),
+                cwd.display()
+            );
 
             plugin_path = cwd.join(PLUGIN_NAME);
         }
@@ -377,47 +382,33 @@ fn save_plugin(output_dir: &PathBuf, generated_plugin: &mut Plugin) -> io::Resul
     Ok(())
 }
 
-fn validate_config_dir(dir: &PathBuf) -> io::Result<()> {
-    let dir_metadata = metadata(&dir);
-    let default_location = absolute_path_to_openmw_cfg();
+/// Add another parameter to the light args which can specify an absolute path to the full config
+fn get_config_dir(args: &mut LightArgs) -> PathBuf {
+    if let Some(path) = args.openmw_cfg.take() {
+        if path.is_dir() && path.join("openmw.cfg").is_file() {
+            return path;
+        }
+    } else {
+        let cwd = current_dir().expect("Failed to get current directory");
+        if cwd.join("openmw.cfg").is_file() {
+            return cwd;
+        }
+    }
 
-    let config_arg_fail = match dir_metadata.is_ok() && dir_metadata.unwrap().is_dir() {
-            false => Some(format!("[ WARNING ]: The requested openmw.cfg dir {} is not a directory! Using the system default location of {} instead.",
-                dir.display(),
-               &default_location.display())),
-            true => {
-                match read_dir(&dir)?
-                .filter_map(|entry| entry.ok())
-                .find(|entry| entry.file_name().eq_ignore_ascii_case("openmw.cfg"))
-                .map(|entry| entry.path()) {
-                    None => Some(format!("[ WARNING ]: An openmw.cfg could not be located in {}! Lightfixes will use the system default location of {} instead.", dir.display(), &default_location.display())),
-                    Some(dir) => {
-                        env::set_var("OPENMW_CONFIG", &dir);
-                        None
-                    }
-                }
-            }
-
-        };
-
-    if let Some(fail_message) = config_arg_fail {
-        eprintln!("{}", fail_message);
-    };
-
-    Ok(())
+    openmw_config::default_config_path()
 }
 
 fn main() -> io::Result<()> {
-    let args = LightArgs::parse();
+    let mut args = LightArgs::parse();
 
     if args.info {
         println!("S3LightFixes Version: {}", env!("CARGO_PKG_VERSION"),);
         exit(0);
     };
 
-    if args.no_notifications {
-        env::set_var("S3L_NO_NOTIFICATIONS", "Daddy pls")
-    }
+    let no_notifications = var("S3L_NO_NOTIFICATIONS").is_ok() || args.no_notifications;
+
+    let config_dir = get_config_dir(&mut args);
 
     let output_dir = match args.output {
         Some(ref dir) => dir,
@@ -428,37 +419,16 @@ fn main() -> io::Result<()> {
 
     // If the openmw.cfg path is provided by the user, force the crate to use
     // whatever they've provided
-    if let Some(dir) = &args.openmw_cfg {
-        if let Err(error) = validate_config_dir(&dir) {
-            eprintln!(
-                "[ WARNING ]: Failed setting config directory to {} due to : {} . Lightfixes will use the default config directory of {} instead.",
-                &dir.display(),
-                error.to_string(),
-                absolute_path_to_openmw_cfg().display(),
-            )
-        };
-    }
-
-    let mut config = match get_openmw_cfg() {
+    let mut config = match openmw_config::OpenMWConfiguration::new(Some(config_dir)) {
         Ok(config) => config,
         Err(error) => {
             let config_fail = format!("{} {:#?}!", "Failed to read openmw.cfg from", error);
 
-            notification_box(&"Failed to read configuration file!", &config_fail);
-
-            exit(127);
-        }
-    };
-
-    let plugins = match get_plugins(&config) {
-        Ok(plugins) => plugins,
-        Err(error) => {
-            let plugin_fail = &format!(
-                "{} {:#?}!",
-                "Failed to read plugins in openmw.cfg from", error
+            notification_box(
+                &"Failed to read configuration file!",
+                &config_fail,
+                no_notifications,
             );
-
-            notification_box(&"Failed to read plugins from config!", plugin_fail);
 
             exit(127);
         }
@@ -467,15 +437,15 @@ fn main() -> io::Result<()> {
     let use_debug = var("S3L_DEBUG").is_ok() || args.debug;
 
     if use_debug {
-        dbg!(&args, &openmw_cfg::config_path(), &config);
+        dbg!(&args, &config.root_config(), &config);
     }
 
     assert!(
-        plugins.len() > 0,
+        config.content_files().len() > 0,
         "No plugins were found in openmw.cfg! No lights to fix!"
     );
 
-    let light_config = LightConfig::get(&args)?;
+    let light_config = LightConfig::get(&args, &config)?;
 
     let mut generated_plugin = Plugin::new();
     let mut used_ids: Vec<String> = Vec::new();
@@ -490,17 +460,27 @@ fn main() -> io::Result<()> {
         masters: Vec::new(),
     };
 
+    let vfs = VFS::from_directories(config.data_directories(), None);
+
     let mut used_objects = 0;
-    for plugin_path in plugins.iter().rev() {
-        if !is_fixable_plugin(&plugin_path) {
-            continue;
+    for plugin_name in config.content_files().iter().rev() {
+        let plugin_path = match vfs.get_file(plugin_name) {
+            Some(plugin) => {
+                let maybe_valid_path = plugin.path();
+
+                match is_fixable_plugin(maybe_valid_path) {
+                    true => maybe_valid_path,
+                    false => continue,
+                }
+            }
+            None => continue,
         };
 
         let mut plugin = match Plugin::from_path(plugin_path) {
             Ok(plugin) => plugin,
             Err(e) => {
                 eprintln!(
-                    "[ WARNING ]: Plugin {}: could not be loaded due to error: {}. Continuing light fixes without this mod . . .\n",
+                    "[ WARNING ]: Plugin {}: could not be loaded due to error: {}. Continuing light fixes without this mod .  . . Everything will be okay. Yes, it's still working.\n",
                     plugin_path.display(),
                     e
                 );
@@ -521,7 +501,7 @@ fn main() -> io::Result<()> {
 
                 cell.references.clear();
                 // Take the cell for ourselves instead of cloning it
-                let mut owned_cell = std::mem::take(cell);
+                let mut owned_cell = cell.clone();
 
                 if let Some(mut atmosphere) = owned_cell.atmosphere_data.take() {
                     atmosphere.sunlight_color = [0, 0, 0, 0];
@@ -616,20 +596,18 @@ fn main() -> io::Result<()> {
         dbg!(&header);
     }
 
-    assert!(header.masters.len() > 0, "The generated plugin was not found to have any master files! It's empty! Try running lightfixes again using the S3L_DEBUG environment variable");
+    assert!(
+        header.masters.len() > 0,
+        "The generated plugin was not found to have any master files! It's empty! Try running lightfixes again using the S3L_DEBUG environment variable"
+    );
 
     header.num_objects = used_objects;
     generated_plugin.objects.push(TES3Object::Header(header));
     generated_plugin.sort_objects();
 
-    let openmw_config_path = absolute_path_to_openmw_cfg();
-    let openmw_config_dir = openmw_config_path
-        .parent()
-        .expect("Unable to read parent directory of openmw.cfg!");
-
     // If the old plugin format exists, remove it
     // Do it before serializing the new plugin, as the target dir may still be the old one
-    let legacy_path = Path::new(&get_data_local_dir(&config)).join(PLUGIN_NAME);
+    let legacy_path = Path::new(&config.user_config_path()).join(PLUGIN_NAME);
     if metadata(&legacy_path).is_ok() {
         remove_file(legacy_path)?;
     };
@@ -638,26 +616,31 @@ fn main() -> io::Result<()> {
 
     // Handle this arg via clap
     if args.auto_enable {
-        let has_lightfixes_iter = config
-            .section_mut::<String>(None)
-            .expect("[ CRITICAL ERROR ]: CONFIG WAS ALREADY LOADED AND SHOULD NEVER FAIL PARSING!")
-            .get_all("content")
-            .find(|s| *s == PLUGIN_NAME);
+        let already_enabled = config.content_files().contains(&PLUGIN_NAME.to_string());
+        if !already_enabled {
+            if config.root_config() == &config.user_config_path() {
+                let mut new_files = config.content_files().clone();
+                new_files.push(PLUGIN_NAME.to_string());
 
-        if let None = has_lightfixes_iter {
-            let config_string = read_to_string(&openmw_config_path)?;
-            if !config_string.contains(PLUGIN_NAME) {
-                let mut file = OpenOptions::new().append(true).open(&openmw_config_path)?;
-                if !config_string.ends_with('\n') {
-                    write!(file, "{}", '\n')?
-                }
-                writeln!(file, "{}", format!("content={}\n", PLUGIN_NAME))?;
+                config.set_content_files(new_files);
+                config.save().expect("Lightfixes plugin failed to save!");
+            } else {
+                let mut user_config = OpenMWConfiguration::new(Some(config.user_config_path()))
+                    .expect("Failed to read user openmw.cfg!");
+
+                let mut new_files = user_config.content_files().clone();
+                new_files.push(PLUGIN_NAME.to_string());
+
+                user_config.set_content_files(new_files);
+                user_config
+                    .save()
+                    .expect("Lightfixes plugin failed to save!");
             }
         }
     }
 
     if args.write_log || light_config.save_log {
-        let path = openmw_config_dir.join(LOG_NAME);
+        let path = config.user_config_path().join(LOG_NAME);
         let mut file = File::create(path)?;
         let _ = write!(file, "{}", format!("{:#?}", &generated_plugin));
     }
@@ -667,7 +650,7 @@ fn main() -> io::Result<()> {
         output_dir.display()
     );
 
-    notification_box(&"Lightfixes successful!", &lights_fixed);
+    notification_box(&"Lightfixes successful!", &lights_fixed, no_notifications);
 
     Ok(())
 }
