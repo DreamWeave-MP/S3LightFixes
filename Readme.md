@@ -36,6 +36,8 @@ You may optionally edit the lightconfig.toml S3Lightfixes creates (next to your 
 Or, make your own lightconfig.toml and place it next to the S3LightFixes executable before running it. The toml schema is as follows:
 
 ```toml
+# Disable pulsing lights
+disable_pulse = true
 # Disable flickering lights
 disable_flickering = true
 # Serialize S3LightFixes plugin to a text file. Don't do this unless you're asked to (or just curious)
