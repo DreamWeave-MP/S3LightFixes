@@ -382,16 +382,21 @@ fn save_plugin(output_dir: &PathBuf, generated_plugin: &mut Plugin) -> io::Resul
     Ok(())
 }
 
-/// Add another parameter to the light args which can specify an absolute path to the full config
-fn get_config_dir(args: &mut LightArgs) -> PathBuf {
-    if let Some(path) = args.openmw_cfg.take() {
+fn get_config_path(args: &mut LightArgs) -> PathBuf {
+    if let Some(path) = &args.openmw_cfg {
         if path.is_dir() && path.join("openmw.cfg").is_file() {
-            return path;
+            return path.to_owned();
+        } else if path.is_file() {
+            return path.to_owned();
         }
+        panic!("This shit should never ever happen!");
     } else {
-        let cwd = current_dir().expect("Failed to get current directory");
-        if cwd.join("openmw.cfg").is_file() {
-            return cwd;
+        let cwd_cfg = current_dir()
+            .expect("Failed to get current directory")
+            .join("openmw.cfg");
+
+        if cwd_cfg.is_file() {
+            return cwd_cfg;
         }
     }
 
@@ -408,25 +413,16 @@ fn main() -> io::Result<()> {
 
     let no_notifications = var("S3L_NO_NOTIFICATIONS").is_ok() || args.no_notifications;
 
-    let config_dir = get_config_dir(&mut args);
-
-    let output_dir = match args.output {
-        Some(ref dir) => dir,
-        None => {
-            &current_dir().expect("[ CRITICAL FAILURE ]: FAILED TO READ CURRENT WORKING DIRECTORY!")
-        }
-    };
+    let config_dir = get_config_path(&mut args);
 
     // If the openmw.cfg path is provided by the user, force the crate to use
     // whatever they've provided
     let mut config = match openmw_config::OpenMWConfiguration::new(Some(config_dir)) {
         Ok(config) => config,
         Err(error) => {
-            let config_fail = format!("{} {:#?}!", "Failed to read openmw.cfg from", error);
-
             notification_box(
                 &"Failed to read configuration file!",
-                &config_fail,
+                &error.to_string(),
                 no_notifications,
             );
 
@@ -434,10 +430,29 @@ fn main() -> io::Result<()> {
         }
     };
 
+    let output_dir = match args.output {
+        Some(ref dir) => {
+            if dir.is_dir() {
+                dir.to_owned()
+            } else {
+                eprintln!(
+                    "WARNING: The requested output path {dir:?} does not exist! Terminating."
+                );
+                exit(1)
+            }
+        }
+
+        None => match &mut config.data_local() {
+            Some(dir) => dir.parsed().to_owned(),
+            None => current_dir()
+                .expect("[ CRITICAL FAILURE ]: FAILED TO READ CURRENT WORKING DIRECTORY!"),
+        },
+    };
+
     let use_debug = var("S3L_DEBUG").is_ok() || args.debug;
 
     if use_debug {
-        dbg!(&args, &config.root_config(), &config);
+        dbg!(&args, &config.root_config_file(), &config);
     }
 
     assert!(
@@ -460,7 +475,9 @@ fn main() -> io::Result<()> {
         masters: Vec::new(),
     };
 
-    let vfs = VFS::from_directories(config.data_directories(), None);
+    let directories: Vec<&PathBuf> = config.data_directories();
+
+    let vfs = VFS::from_directories(directories, None);
 
     let mut used_objects = 0;
     for plugin_name in config.content_files().iter().rev() {
@@ -588,6 +605,7 @@ fn main() -> io::Result<()> {
                 .to_string();
             header.masters.insert(0, (plugin_string, plugin_size));
 
+            header.num_objects = used_objects;
             used_objects = 0;
         }
     }
@@ -601,41 +619,44 @@ fn main() -> io::Result<()> {
         "The generated plugin was not found to have any master files! It's empty! Try running lightfixes again using the S3L_DEBUG environment variable"
     );
 
-    header.num_objects = used_objects;
     generated_plugin.objects.push(TES3Object::Header(header));
     generated_plugin.sort_objects();
 
     // If the old plugin format exists, remove it
     // Do it before serializing the new plugin, as the target dir may still be the old one
-    let legacy_path = Path::new(&config.user_config_path()).join(PLUGIN_NAME);
-    if metadata(&legacy_path).is_ok() {
-        remove_file(legacy_path)?;
-    };
+    if let Some(dir) = &mut config.data_local() {
+        let old_plug_path = dir.parsed().join(PLUGIN_NAME);
+        if old_plug_path.is_file() {
+            remove_file(old_plug_path)?
+        }
+    }
 
     save_plugin(&output_dir, &mut generated_plugin)?;
 
     // Handle this arg via clap
     if args.auto_enable {
-        let already_enabled = config.content_files().contains(&PLUGIN_NAME.to_string());
-        if !already_enabled {
-            if config.root_config() == &config.user_config_path() {
-                let mut new_files = config.content_files().clone();
-                new_files.push(PLUGIN_NAME.to_string());
-
-                config.set_content_files(new_files);
-                config.save().expect("Lightfixes plugin failed to save!");
-            } else {
-                let mut user_config = OpenMWConfiguration::new(Some(config.user_config_path()))
-                    .expect("Failed to read user openmw.cfg!");
-
-                let mut new_files = user_config.content_files().clone();
-                new_files.push(PLUGIN_NAME.to_string());
-
-                user_config.set_content_files(new_files);
-                user_config
-                    .save()
-                    .expect("Lightfixes plugin failed to save!");
-            }
+        if !config.has_content_file(&PLUGIN_NAME) {
+            match config.add_content_file(&PLUGIN_NAME) {
+                Ok(_) => {
+                    if let Err(err) = config.save_user() {
+                        notification_box("Failed to resave openmw.cfg!", &err, no_notifications);
+                    } else {
+                        let lightfix_enabled_msg = format!(
+                            "Wrote user openmw.cfg at {} successfully!",
+                            config.user_config_path().display()
+                        );
+                        notification_box(
+                            "Lightfixes enabled!",
+                            &lightfix_enabled_msg,
+                            no_notifications,
+                        );
+                    }
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    std::process::exit(256);
+                }
+            };
         }
     }
 
