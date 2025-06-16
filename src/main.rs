@@ -81,6 +81,10 @@ struct LightArgs {
     #[arg(short = 'f', long = "no-flicker")]
     disable_flickering: Option<bool>,
 
+    /// Whether to disable pulsing lights during lightfixes generation
+    #[arg(short = 'p', long = "no-pulse")]
+    disable_pulse: Option<bool>,
+
     #[arg(
         long = "standard-hue",
         help = &format!("For lights in the orange range, multiply their HSV hue by this value.\nIf this argument is not used, the value will be derived from lightConfig.toml or use the default value of {}.\nThis argument has no short form due to a conflict with -h.", default::standard_hue())
@@ -182,6 +186,7 @@ struct LightConfig {
     #[serde(skip)]
     disable_interior_sun: bool,
     disable_flickering: bool,
+    disable_pulse: bool,
     save_log: bool,
 
     #[serde(default = "default::standard_hue")]
@@ -272,6 +277,10 @@ impl LightConfig {
             light_config.disable_flickering = status
         }
 
+        if let Some(status) = light_args.disable_pulse {
+            light_config.disable_pulse = status
+        }
+
         // This parameter indicates whether the user requested
         // To use compatibility mode for vtastek's old 0.47 shaders
         // via startup arguments
@@ -300,6 +309,7 @@ impl Default for LightConfig {
         LightConfig {
             disable_interior_sun: false,
             disable_flickering: true,
+            disable_pulse: false,
             save_log: false,
             standard_hue: default::standard_hue(),
             standard_saturation: default::standard_saturation(),
@@ -544,6 +554,13 @@ fn main() -> io::Result<()> {
                     .data
                     .flags
                     .remove(LightFlags::FLICKER | LightFlags::FLICKER_SLOW);
+            }
+
+            if light_config.disable_pulse {
+                light
+                    .data
+                    .flags
+                    .remove(LightFlags::PULSE | LightFlags::PULSE_SLOW);
             }
 
             if light.data.flags.contains(LightFlags::NEGATIVE) {
