@@ -155,7 +155,7 @@ dependencies = [
 [[package]]
 name = "bytes_io"
 version = "0.0.1"
-source = "git+https://github.com/Greatness7/tes3?branch=main#51fae82b79838d76a39d0d1d0d472d7f48e8577f"
+source = "git+https://github.com/Greatness7/tes3?branch=main#efd075fe88c1d8d2ea3d492e44a1fd47c081232f"
 dependencies = [
  "bstr",
  "bytemuck",
@@ -170,7 +170,7 @@ dependencies = [
 [[package]]
 name = "bytes_io_macros"
 version = "0.0.1"
-source = "git+https://github.com/Greatness7/tes3?branch=main#51fae82b79838d76a39d0d1d0d472d7f48e8577f"
+source = "git+https://github.com/Greatness7/tes3?branch=main#efd075fe88c1d8d2ea3d492e44a1fd47c081232f"
 dependencies = [
  "quote",
  "syn",
@@ -383,7 +383,7 @@ dependencies = [
 [[package]]
 name = "esp"
 version = "0.0.1"
-source = "git+https://github.com/Greatness7/tes3?branch=main#51fae82b79838d76a39d0d1d0d472d7f48e8577f"
+source = "git+https://github.com/Greatness7/tes3?branch=main#efd075fe88c1d8d2ea3d492e44a1fd47c081232f"
 dependencies = [
  "bitflags",
  "bstr",
@@ -402,7 +402,7 @@ dependencies = [
 [[package]]
 name = "esp_macros"
 version = "0.0.1"
-source = "git+https://github.com/Greatness7/tes3?branch=main#51fae82b79838d76a39d0d1d0d472d7f48e8577f"
+source = "git+https://github.com/Greatness7/tes3?branch=main#efd075fe88c1d8d2ea3d492e44a1fd47c081232f"
 dependencies = [
  "quote",
  "syn",
@@ -621,7 +621,7 @@ dependencies = [
 [[package]]
 name = "nif"
 version = "0.0.1"
-source = "git+https://github.com/Greatness7/tes3?branch=main#51fae82b79838d76a39d0d1d0d472d7f48e8577f"
+source = "git+https://github.com/Greatness7/tes3?branch=main#efd075fe88c1d8d2ea3d492e44a1fd47c081232f"
 dependencies = [
  "bstr",
  "bytemuck",
@@ -638,7 +638,7 @@ dependencies = [
 [[package]]
 name = "nif_macros"
 version = "0.0.1"
-source = "git+https://github.com/Greatness7/tes3?branch=main#51fae82b79838d76a39d0d1d0d472d7f48e8577f"
+source = "git+https://github.com/Greatness7/tes3?branch=main#efd075fe88c1d8d2ea3d492e44a1fd47c081232f"
 dependencies = [
  "quote",
  "syn",
@@ -1100,7 +1100,7 @@ dependencies = [
 [[package]]
 name = "tes3"
 version = "0.0.1"
-source = "git+https://github.com/Greatness7/tes3?branch=main#51fae82b79838d76a39d0d1d0d472d7f48e8577f"
+source = "git+https://github.com/Greatness7/tes3?branch=main#efd075fe88c1d8d2ea3d492e44a1fd47c081232f"
 dependencies = [
  "esp",
  "nif",

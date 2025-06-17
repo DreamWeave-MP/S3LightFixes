@@ -34,7 +34,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: build
-        run: cargo +nightly build --release
+        run: cargo build --release
 
       - uses: sigstore/cosign-installer@main
       - name: sign
