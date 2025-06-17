@@ -235,15 +235,27 @@ impl LightConfig {
     ) -> Result<LightConfig, io::Error> {
         let mut write_config = false;
 
-        let mut light_config: LightConfig =
-            if let Ok(config_path) = Self::find(&openmw_config.user_config_path()) {
-                let config_contents = read_to_string(config_path)?;
+        let mut light_config: LightConfig = if let Ok(config_path) =
+            Self::find(&openmw_config.user_config_path())
+        {
+            let config_contents = read_to_string(config_path)?;
 
-                toml::from_str(&config_contents).map_err(to_io_error)?
-            } else {
-                write_config = true;
-                LightConfig::default()
-            };
+            match toml::from_str(&config_contents).map_err(to_io_error) {
+                Ok(config) => config,
+                Err(err) => {
+                    notification_box(
+                        "Failed to read light config!",
+                        "Lightconfig.toml couldn't be read. It will be replaced with a default copy.",
+                        light_args.no_notifications,
+                    );
+                    write_config = true;
+                    LightConfig::default()
+                }
+            }
+        } else {
+            write_config = true;
+            LightConfig::default()
+        };
 
         // Replace any values provided as CLI args in the config
         // use_classic will always override the standard_radius and disable_interior_sun
