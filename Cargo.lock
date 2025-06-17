@@ -821,7 +821,7 @@ checksum = "a4895175b425cb1f87721b59f0f286c2092bd4af812243672510e1ac53e2e0ad"
 [[package]]
 name = "openmw-config"
 version = "0.1.1"
-source = "git+https://github.com/magicaldave/Openmw_Config.git#9479bcf474baeffabef53eba0cdd9b0158f25f54"
+source = "git+https://github.com/magicaldave/Openmw_Config.git#a9e41e51da971daedfad1eb62b2a93c351fe9481"
 dependencies = [
  "dirs",
 ]
