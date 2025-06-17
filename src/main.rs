@@ -26,17 +26,14 @@ const PLUGIN_NAME: &str = "S3LightFixes.omwaddon";
 struct LightArgs {
     /// Path to openmw.cfg
     /// By default, uses the system paths defined by:
-    ///
     /// https://openmw.readthedocs.io/en/latest/reference/modding/paths.html
-    ///
-    /// Alternatively, responds to both the `OPENMW_CONFIG` and `OPENMW_CONFIG_DIR`
-    /// environment variables.
+    /// Can be the literal path to an openmw.cfg file (including not literally being called openmw.cfg)
+    /// Or the directory in which an openmw.cfg file lives.
     #[arg(short = 'c', long = "openmw-cfg")]
     openmw_cfg: Option<PathBuf>,
 
     /// Enables classic mode using vtastek shaders.
     /// ONLY for openmw 0.47. Relevant shaders can be found in the OpenMW discord:
-    ///
     /// https://discord.com/channels/260439894298460160/718892786157617163/966468825321177148
     #[arg(short = '7', long = "classic")]
     use_classic: bool,
@@ -48,21 +45,18 @@ struct LightArgs {
 
     /// Whether to save a text form of the generated plugin.
     /// Extremely verbose!
-    ///
     /// You probably don't want to enable this unless asked specifically to do so.
     #[arg(short = 'l', long = "write-log")]
     write_log: bool,
 
     /// Whether to automatically enable the output plugin in openmw.cfg.
     /// Disabled by default, and only available via CLI.
-    ///
     /// Typically lightfixes is ran under momw-configurator, making this param
     /// unnecessary for many users.
     #[arg(short = 'e', long = "auto-enable")]
     auto_enable: bool,
 
     /// If used, print to stdout instead of using native GUI dialogs.
-    ///
     /// Not available on android.
     #[arg(short = 'n', long = "no-notifications")]
     no_notifications: bool,
