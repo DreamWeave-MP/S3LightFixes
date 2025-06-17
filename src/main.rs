@@ -558,8 +558,10 @@ fn main() -> io::Result<()> {
             if dir.is_dir() {
                 dir.to_owned()
             } else {
-                eprintln!(
-                    "WARNING: The requested output path {dir:?} does not exist! Terminating."
+                notification_box(
+                    "Can't find output location!",
+                    "WARNING: The requested output path {dir:?} does not exist! Terminating.",
+                    no_notifications,
                 );
                 exit(1)
             }
@@ -567,8 +569,17 @@ fn main() -> io::Result<()> {
 
         None => match &mut config.data_local() {
             Some(dir) => dir.parsed().to_owned(),
-            None => current_dir()
-                .expect("[ CRITICAL FAILURE ]: FAILED TO READ CURRENT WORKING DIRECTORY!"),
+            None => match current_dir() {
+                Ok(dir) => dir,
+                Err(_) => {
+                    notification_box(
+                        "Can't get workdir!",
+                        "[ CRITICAL FAILURE ]: FAILED TO READ CURRENT WORKING DIRECTORY!",
+                        no_notifications,
+                    );
+                    std::process::exit(256);
+                }
+            },
         },
     };
 
@@ -578,10 +589,10 @@ fn main() -> io::Result<()> {
         dbg!(&args, &config.root_config_file(), &config);
     }
 
-    assert!(
-        config.content_files().len() > 0,
-        "No plugins were found in openmw.cfg! No lights to fix!"
-    );
+    if config.content_files().len() == 0 {
+        notification_box("No Plugins!", "No plugins were found in openmw.cfg! No lights to fix!", no_notifications);
+        std::process::exit(4);
+    }
 
     let light_config = LightConfig::get(&args, &config)?;
 
@@ -734,11 +745,18 @@ fn main() -> io::Result<()> {
 
         if used_objects > 0 {
             let plugin_size = metadata(plugin_path)?.len();
-            let plugin_string = plugin_path
-                .file_name()
-                .expect("Plugins must exist to be loaded by openmw-cfg crate!")
-                .to_string_lossy()
-                .to_string();
+            let plugin_string = match plugin_path.file_name() {
+                Some(name) => name.to_string_lossy().to_string(),
+                None => {
+                    notification_box(
+                        "Bad plugin path!",
+                        "Lightfixes could not resolve the name of one of your plugins! This is UBER Bad and should never happen!",
+                        no_notifications,
+                    );
+                    std::process::exit(3);
+                }
+            };
+
             header.masters.insert(0, (plugin_string, plugin_size));
 
             header.num_objects += used_objects;
@@ -750,10 +768,14 @@ fn main() -> io::Result<()> {
         dbg!(&header);
     }
 
-    assert!(
-        header.masters.len() > 0,
-        "The generated plugin was not found to have any master files! It's empty! Try running lightfixes again using the S3L_DEBUG environment variable"
-    );
+    if header.masters.len() == 0 {
+        notification_box(
+            "No masters found!",
+            "The generated plugin was not found to have any master files! It's empty! Try running lightfixes again using the S3L_DEBUG environment variable",
+            no_notifications,
+        );
+        std::process::exit(2);
+    }
 
     generated_plugin.objects.push(TES3Object::Header(header));
     generated_plugin.sort_objects();
@@ -763,11 +785,13 @@ fn main() -> io::Result<()> {
     if let Some(dir) = &mut config.data_local() {
         let old_plug_path = dir.parsed().join(PLUGIN_NAME);
         if old_plug_path.is_file() {
-            remove_file(old_plug_path)?
+            let _ = remove_file(old_plug_path);
         }
     }
 
-    save_plugin(&output_dir, &mut generated_plugin)?;
+    if let Err(err) = save_plugin(&output_dir, &mut generated_plugin) {
+        notification_box("Failed to save plugin!", &err.to_string(), no_notifications);
+    };
 
     // Handle this arg via clap
     if args.auto_enable {
