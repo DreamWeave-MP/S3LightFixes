@@ -211,6 +211,18 @@ mod default {
     pub fn save_log() -> bool {
         false
     }
+
+    pub fn excluded_plugins() -> Vec<String> {
+        vec![
+            // Unable to resolve moved reference (1, 7028) for cell Sadrith Mora (18, 4)
+            "deleted_groundcover.omwaddon".into(),
+            // Unexpected Tag: CELL::FLTV
+            "Clean_Argonian Full Helms Lore Integrated.ESP".into(),
+            // LUAL
+            "LuaMultiMark.omwaddon".into(),
+            "S3maphore.esp".into(),
+        ]
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -260,7 +272,7 @@ struct LightConfig {
     #[serde(default)]
     excluded_ids: Vec<String>,
 
-    #[serde(default)]
+    #[serde(default = "default::excluded_plugins")]
     excluded_plugins: Vec<String>,
 }
 
@@ -392,7 +404,7 @@ impl Default for LightConfig {
             colored_radius: default::colored_radius(),
             duration_mult: default::duration_mult(),
             excluded_ids: Vec::new(),
-            excluded_plugins: Vec::new(),
+            excluded_plugins: default::excluded_plugins(),
         }
     }
 }
