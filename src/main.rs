@@ -139,6 +139,13 @@ struct LightArgs {
         help = &format!("For lights that are red, purple, blue, green, or yellow, multiply their radius by this value.\nIf this argument is not used, the value will be derived from lightConfig.toml or use the default value of {}.", default::colored_radius())
     )]
     colored_radius: Option<f32>,
+
+    #[arg(
+        short = 'M',
+        long = "duration-mult",
+        help = &format!("Multiplies the duration of all carryable lights.\nIf this argument is not used, the value will be derived from lightConfig.toml or use the default value of {}.", default::duration_mult())
+    )]
+    duration_mult: Option<f32>,
 }
 
 mod default {
@@ -176,6 +183,22 @@ mod default {
     pub fn colored_radius() -> f32 {
         1.1
     }
+
+    pub fn duration_mult() -> f32 {
+        2.5
+    }
+
+    pub fn disable_flicker() -> bool {
+        true
+    }
+
+    pub fn disable_pulse() -> bool {
+        false
+    }
+
+    pub fn save_log() -> bool {
+        false
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -185,8 +208,14 @@ struct LightConfig {
     /// <https://discord.com/channels/260439894298460160/718892786157617163/966468825321177148>
     #[serde(skip)]
     disable_interior_sun: bool,
+
+    #[serde(default = "default::disable_flicker")]
     disable_flickering: bool,
+
+    #[serde(default = "default::disable_pulse")]
     disable_pulse: bool,
+
+    #[serde(default = "default::save_log")]
     save_log: bool,
 
     #[serde(default = "default::standard_hue")]
@@ -212,6 +241,9 @@ struct LightConfig {
 
     #[serde(default = "default::colored_radius")]
     colored_radius: f32,
+
+    #[serde(default = "default::duration_mult")]
+    duration_mult: f32,
 }
 
 /// Primarily exists to provide default implementations
@@ -277,6 +309,7 @@ impl LightConfig {
             ),
             (&mut light_config.colored_value, light_args.colored_value),
             (&mut light_config.colored_radius, light_args.colored_radius),
+            (&mut light_config.duration_mult, light_args.duration_mult),
         ]
         .iter_mut()
         .for_each(|(field, value)| {
@@ -331,6 +364,7 @@ impl Default for LightConfig {
             colored_saturation: default::colored_saturation(),
             colored_value: default::colored_value(),
             colored_radius: default::colored_radius(),
+            duration_mult: default::duration_mult(),
         }
     }
 }
@@ -618,6 +652,8 @@ fn main() -> io::Result<()> {
                     <Hsv as IntoColor<Srgb>>::into_color(light_as_hsv).into_format();
 
                 light.data.color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
+
+                light.data.time = (light.data.time as f32 * light_config.duration_mult) as i32;
             }
 
             generated_plugin.objects.push(TES3Object::Light(light));
