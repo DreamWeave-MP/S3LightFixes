@@ -670,7 +670,7 @@ fn main() -> io::Result<()> {
                 .to_string();
             header.masters.insert(0, (plugin_string, plugin_size));
 
-            header.num_objects = used_objects;
+            header.num_objects += used_objects;
             used_objects = 0;
         }
     }
