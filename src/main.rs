@@ -146,6 +146,18 @@ struct LightArgs {
         help = &format!("Multiplies the duration of all carryable lights.\nIf this argument is not used, the value will be derived from lightConfig.toml or use the default value of {}.", default::duration_mult())
     )]
     duration_mult: Option<f32>,
+
+    #[arg(
+        long = "excluded-ids",
+        help = &format!("List of Regex patterns of light recordIds to exclude. This setting is *merged* onto values defined by lightconfig.toml.\nIf this argument is not used, the value will be derived from lightConfig.toml.")
+    )]
+    excluded_ids: Vec<String>,
+
+    #[arg(
+        long = "excluded-plugins",
+        help = &format!("List of Regex patterns of plugins to exclude. This setting is *merged* onto values defined by lightconfig.toml.\nIf this argument is not used, the value will be derived from lightConfig.toml.")
+    )]
+    excluded_plugins: Vec<String>,
 }
 
 mod default {
@@ -244,6 +256,12 @@ struct LightConfig {
 
     #[serde(default = "default::duration_mult")]
     duration_mult: f32,
+
+    #[serde(default)]
+    excluded_ids: Vec<String>,
+
+    #[serde(default)]
+    excluded_plugins: Vec<String>,
 }
 
 /// Primarily exists to provide default implementations
@@ -274,7 +292,7 @@ impl LightConfig {
 
             match toml::from_str(&config_contents).map_err(to_io_error) {
                 Ok(config) => config,
-                Err(err) => {
+                Err(_) => {
                     notification_box(
                         "Failed to read light config!",
                         "Lightconfig.toml couldn't be read. It will be replaced with a default copy.",
@@ -326,6 +344,14 @@ impl LightConfig {
             light_config.disable_pulse = status
         }
 
+        for id in &light_args.excluded_ids {
+            light_config.excluded_ids.push(id.to_owned())
+        }
+
+        for id in &light_args.excluded_plugins {
+            light_config.excluded_plugins.push(id.to_owned())
+        }
+
         // This parameter indicates whether the user requested
         // To use compatibility mode for vtastek's old 0.47 shaders
         // via startup arguments
@@ -365,6 +391,8 @@ impl Default for LightConfig {
             colored_value: default::colored_value(),
             colored_radius: default::colored_radius(),
             duration_mult: default::duration_mult(),
+            excluded_ids: Vec::new(),
+            excluded_plugins: Vec::new(),
         }
     }
 }
@@ -408,6 +436,39 @@ fn is_fixable_plugin(plug_path: &Path) -> bool {
             },
         }
     }
+}
+
+fn is_excluded_plugin(plugin_path: &Path, light_config: &LightConfig) -> bool {
+    let file_name = match plugin_path.file_name() {
+        None => return false,
+        Some(name) => name.to_string_lossy(),
+    };
+
+    for pattern in &light_config.excluded_plugins {
+        let reg_from_pattern = regex::Regex::new(&pattern);
+
+        if let Ok(pattern) = reg_from_pattern {
+            if pattern.is_match(&file_name) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn is_excluded_id(record_id: &str, light_config: &LightConfig) -> bool {
+    for pattern in &light_config.excluded_ids {
+        let reg_from_pattern = regex::Regex::new(&pattern);
+
+        if let Ok(pattern) = reg_from_pattern {
+            if pattern.is_match(record_id) {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 fn save_plugin(output_dir: &PathBuf, generated_plugin: &mut Plugin) -> io::Result<()> {
@@ -549,6 +610,10 @@ fn main() -> io::Result<()> {
             None => continue,
         };
 
+        if is_excluded_plugin(plugin_path, &light_config) {
+            continue;
+        };
+
         let mut plugin = match Plugin::from_path(plugin_path) {
             Ok(plugin) => plugin,
             Err(e) => {
@@ -589,7 +654,7 @@ fn main() -> io::Result<()> {
 
         for light in plugin.objects_of_type_mut::<Light>() {
             let light_id = light.editor_id_ascii_lowercase().to_string();
-            if used_ids.contains(&light_id) {
+            if used_ids.contains(&light_id) || is_excluded_id(&light_id, &light_config) {
                 continue;
             }
 
