@@ -57,9 +57,11 @@ pub fn excluded_plugins() -> Vec<String> {
         // Unexpected Tag: CELL::FLTV
         "Clean_Argonian Full Helms Lore Integrated.ESP".into(),
         // LUAL
+        "Baldurwind.omwaddon".into(),
+        "Crassified Navigation.omwaddon".into(),
         "LuaMultiMark.omwaddon".into(),
         "S3maphore.esp".into(),
-        "Crassified Navigation.omwaddon".into(),
+        "Toolgun.omwaddon".into(),
     ]
 }
 // }
