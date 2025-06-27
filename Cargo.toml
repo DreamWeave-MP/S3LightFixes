@@ -15,7 +15,8 @@ toml = "0.8.23"
 native-dialog = "0.9.0"
 
 [dependencies.openmw-config]
-git = "https://github.com/magicaldave/Openmw_Config.git"
+version = "0.1.3"
+# git = "https://github.com/magicaldave/Openmw_Config.git"
 
 [dependencies.vfstool_lib]
 version = "0.1.0"
