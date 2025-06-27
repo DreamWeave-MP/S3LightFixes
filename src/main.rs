@@ -146,21 +146,23 @@ fn main() -> io::Result<()> {
             for cell in plugin.objects_of_type_mut::<Cell>() {
                 let cell_id = cell.editor_id_ascii_lowercase().to_string();
 
-                if !cell.data.flags.contains(CellFlags::IS_INTERIOR) || used_ids.contains(&cell_id)
+                if !cell.data.flags.contains(CellFlags::IS_INTERIOR)
+                    || cell.atmosphere_data.is_none()
+                    || used_ids.contains(&cell_id)
                 {
                     continue;
                 };
 
                 cell.references.clear();
-                // Take the cell for ourselves instead of cloning it
-                let mut owned_cell = cell.clone();
 
-                if let Some(mut atmosphere) = owned_cell.atmosphere_data.take() {
-                    atmosphere.sunlight_color = [0, 0, 0, 0];
-                    owned_cell.atmosphere_data = Some(atmosphere);
-                }
+                let atmosphere = cell.atmosphere_data.as_mut().expect("Cell has been checked to have atmosphere data already! MAAAAJOR dysfuckulation!");
 
-                generated_plugin.objects.push(TES3Object::Cell(owned_cell));
+                atmosphere.sunlight_color = [0, 0, 0, 0];
+
+                generated_plugin
+                    .objects
+                    .push(TES3Object::Cell(cell.to_owned()));
+
                 used_ids.push(cell_id);
                 used_objects += 1;
             }
