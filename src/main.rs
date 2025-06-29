@@ -28,7 +28,6 @@ fn main() -> io::Result<()> {
     };
 
     let no_notifications = var("S3L_NO_NOTIFICATIONS").is_ok() || args.no_notifications;
-
     let config_dir = get_config_path(&mut args);
 
     // If the openmw.cfg path is provided by the user, force the crate to use
@@ -76,22 +75,21 @@ fn main() -> io::Result<()> {
         },
     };
 
-    let use_debug = var("S3L_DEBUG").is_ok() || args.debug;
+    let light_config = LightConfig::get(args, &config)?;
+    dbg!(&light_config.light_overrides);
 
-    if use_debug {
-        dbg!(&args, &config.root_config_file(), &config);
+    if light_config.debug {
+        dbg!(&light_config, &config);
     }
 
     if config.content_files().len() == 0 {
         notification_box(
             "No Plugins!",
             "No plugins were found in openmw.cfg! No lights to fix!",
-            no_notifications,
+            light_config.no_notifications,
         );
         std::process::exit(4);
     }
-
-    let light_config = LightConfig::get(&args, &config)?;
 
     let mut generated_plugin = Plugin::new();
     let mut used_ids: Vec<String> = Vec::new();
@@ -250,7 +248,7 @@ fn main() -> io::Result<()> {
                     notification_box(
                         "Bad plugin path!",
                         "Lightfixes could not resolve the name of one of your plugins! This is UBER Bad and should never happen!",
-                        no_notifications,
+                        light_config.no_notifications,
                     );
                     std::process::exit(3);
                 }
@@ -263,7 +261,7 @@ fn main() -> io::Result<()> {
         }
     }
 
-    if use_debug {
+    if light_config.debug {
         dbg!(&header);
     }
 
@@ -271,7 +269,7 @@ fn main() -> io::Result<()> {
         notification_box(
             "No masters found!",
             "The generated plugin was not found to have any master files! It's empty! Try running lightfixes again using the S3L_DEBUG environment variable",
-            no_notifications,
+            light_config.no_notifications,
         );
         std::process::exit(2);
     }
@@ -289,16 +287,24 @@ fn main() -> io::Result<()> {
     }
 
     if let Err(err) = save_plugin(&output_dir, &mut generated_plugin) {
-        notification_box("Failed to save plugin!", &err.to_string(), no_notifications);
+        notification_box(
+            "Failed to save plugin!",
+            &err.to_string(),
+            light_config.no_notifications,
+        );
     };
 
     // Handle this arg via clap
-    if args.auto_enable {
+    if light_config.auto_enable {
         if !config.has_content_file(&PLUGIN_NAME) {
             match config.add_content_file(&PLUGIN_NAME) {
                 Ok(_) => {
                     if let Err(err) = config.save_user() {
-                        notification_box("Failed to resave openmw.cfg!", &err, no_notifications);
+                        notification_box(
+                            "Failed to resave openmw.cfg!",
+                            &err,
+                            light_config.no_notifications,
+                        );
                     } else {
                         let lightfix_enabled_msg = format!(
                             "Wrote user openmw.cfg at {} successfully!",
@@ -307,7 +313,7 @@ fn main() -> io::Result<()> {
                         notification_box(
                             "Lightfixes enabled!",
                             &lightfix_enabled_msg,
-                            no_notifications,
+                            light_config.no_notifications,
                         );
                     }
                 }
@@ -319,7 +325,7 @@ fn main() -> io::Result<()> {
         }
     }
 
-    if args.write_log || light_config.save_log {
+    if light_config.save_log {
         let path = config.user_config_path().join(LOG_NAME);
         let mut file = File::create(path)?;
         let _ = write!(file, "{}", format!("{:#?}", &generated_plugin));
@@ -330,7 +336,11 @@ fn main() -> io::Result<()> {
         output_dir.display()
     );
 
-    notification_box(&"Lightfixes successful!", &lights_fixed, no_notifications);
+    notification_box(
+        &"Lightfixes successful!",
+        &lights_fixed,
+        light_config.no_notifications,
+    );
 
     Ok(())
 }

@@ -50,6 +50,10 @@ pub fn save_log() -> bool {
     false
 }
 
+pub fn auto_enable() -> bool {
+    false
+}
+
 pub fn excluded_plugins() -> Vec<String> {
     vec![
         // Unable to resolve moved reference (1, 7028) for cell Sadrith Mora (18, 4)

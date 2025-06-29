@@ -24,7 +24,8 @@ pub struct LightArgs {
     #[arg(short = '7', long = "classic")]
     pub use_classic: bool,
 
-    /// Output file path.
+    /// Output directory.
+    /// The plugin may be saved to any location, but its name will always be `S3Lightfixes.omwaddon`.
     /// Accepts relative and absolute terms.
     #[arg(short = 'o', long = "output")]
     pub output: Option<PathBuf>,
@@ -128,14 +129,43 @@ pub struct LightArgs {
     pub duration_mult: Option<f32>,
 
     #[arg(
+        short = 'x',
         long = "excluded-ids",
-        help = &format!("List of Regex patterns of light recordIds to exclude. This setting is *merged* onto values defined by lightconfig.toml.\nIf this argument is not used, the value will be derived from lightConfig.toml.")
+        help = &format!("List of Regex patterns of light recordIds to exclude. This setting is *merged* onto values defined by lightconfig.toml.\nIf this argument is not used, the value will be derived from lightConfig.toml."),
+        value_delimiter = ',',
     )]
     pub excluded_ids: Vec<String>,
 
     #[arg(
+        short = 'X',
         long = "excluded-plugins",
-        help = &format!("List of Regex patterns of plugins to exclude. This setting is *merged* onto values defined by lightconfig.toml.\nIf this argument is not used, the value will be derived from lightConfig.toml.")
+        help = &format!("List of Regex patterns of plugins to exclude. This setting is *merged* onto values defined by lightconfig.toml.\nIf this argument is not used, the value will be derived from lightConfig.toml."),
+        value_delimiter = ',',
     )]
     pub excluded_plugins: Vec<String>,
+
+    #[arg(
+        long = "light",
+        value_parser = crate::light_override::parse_light_override,
+        value_delimiter = ';',
+        help = &format!(
+     "Semicolon-separated list of regexes to light values.
+     May be specified multiple times instead of as a separated list.
+     Light values are specified as *either* fixed HSV values or as multipliers of existing ones.
+     EG:
+     --light \"Torch_001=radius=255,hue=240,duration=1200,flag=FLICKERSLOW\" --light \"Torch_002=radius_mult=2.0,hue_mult=1.3,duration_mult=5.0,flag=NONE\"
+     OR
+     --light \"Torch_001=radius=255,hue=240,duration=1200,flag=FLICKERSLOW;Torch_002=radius_mult=2.0,hue_mult=1.3,duration_mult=5.0,flag=NONE\"
+     Hue is a range from 0-360 and saturation/value are normalized floats (0.0 - 1.0). Radius and duration are u32 (can be very big).
+     `flag` may be: NONE, FLICKER, FLICKERSLOW, PULSE, PULSESLOW
+     Fixed values are mutually exclusive with multipliers for each value and setting both will cause an error."),
+    )]
+    pub light_overrides: Vec<(String, crate::CustomLightData)>,
+
+    #[arg(
+        short = 'U',
+        long,
+        help = &format!("Force-saves the light config on this run. Note that this parameter does not merge into lightConfig.toml like others, and must be manually set there.")
+    )]
+    pub update_light_config: bool,
 }
