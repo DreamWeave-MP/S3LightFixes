@@ -262,12 +262,13 @@ pub struct CustomLightData {
     pub flag: Option<LightFlag>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub enum LightFlag {
     FLICKERSLOW,
     FLICKER,
     PULSE,
     PULSESLOW,
+    #[default]
     NONE,
 }
 
