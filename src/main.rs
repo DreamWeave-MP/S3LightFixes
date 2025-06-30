@@ -7,7 +7,7 @@ use std::{
 };
 
 use clap::Parser;
-use palette::{FromColor, Hsv, IntoColor, rgb::Srgb};
+use palette::{FromColor, GetHue, Hsv, IntoColor, rgb::Srgb};
 use tes3::esp::{
     Cell, CellFlags, EditorId, FixedString, Header, Light, LightFlags, ObjectFlags, Plugin,
     TES3Object, types::FileType,
@@ -15,9 +15,79 @@ use tes3::esp::{
 use vfstool_lib::VFS;
 
 use s3lightfixes::{
-    LOG_NAME, LightArgs, LightConfig, PLUGIN_NAME, get_config_path, is_excluded_id,
-    is_excluded_plugin, is_fixable_plugin, notification_box, save_plugin,
+    LOG_NAME, LightArgs, LightConfig, PLUGIN_NAME, get_config_path, is_fixable_plugin,
+    notification_box, save_plugin,
 };
+
+/// Given a LightData reference from an ESP light,
+/// returns the HSV version and whether it is colored or not (for the global modifier)
+pub fn light_to_hsv(light_data: &tes3::esp::LightData) -> (Hsv, bool) {
+    let rgb: palette::rgb::Rgb = Srgb::new(
+        light_data.color[0],
+        light_data.color[1],
+        light_data.color[2],
+    )
+    .into_format();
+
+    let hsv: Hsv = Hsv::from_color(rgb);
+    let hue_degrees = hsv.get_hue().into_positive_degrees();
+
+    (hsv, hue_degrees > 64. || hue_degrees < 14.)
+}
+
+pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) {
+    if light_config.disable_flickering {
+        light
+            .data
+            .flags
+            .remove(LightFlags::FLICKER | LightFlags::FLICKER_SLOW);
+    }
+
+    if light_config.disable_pulse {
+        light
+            .data
+            .flags
+            .remove(LightFlags::PULSE | LightFlags::PULSE_SLOW);
+    }
+
+    if light.data.flags.contains(LightFlags::NEGATIVE) {
+        light.data.flags.remove(LightFlags::NEGATIVE);
+        light.data.radius = 0;
+        light.data.color = [0, 0, 0, 0];
+        return;
+    }
+
+    let (mut light_as_hsv, is_colored) = light_to_hsv(&light.data);
+
+    let (radius, hue, saturation, value) = match is_colored {
+        // Red, purple, blue, green, yellow
+        true => (
+            light_config.colored_radius,
+            light_config.colored_hue,
+            light_config.colored_saturation,
+            light_config.colored_value,
+        ),
+        // Everything else
+        false => (
+            light_config.standard_radius,
+            light_config.standard_hue,
+            light_config.standard_saturation,
+            light_config.standard_value,
+        ),
+    };
+
+    light_as_hsv = Hsv::new(
+        palette::RgbHue::from_degrees((light_as_hsv.hue.into_raw_degrees() * hue).clamp(0., 360.)),
+        light_as_hsv.saturation * saturation,
+        light_as_hsv.value * value,
+    );
+
+    let rgb8_color: Srgb<u8> = <Hsv as IntoColor<Srgb>>::into_color(light_as_hsv).into_format();
+
+    light.data.radius = (radius * light.data.radius as f32) as u32;
+    light.data.color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
+    light.data.time = (light.data.time as f32 * light_config.duration_mult) as i32;
+}
 
 fn main() -> io::Result<()> {
     let mut args = LightArgs::parse();
@@ -76,7 +146,6 @@ fn main() -> io::Result<()> {
     };
 
     let light_config = LightConfig::get(args, &config)?;
-    dbg!(&light_config.light_overrides);
 
     if light_config.debug {
         dbg!(&light_config, &config);
@@ -122,7 +191,7 @@ fn main() -> io::Result<()> {
             None => continue,
         };
 
-        if is_excluded_plugin(plugin_path, &light_config) {
+        if light_config.is_excluded_plugin(plugin_path) {
             continue;
         };
 
@@ -142,103 +211,49 @@ fn main() -> io::Result<()> {
         // Only do this for `classic` mode
         if light_config.disable_interior_sun {
             for cell in plugin.objects_of_type_mut::<Cell>() {
-                let cell_id = cell.editor_id_ascii_lowercase().to_string();
+                let cell_id = cell.editor_id_ascii_lowercase().into_owned();
 
-                if !cell.data.flags.contains(CellFlags::IS_INTERIOR)
-                    || cell.atmosphere_data.is_none()
-                    || used_ids.contains(&cell_id)
+                if !cell.data.flags.contains(CellFlags::IS_INTERIOR) || used_ids.contains(&cell_id)
                 {
                     continue;
                 };
 
-                cell.references.clear();
+                match cell.atmosphere_data {
+                    Some(ref mut atmo) => {
+                        cell.references.clear();
 
-                let atmosphere = cell.atmosphere_data.as_mut().expect("Cell has been checked to have atmosphere data already! MAAAAJOR dysfuckulation!");
+                        atmo.sunlight_color = [0, 0, 0, 0];
 
-                atmosphere.sunlight_color = [0, 0, 0, 0];
+                        generated_plugin
+                            .objects
+                            .push(TES3Object::Cell(std::mem::take(cell)));
 
-                generated_plugin
-                    .objects
-                    .push(TES3Object::Cell(cell.to_owned()));
+                        used_ids.push(cell_id);
+                        used_objects += 1;
+                    }
+                    None => {}
+                }
+            }
+        }
 
-                used_ids.push(cell_id);
+        plugin
+            .into_objects_of_type::<Light>()
+            .filter_map(|light| {
+                let light_id = light.editor_id_ascii_lowercase().into_owned();
+
+                if !used_ids.contains(&light_id) && !light_config.is_excluded_id(&light_id) {
+                    used_ids.push(light_id);
+                    Some(light)
+                } else {
+                    None
+                }
+            })
+            .for_each(|mut light| {
+                process_light(&light_config, &mut light);
+
+                generated_plugin.objects.push(TES3Object::Light(light));
                 used_objects += 1;
-            }
-        }
-
-        for light in plugin.objects_of_type_mut::<Light>() {
-            let light_id = light.editor_id_ascii_lowercase().to_string();
-            if used_ids.contains(&light_id) || is_excluded_id(&light_id, &light_config) {
-                continue;
-            }
-
-            let mut light = light.clone();
-
-            if light_config.disable_flickering {
-                light
-                    .data
-                    .flags
-                    .remove(LightFlags::FLICKER | LightFlags::FLICKER_SLOW);
-            }
-
-            if light_config.disable_pulse {
-                light
-                    .data
-                    .flags
-                    .remove(LightFlags::PULSE | LightFlags::PULSE_SLOW);
-            }
-
-            if light.data.flags.contains(LightFlags::NEGATIVE) {
-                light.data.flags.remove(LightFlags::NEGATIVE);
-                light.data.radius = 0;
-                light.data.color = [0, 0, 0, 0];
-            } else {
-                let light_as_rgb = Srgb::new(
-                    light.data.color[0],
-                    light.data.color[1],
-                    light.data.color[2],
-                )
-                .into_format();
-
-                let mut light_as_hsv: Hsv = Hsv::from_color(light_as_rgb);
-                let light_hue = light_as_hsv.hue.into_degrees();
-
-                let (radius, hue, saturation, value) = match light_hue > 64. || light_hue < 14. {
-                    // Red, purple, blue, green, yellow
-                    true => (
-                        light_config.colored_radius,
-                        light_config.colored_hue,
-                        light_config.colored_saturation,
-                        light_config.colored_value,
-                    ),
-                    // Everything else
-                    false => (
-                        light_config.standard_radius,
-                        light_config.standard_hue,
-                        light_config.standard_saturation,
-                        light_config.standard_value,
-                    ),
-                };
-
-                light.data.radius = (radius * light.data.radius as f32) as u32;
-                light_as_hsv = Hsv::new(
-                    light_hue * hue,
-                    light_as_hsv.saturation * saturation,
-                    light_as_hsv.value * value,
-                );
-
-                let rgb8_color: Srgb<u8> =
-                    <Hsv as IntoColor<Srgb>>::into_color(light_as_hsv).into_format();
-
-                light.data.color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
-
-                light.data.time = (light.data.time as f32 * light_config.duration_mult) as i32;
-            }
-
-            generated_plugin.objects.push(TES3Object::Light(light));
-            used_ids.push(light_id);
-            used_objects += 1;
-        }
+            });
 
         if used_objects > 0 {
             let plugin_size = metadata(plugin_path)?.len();

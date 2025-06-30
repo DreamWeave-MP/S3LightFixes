@@ -44,39 +44,6 @@ pub fn get_config_path(args: &mut LightArgs) -> PathBuf {
     openmw_config::default_config_path()
 }
 
-pub fn is_excluded_plugin(plugin_path: &Path, light_config: &LightConfig) -> bool {
-    let file_name = match plugin_path.file_name() {
-        None => return false,
-        Some(name) => name.to_string_lossy(),
-    };
-
-    for pattern in &light_config.excluded_plugins {
-        let reg_from_pattern = regex::Regex::new(&pattern);
-
-        if let Ok(pattern) = reg_from_pattern {
-            if pattern.is_match(&file_name) {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
-pub fn is_excluded_id(record_id: &str, light_config: &LightConfig) -> bool {
-    for pattern in &light_config.excluded_ids {
-        let reg_from_pattern = regex::Regex::new(&pattern);
-
-        if let Ok(pattern) = reg_from_pattern {
-            if pattern.is_match(record_id) {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
 pub fn is_fixable_plugin(plug_path: &Path) -> bool {
     // If path doesn't exist
     if metadata(plug_path).is_err() {

@@ -6,7 +6,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{DEFAULT_CONFIG_NAME, default, notification_box, to_io_error};
+use crate::{CustomLightData, DEFAULT_CONFIG_NAME, default, notification_box, to_io_error};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct LightConfig {
@@ -74,6 +74,13 @@ pub struct LightConfig {
 
     #[serde(default)]
     pub save_config: bool,
+
+    #[serde(skip)]
+    pub excluded_id_regexes: Vec<regex::Regex>,
+    #[serde(skip)]
+    pub excluded_plugin_regexes: Vec<regex::Regex>,
+    #[serde(skip)]
+    pub light_regexes: Vec<(regex::Regex, CustomLightData)>,
 }
 
 /// Primarily exists to provide default implementations
@@ -259,7 +266,7 @@ impl LightConfig {
             light_config.disable_interior_sun = true;
         }
 
-        // If the configuration file didn't exist when we tried to find it,
+        // If the configuration file didn't exist when we tried to find it, or the user specified to update
         // serialize it here
         if write_config || light_config.save_config || light_args.update_light_config {
             let config_serialized = toml::to_string_pretty(&light_config).map_err(to_io_error)?;
@@ -269,7 +276,58 @@ impl LightConfig {
             write!(config_file, "{}", config_serialized)?;
         }
 
+        // Consume the original values *after* reserializing the config
+        std::mem::take(&mut light_config.excluded_ids)
+            .into_iter()
+            .for_each(|id| {
+                if let Ok(pattern) = regex::Regex::new(&id) {
+                    light_config.excluded_id_regexes.push(pattern);
+                }
+            });
+
+        std::mem::take(&mut light_config.excluded_plugins)
+            .into_iter()
+            .for_each(|id| {
+                if let Ok(pattern) = regex::Regex::new(&id) {
+                    light_config.excluded_plugin_regexes.push(pattern);
+                }
+            });
+
+        std::mem::take(&mut light_config.light_overrides)
+            .into_iter()
+            .for_each(|(id, light_data)| {
+                if let Ok(pattern) = regex::Regex::new(&id) {
+                    light_config.light_regexes.push((pattern, light_data));
+                } // Handle bad patterns and bail here
+                // Later
+            });
+
         Ok(light_config)
+    }
+
+    pub fn is_excluded_plugin(&self, plugin_path: &std::path::Path) -> bool {
+        let file_name = match plugin_path.file_name() {
+            None => return false,
+            Some(name) => name.to_string_lossy(),
+        };
+
+        for pattern in &self.excluded_plugin_regexes {
+            if pattern.is_match(&file_name) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub fn is_excluded_id(&self, record_id: &str) -> bool {
+        for pattern in &self.excluded_id_regexes {
+            if pattern.is_match(record_id) {
+                return true;
+            };
+        }
+
+        false
     }
 }
 
@@ -296,6 +354,9 @@ impl Default for LightConfig {
             duration_mult: default::duration_mult(),
             excluded_ids: Vec::new(),
             excluded_plugins: default::excluded_plugins(),
+            excluded_id_regexes: Vec::new(),
+            excluded_plugin_regexes: Vec::new(),
+            light_regexes: Vec::new(),
             light_overrides: std::collections::HashMap::new(),
         }
     }
