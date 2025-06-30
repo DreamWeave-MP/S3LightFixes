@@ -1,13 +1,16 @@
 use std::{
+    collections::HashSet,
     env::{current_dir, var},
     fs::{File, metadata, remove_file},
     io::{self, Write},
+    mem::take as TakeAndSwitch,
     path::PathBuf,
     process::exit,
 };
 
 use clap::Parser;
 use palette::{FromColor, GetHue, Hsv, IntoColor, rgb::Srgb};
+use rayon::prelude::*;
 use tes3::esp::{
     Cell, CellFlags, EditorId, FixedString, Header, Light, LightFlags, ObjectFlags, Plugin,
     TES3Object, types::FileType,
@@ -161,7 +164,7 @@ fn main() -> io::Result<()> {
     }
 
     let mut generated_plugin = Plugin::new();
-    let mut used_ids: Vec<String> = Vec::new();
+    let mut used_ids: HashSet<String> = HashSet::new();
 
     let mut header = Header {
         version: 1.3,
@@ -177,44 +180,43 @@ fn main() -> io::Result<()> {
 
     let vfs = VFS::from_directories(directories, None);
 
-    let mut used_objects = 0;
-    for plugin_name in config.content_files().iter().rev() {
-        let plugin_path = match vfs.get_file(plugin_name) {
-            Some(plugin) => {
-                let maybe_valid_path = plugin.path();
+    let plugins = config
+    .content_files()
+    .par_iter()
+    .rev()
+    .filter_map(|plugin| {
+        let vfs_file = vfs.get_file(plugin)?;
+        let path = vfs_file.path();
 
-                match is_fixable_plugin(maybe_valid_path) {
-                    true => maybe_valid_path,
-                    false => continue,
-                }
-            }
-            None => continue,
-        };
+        if !is_fixable_plugin(path) {
+            return None;
+        }
 
-        if light_config.is_excluded_plugin(plugin_path) {
-            continue;
-        };
-
-        let mut plugin = match Plugin::from_path(plugin_path) {
-            Ok(plugin) => plugin,
-            Err(e) => {
+        match Plugin::from_path_filtered(path, |tag| matches!(&tag, Cell::TAG | Light::TAG)) {
+            Ok(plugin) => Some((plugin, path)),
+            Err(err) => {
                 eprintln!(
                     "[ WARNING ]: Plugin {}: could not be loaded due to error: {}. Continuing light fixes without this mod .  . . Everything will be okay. Yes, it's still working.\n",
-                    plugin_path.display(),
-                    e
+                    path.display(),
+                    err
                 );
-                continue;
+                None
             }
-        };
+        }
+    })
+    .collect::<Vec<_>>();
 
+    let mut used_objects = 0;
+    for (mut plugin, plugin_path) in plugins {
         // Disable sunlight color for true interiors
         // Only do this for `classic` mode
         if light_config.disable_interior_sun {
-            for cell in plugin.objects_of_type_mut::<Cell>() {
+            for cell in plugin.objects_of_type_mut::<Cell>().filter(|cell| {
+                cell.data.flags.contains(CellFlags::IS_INTERIOR) && cell.atmosphere_data.is_some()
+            }) {
                 let cell_id = cell.editor_id_ascii_lowercase().into_owned();
 
-                if !cell.data.flags.contains(CellFlags::IS_INTERIOR) || used_ids.contains(&cell_id)
-                {
+                if used_ids.contains(&cell_id) {
                     continue;
                 };
 
@@ -224,11 +226,9 @@ fn main() -> io::Result<()> {
 
                         atmo.sunlight_color = [0, 0, 0, 0];
 
-                        generated_plugin
-                            .objects
-                            .push(TES3Object::Cell(std::mem::take(cell)));
+                        generated_plugin.objects.push(TakeAndSwitch(cell).into());
 
-                        used_ids.push(cell_id);
+                        used_ids.insert(cell_id);
                         used_objects += 1;
                     }
                     None => {}
@@ -242,7 +242,7 @@ fn main() -> io::Result<()> {
                 let light_id = light.editor_id_ascii_lowercase().into_owned();
 
                 if !used_ids.contains(&light_id) && !light_config.is_excluded_id(&light_id) {
-                    used_ids.push(light_id);
+                    used_ids.insert(light_id);
                     Some(light)
                 } else {
                     None
@@ -251,7 +251,7 @@ fn main() -> io::Result<()> {
             .for_each(|mut light| {
                 process_light(&light_config, &mut light);
 
-                generated_plugin.objects.push(TES3Object::Light(light));
+                generated_plugin.objects.push(light.into());
                 used_objects += 1;
             });
 
@@ -271,8 +271,7 @@ fn main() -> io::Result<()> {
 
             header.masters.insert(0, (plugin_string, plugin_size));
 
-            header.num_objects += used_objects;
-            used_objects = 0;
+            header.num_objects += TakeAndSwitch(&mut used_objects);
         }
     }
 
