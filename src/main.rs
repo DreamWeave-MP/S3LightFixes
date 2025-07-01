@@ -9,7 +9,7 @@ use std::{
 };
 
 use clap::Parser;
-use palette::{FromColor, GetHue, Hsv, IntoColor, rgb::Srgb};
+use palette::{FromColor, GetHue, Hsv, IntoColor, SetHue, rgb::Srgb};
 use rayon::prelude::*;
 use tes3::esp::{
     Cell, CellFlags, EditorId, FixedString, Header, Light, LightFlags, ObjectFlags, Plugin,
@@ -18,8 +18,8 @@ use tes3::esp::{
 use vfstool_lib::VFS;
 
 use s3lightfixes::{
-    LOG_NAME, LightArgs, LightConfig, PLUGIN_NAME, get_config_path, is_fixable_plugin,
-    notification_box, save_plugin,
+    CustomLightData, LOG_NAME, LightArgs, LightConfig, PLUGIN_NAME, get_config_path,
+    is_fixable_plugin, notification_box, save_plugin,
 };
 
 /// Given a LightData reference from an ESP light,
@@ -39,6 +39,13 @@ pub fn light_to_hsv(light_data: &tes3::esp::LightData) -> (Hsv, bool) {
 }
 
 pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) {
+    if light.data.flags.contains(LightFlags::NEGATIVE) {
+        light.data.flags.remove(LightFlags::NEGATIVE);
+        light.data.radius = 0;
+        light.data.color = [0, 0, 0, 0];
+        return;
+    }
+
     if light_config.disable_flickering {
         light
             .data
@@ -53,16 +60,19 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) {
             .remove(LightFlags::PULSE | LightFlags::PULSE_SLOW);
     }
 
-    if light.data.flags.contains(LightFlags::NEGATIVE) {
-        light.data.flags.remove(LightFlags::NEGATIVE);
-        light.data.radius = 0;
-        light.data.color = [0, 0, 0, 0];
-        return;
-    }
-
+    let light_id = light.editor_id_ascii_lowercase();
     let (mut light_as_hsv, is_colored) = light_to_hsv(&light.data);
 
-    let (radius, hue, saturation, value) = match is_colored {
+    let mut replacement_light_data: Option<&CustomLightData> = None;
+
+    for (regex, light_data) in &light_config.light_regexes {
+        if regex.is_match(&light_id) {
+            replacement_light_data = Some(light_data);
+            break;
+        }
+    }
+
+    let (global_radius, global_hue, global_saturation, global_value) = match is_colored {
         // Red, purple, blue, green, yellow
         true => (
             light_config.colored_radius,
@@ -79,17 +89,68 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) {
         ),
     };
 
-    light_as_hsv = Hsv::new(
-        palette::RgbHue::from_degrees((light_as_hsv.hue.into_raw_degrees() * hue).clamp(0., 360.)),
-        light_as_hsv.saturation * saturation,
-        light_as_hsv.value * value,
-    );
+    if let Some(replacement) = replacement_light_data {
+        if let Some(hue_mult) = replacement.hue_mult {
+            let new_hue =
+                palette::RgbHue::from_degrees(light_as_hsv.hue.into_raw_degrees() * hue_mult);
+            light_as_hsv.set_hue(new_hue);
+        } else if let Some(fixed_hue) = replacement.hue {
+            light_as_hsv.set_hue(palette::RgbHue::from_degrees(fixed_hue as f32));
+        } else {
+            let new_hue =
+                palette::RgbHue::from_degrees(light_as_hsv.hue.into_raw_degrees() * global_hue);
+            light_as_hsv.set_hue(new_hue);
+        }
+
+        if let Some(saturation_mult) = replacement.saturation_mult {
+            light_as_hsv.saturation *= saturation_mult;
+        } else if let Some(fixed_saturation) = replacement.saturation {
+            light_as_hsv.saturation = fixed_saturation;
+        } else {
+            light_as_hsv.saturation *= global_saturation;
+        }
+
+        if let Some(value_mult) = replacement.value_mult {
+            light_as_hsv.value *= value_mult;
+        } else if let Some(fixed_value) = replacement.value {
+            light_as_hsv.value = fixed_value;
+        } else {
+            light_as_hsv.value *= global_value;
+        }
+
+        if let Some(duration_mult) = replacement.duration_mult {
+            light.data.time = (duration_mult * light.data.time as f32) as i32;
+        } else if let Some(fixed_duration) = replacement.duration {
+            light.data.time = fixed_duration as i32;
+        } else {
+            light.data.time = (light.data.time as f32 * light_config.duration_mult) as i32;
+        }
+
+        if let Some(radius_mult) = replacement.radius_mult {
+            light.data.radius = (radius_mult * light.data.radius as f32) as u32;
+        } else if let Some(fixed_radius) = replacement.radius {
+            light.data.radius = fixed_radius;
+        } else {
+            light.data.radius = (global_radius * light.data.radius as f32) as u32;
+        }
+
+        if let Some(flag) = &replacement.flag {
+            light.data.flags = flag.to_esp_flag();
+        }
+    } else {
+        let new_hue =
+            palette::RgbHue::from_degrees(light_as_hsv.hue.into_raw_degrees() * global_hue);
+
+        light_as_hsv.set_hue(new_hue);
+        light_as_hsv.saturation *= global_saturation;
+        light_as_hsv.value *= global_value;
+
+        light.data.radius = (global_radius * light.data.radius as f32) as u32;
+        light.data.time = (light.data.time as f32 * light_config.duration_mult) as i32;
+    }
 
     let rgb8_color: Srgb<u8> = <Hsv as IntoColor<Srgb>>::into_color(light_as_hsv).into_format();
-
-    light.data.radius = (radius * light.data.radius as f32) as u32;
     light.data.color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
-    light.data.time = (light.data.time as f32 * light_config.duration_mult) as i32;
 }
 
 fn main() -> io::Result<()> {
