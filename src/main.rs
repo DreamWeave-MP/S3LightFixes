@@ -286,8 +286,11 @@ fn main() -> io::Result<()> {
                     // Filter out any instances which are not either in the `deletions` or `replacements` lists.
                     cell.references.clear();
 
+                    let mut replaced = false;
+
                     if light_config.disable_interior_sun {
                         atmo.sunlight_color = [0, 0, 0, 0];
+                        replaced = true;
                     }
 
                     for (pattern, replacement_data) in &light_config.ambient_regexes {
@@ -307,6 +310,7 @@ fn main() -> io::Result<()> {
 
                             atmo.ambient_color =
                                 [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
+                            replaced = true;
                         }
                         if let Some(fog) = &replacement_data.fog {
                             let hsv: Hsv = Hsv::from_components((
@@ -319,6 +323,7 @@ fn main() -> io::Result<()> {
                                 <Hsv as IntoColor<Srgb>>::into_color(hsv).into_format();
 
                             atmo.fog_color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
+                            replaced = true;
                         }
 
                         if let Some(sunlight) = &replacement_data.sunlight {
@@ -333,17 +338,21 @@ fn main() -> io::Result<()> {
 
                             atmo.sunlight_color =
                                 [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
+                            replaced = true;
                         }
 
                         if let Some(density) = &replacement_data.fog_density {
                             atmo.fog_density = density.to_owned();
+                            replaced = true;
                         }
                     }
 
-                    generated_plugin.objects.push(TakeAndSwitch(cell).into());
+                    if replaced {
+                        generated_plugin.objects.push(TakeAndSwitch(cell).into());
 
-                    used_ids.insert(cell_id);
-                    used_objects += 1;
+                        used_ids.insert(cell_id);
+                        used_objects += 1;
+                    }
                 }
                 None => {}
             }
