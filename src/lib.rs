@@ -17,7 +17,7 @@ mod light_config;
 pub use light_config::LightConfig;
 
 mod light_override;
-pub use light_override::CustomLightData;
+pub use light_override::{CustomCellAmbient, CustomLightData};
 
 pub const DEFAULT_CONFIG_NAME: &str = "lightconfig.toml";
 pub const LOG_NAME: &str = "lightconfig.log";

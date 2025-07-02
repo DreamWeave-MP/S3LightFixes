@@ -189,6 +189,15 @@ pub fn parse_light_override(s: &str) -> Result<(String, CustomLightData), ParseL
     Ok((id.to_string(), parsed_setting))
 }
 
+pub fn parse_ambient_override(s: &str) -> Result<(String, CustomCellAmbient), ParseAmbientError> {
+    let (id, setting) = s
+        .split_once('=')
+        .ok_or_else(|| ParseAmbientError::BadPair(s.to_string()))?;
+
+    let parsed_setting: CustomCellAmbient = setting.parse()?;
+    Ok((id.to_string(), parsed_setting))
+}
+
 #[derive(Deserialize)]
 struct RawCustomLightData {
     hue: Option<u32>,
@@ -246,7 +255,6 @@ impl<'de> serde::Deserialize<'de> for CustomLightData {
     }
 }
 
-/// For setting multipliers like the global one
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct CustomLightData {
     pub hue: Option<u32>,
@@ -260,6 +268,183 @@ pub struct CustomLightData {
     pub duration: Option<f32>,
     pub duration_mult: Option<f32>,
     pub flag: Option<LightFlag>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+/// Struct used to store color replacements for cells.
+/// No fields are optional, unlike light record replacements. Nor are multipliers supported.
+pub struct TypedLightColor {
+    pub hue: u32,
+    pub saturation: f32,
+    pub value: f32,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct RawTypedLightColor {
+    pub hue: u32,
+    pub saturation: f32,
+    pub value: f32,
+}
+
+impl<'de> serde::Deserialize<'de> for TypedLightColor {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw: RawTypedLightColor = RawTypedLightColor::deserialize(deserializer)?;
+
+        Ok(TypedLightColor {
+            hue: raw.hue.clamp(0, 360),
+            saturation: raw.saturation.clamp(0.0, 1.0),
+            value: raw.value.clamp(0.0, 1.0),
+        })
+    }
+}
+
+#[derive(Debug)]
+pub enum ParseTypedColorError {
+    MissingField(&'static str),
+    UnknownField(String),
+    BadNumber(&'static str, String),
+    BadPair(String),
+}
+
+impl fmt::Display for ParseTypedColorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use ParseTypedColorError::*;
+        match self {
+            MissingField(name) => write!(f, "Missing required field: `{name}`"),
+            UnknownField(name) => write!(f, "Unknown field: `{name}`"),
+            BadNumber(field, msg) => write!(f, "Invalid value for `{field}`: {msg}"),
+            BadPair(pair) => write!(f, "Expected key=value pair, got: `{pair}`"),
+        }
+    }
+}
+
+impl std::error::Error for ParseTypedColorError {}
+
+impl FromStr for TypedLightColor {
+    type Err = ParseTypedColorError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut hue: Option<u32> = None;
+        let mut saturation: Option<f32> = None;
+        let mut value: Option<f32> = None;
+
+        for pair in s.split(',').filter(|p| !p.trim().is_empty()) {
+            let (k, v) = pair
+                .split_once('=')
+                .ok_or_else(|| ParseTypedColorError::BadPair(pair.to_string()))?;
+
+            match k.trim() {
+                "hue" => {
+                    let raw: u32 = v.trim().parse().map_err(|e: std::num::ParseIntError| {
+                        ParseTypedColorError::BadNumber("hue", e.to_string())
+                    })?;
+                    hue = Some(raw.clamp(0, 360));
+                }
+                "saturation" => {
+                    let raw: f32 = v.trim().parse().map_err(|e: std::num::ParseFloatError| {
+                        ParseTypedColorError::BadNumber("saturation", e.to_string())
+                    })?;
+                    saturation = Some(raw.clamp(0.0, 1.0));
+                }
+                "value" => {
+                    let raw: f32 = v.trim().parse().map_err(|e: std::num::ParseFloatError| {
+                        ParseTypedColorError::BadNumber("value", e.to_string())
+                    })?;
+                    value = Some(raw.clamp(0.0, 1.0));
+                }
+                other => return Err(ParseTypedColorError::UnknownField(other.to_string())),
+            }
+        }
+
+        Ok(TypedLightColor {
+            hue: hue.ok_or(ParseTypedColorError::MissingField("hue"))?,
+            saturation: saturation.ok_or(ParseTypedColorError::MissingField("saturation"))?,
+            value: value.ok_or(ParseTypedColorError::MissingField("value"))?,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct CustomCellAmbient {
+    pub ambient: Option<TypedLightColor>,
+    pub sunlight: Option<TypedLightColor>,
+    pub fog: Option<TypedLightColor>,
+    pub fog_density: Option<f32>,
+}
+
+#[derive(Debug)]
+pub enum ParseAmbientError {
+    BadPair(String),
+    UnknownField(String),
+    BadColor(String, Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl fmt::Display for ParseAmbientError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use ParseAmbientError::*;
+        match self {
+            BadPair(pair) => write!(f, "Expected key=value pair, got: `{pair}`"),
+            UnknownField(field) => write!(f, "Unknown field: `{field}`"),
+            BadColor(field, err) => write!(f, "Invalid color for `{field}`: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for ParseAmbientError {}
+
+impl FromStr for CustomCellAmbient {
+    type Err = ParseAmbientError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut ambient = None;
+        let mut sunlight = None;
+        let mut fog = None;
+        let mut fog_density = None;
+
+        for pair in s.split(';').filter(|p| !p.trim().is_empty()) {
+            let (key, value) = pair
+                .split_once('=')
+                .ok_or_else(|| ParseAmbientError::BadPair(pair.to_string()))?;
+
+            match key.trim() {
+                "ambient" => {
+                    let parsed = value
+                        .parse()
+                        .map_err(|e| ParseAmbientError::BadColor("ambient".into(), Box::new(e)))?;
+                    ambient = Some(parsed);
+                }
+                "sunlight" => {
+                    let parsed = value
+                        .parse()
+                        .map_err(|e| ParseAmbientError::BadColor("sunlight".into(), Box::new(e)))?;
+                    sunlight = Some(parsed);
+                }
+                "fog" => {
+                    let parsed = value
+                        .parse()
+                        .map_err(|e| ParseAmbientError::BadColor("fog".into(), Box::new(e)))?;
+                    fog = Some(parsed);
+                }
+                "fog_density" => {
+                    let parsed: f32 = value.parse().map_err(|e| {
+                        ParseAmbientError::BadColor("fog_density".into(), Box::new(e))
+                    })?;
+                    fog_density = Some(parsed);
+                }
+                other => return Err(ParseAmbientError::UnknownField(other.to_string())),
+            }
+        }
+
+        Ok(CustomCellAmbient {
+            ambient,
+            sunlight,
+            fog,
+            fog_density,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]

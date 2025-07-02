@@ -147,20 +147,37 @@ pub struct LightArgs {
     #[arg(
         long = "light",
         value_parser = crate::light_override::parse_light_override,
-        value_delimiter = ';',
+        value_delimiter = ':',
         help = &format!(
-     "Semicolon-separated list of regexes to light values.
+     "Colon-separated list of regexes to light values.
      May be specified multiple times instead of as a separated list.
      Light values are specified as *either* fixed HSV values or as multipliers of existing ones.
      EG:
      --light \"Torch_001=radius=255,hue=240,duration=1200,flag=FLICKERSLOW\" --light \"Torch_002=radius_mult=2.0,hue_mult=1.3,duration_mult=5.0,flag=NONE\"
      OR
-     --light \"Torch_001=radius=255,hue=240,duration=1200,flag=FLICKERSLOW;Torch_002=radius_mult=2.0,hue_mult=1.3,duration_mult=5.0,flag=NONE\"
+     --light \"Torch_001=radius=255,hue=240,duration=1200,flag=FLICKERSLOW:Torch_002=radius_mult=2.0,hue_mult=1.3,duration_mult=5.0,flag=NONE\"
      Hue is a range from 0-360 and saturation/value are normalized floats (0.0 - 1.0). Radius and duration are u32 (can be very big).
      `flag` may be: NONE, FLICKER, FLICKERSLOW, PULSE, PULSESLOW
      Fixed values are mutually exclusive with multipliers for each value and setting both will cause an error."),
     )]
     pub light_overrides: Vec<(String, crate::CustomLightData)>,
+
+    #[arg(
+        long = "ambient",
+        value_parser = crate::light_override::parse_ambient_override,
+        value_delimiter = ':',
+        help = &format!(
+            "
+            Colon-separated list of cell id regexes, to the corresponding ambient data.
+            `sunlight`, `ambient`, `fog`, and `fog_density` are available parameters.
+            Values are provided as fixed HSV values, no multipliers.
+            Hue is a range from 0-360 and saturation/value are normalized floats (0.0 - 1.0).
+            Each field of cell ambient data is separated by a semicolon, as below:
+            --ambient \"caius cosades\' house=sun=hue=360,saturation=1.0,value=1.0;ambient=hue=24,saturation=0.25,value=0.69\"
+            "
+        )
+    )]
+    pub ambient_overrides: Vec<(String, crate::CustomCellAmbient)>,
 
     #[arg(
         short = 'U',

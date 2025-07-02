@@ -271,29 +271,81 @@ fn main() -> io::Result<()> {
     for (mut plugin, plugin_path) in plugins {
         // Disable sunlight color for true interiors
         // Only do this for `classic` mode
-        if light_config.disable_interior_sun {
-            for cell in plugin.objects_of_type_mut::<Cell>().filter(|cell| {
-                cell.data.flags.contains(CellFlags::IS_INTERIOR) && cell.atmosphere_data.is_some()
-            }) {
-                let cell_id = cell.editor_id_ascii_lowercase().into_owned();
+        for cell in plugin.objects_of_type_mut::<Cell>().filter(|cell| {
+            cell.data.flags.contains(CellFlags::IS_INTERIOR) && cell.atmosphere_data.is_some()
+        }) {
+            let cell_id = cell.editor_id_ascii_lowercase().into_owned();
 
-                if used_ids.contains(&cell_id) {
-                    continue;
-                };
+            if used_ids.contains(&cell_id) {
+                continue;
+            };
 
-                match cell.atmosphere_data {
-                    Some(ref mut atmo) => {
-                        cell.references.clear();
+            match cell.atmosphere_data {
+                Some(ref mut atmo) => {
+                    // Need additional handling here for instance replacements!
+                    // Filter out any instances which are not either in the `deletions` or `replacements` lists.
+                    cell.references.clear();
 
+                    if light_config.disable_interior_sun {
                         atmo.sunlight_color = [0, 0, 0, 0];
-
-                        generated_plugin.objects.push(TakeAndSwitch(cell).into());
-
-                        used_ids.insert(cell_id);
-                        used_objects += 1;
                     }
-                    None => {}
+
+                    for (pattern, replacement_data) in &light_config.ambient_regexes {
+                        if !pattern.is_match(&cell_id) {
+                            continue;
+                        };
+
+                        if let Some(ambient) = &replacement_data.ambient {
+                            let hsv: Hsv = Hsv::from_components((
+                                palette::RgbHue::from_degrees(ambient.hue as f32),
+                                ambient.saturation,
+                                ambient.value,
+                            ));
+
+                            let rgb8_color: Srgb<u8> =
+                                <Hsv as IntoColor<Srgb>>::into_color(hsv).into_format();
+
+                            atmo.ambient_color =
+                                [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
+                        }
+                        if let Some(fog) = &replacement_data.fog {
+                            let hsv: Hsv = Hsv::from_components((
+                                palette::RgbHue::from_degrees(fog.hue as f32),
+                                fog.saturation,
+                                fog.value,
+                            ));
+
+                            let rgb8_color: Srgb<u8> =
+                                <Hsv as IntoColor<Srgb>>::into_color(hsv).into_format();
+
+                            atmo.fog_color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
+                        }
+
+                        if let Some(sunlight) = &replacement_data.sunlight {
+                            let hsv: Hsv = Hsv::from_components((
+                                palette::RgbHue::from_degrees(sunlight.hue as f32),
+                                sunlight.saturation,
+                                sunlight.value,
+                            ));
+
+                            let rgb8_color: Srgb<u8> =
+                                <Hsv as IntoColor<Srgb>>::into_color(hsv).into_format();
+
+                            atmo.sunlight_color =
+                                [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
+                        }
+
+                        if let Some(density) = &replacement_data.fog_density {
+                            atmo.fog_density = density.to_owned();
+                        }
+                    }
+
+                    generated_plugin.objects.push(TakeAndSwitch(cell).into());
+
+                    used_ids.insert(cell_id);
+                    used_objects += 1;
                 }
+                None => {}
             }
         }
 

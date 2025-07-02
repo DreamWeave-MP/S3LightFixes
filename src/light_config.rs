@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs::{File, read_dir, read_to_string},
     io::{self, Write},
     path::PathBuf,
@@ -6,7 +7,9 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{CustomLightData, DEFAULT_CONFIG_NAME, default, notification_box, to_io_error};
+use crate::{
+    CustomCellAmbient, CustomLightData, DEFAULT_CONFIG_NAME, default, notification_box, to_io_error,
+};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct LightConfig {
@@ -68,7 +71,10 @@ pub struct LightConfig {
     pub excluded_ids: Vec<String>,
 
     #[serde(default)]
-    pub light_overrides: std::collections::HashMap<String, crate::CustomLightData>,
+    pub light_overrides: HashMap<String, CustomLightData>,
+
+    #[serde(default)]
+    pub ambient_overrides: HashMap<String, CustomCellAmbient>,
 
     pub output_dir: Option<PathBuf>,
 
@@ -81,6 +87,8 @@ pub struct LightConfig {
     pub excluded_plugin_regexes: Vec<regex::Regex>,
     #[serde(skip)]
     pub light_regexes: Vec<(regex::Regex, CustomLightData)>,
+    #[serde(skip)]
+    pub ambient_regexes: Vec<(regex::Regex, CustomCellAmbient)>,
 }
 
 /// Primarily exists to provide default implementations
@@ -256,13 +264,16 @@ impl LightConfig {
             .light_overrides
             .extend(std::mem::take(&mut light_args.light_overrides));
 
+        light_config
+            .ambient_overrides
+            .extend(std::mem::take(&mut light_args.ambient_overrides));
+
         // This parameter indicates whether the user requested
         // To use compatibility mode for vtastek's old 0.47 shaders
         // via startup arguments
         // Drastically increases light radii
         // and disables interior sunlight
         if light_args.use_classic {
-            light_config.standard_radius = 2.0;
             light_config.disable_interior_sun = true;
         }
 
@@ -298,6 +309,15 @@ impl LightConfig {
             .for_each(|(id, light_data)| {
                 if let Ok(pattern) = regex::Regex::new(&id) {
                     light_config.light_regexes.push((pattern, light_data));
+                } // Handle bad patterns and bail here
+                // Later
+            });
+
+        std::mem::take(&mut light_config.ambient_overrides)
+            .into_iter()
+            .for_each(|(id, light_data)| {
+                if let Ok(pattern) = regex::Regex::new(&id) {
+                    light_config.ambient_regexes.push((pattern, light_data));
                 } // Handle bad patterns and bail here
                 // Later
             });
@@ -357,7 +377,9 @@ impl Default for LightConfig {
             excluded_id_regexes: Vec::new(),
             excluded_plugin_regexes: Vec::new(),
             light_regexes: Vec::new(),
-            light_overrides: std::collections::HashMap::new(),
+            light_overrides: HashMap::new(),
+            ambient_overrides: HashMap::new(),
+            ambient_regexes: Vec::new(),
         }
     }
 }
