@@ -25,11 +25,18 @@ pub const PLUGIN_NAME: &str = "S3LightFixes.omwaddon";
 
 pub fn get_config_path(args: &mut LightArgs) -> PathBuf {
     if let Some(path) = &args.openmw_cfg {
-        if path.is_dir() && path.join("openmw.cfg").is_file() {
-            return path.to_owned();
-        } else if path.is_file() {
-            return path.to_owned();
+        let absolute_path = if path.is_relative() {
+            path.canonicalize().unwrap()
+        } else {
+            path.to_owned()
+        };
+
+        if absolute_path.is_dir() && absolute_path.join("openmw.cfg").is_file() {
+            return absolute_path;
+        } else if absolute_path.is_file() {
+            return absolute_path;
         }
+
         panic!("This shit should never ever happen!");
     } else {
         let cwd_cfg = current_dir()
