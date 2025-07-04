@@ -25,4 +25,4 @@ version = "0.1.0"
 [dependencies.tes3]
 git = "https://github.com/Greatness7/tes3"
 branch = "main"
-features = ["esp", "nightly", "simd"]
+features = ["esp"]
