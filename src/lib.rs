@@ -39,12 +39,23 @@ pub fn get_config_path(args: &mut LightArgs) -> PathBuf {
 
         panic!("This shit should never ever happen!");
     } else {
-        let cwd_cfg = current_dir()
-            .expect("Failed to get current directory")
-            .join("openmw.cfg");
-
-        if cwd_cfg.is_file() {
+        let cwd = current_dir()
+            .expect("Failed to get current directory");e
+            
+        let cwd_cfg = cwd
+        .join("openm
+            
+        if let Ok(_) = metadata(&cwd_cfg) {
             return cwd_cfg;
+        }
+        
+        let parent_cfg = cwd
+        .parent()
+        .expect("Failed to get parent directory!")
+        .join("openmw.cfg");
+        
+        if let Ok(_) = metadata(&parent_cfg) {
+            return parent_cfg;
         }
     }
 
