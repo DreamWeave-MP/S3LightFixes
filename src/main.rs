@@ -290,6 +290,11 @@ fn main() -> io::Result<()> {
 
                     if light_config.disable_interior_sun {
                         atmo.sunlight_color = [0, 0, 0, 0];
+
+                        if cell.water_height.is_some() {
+                            cell.water_height = None
+                        }
+
                         replaced = true;
                     }
 
