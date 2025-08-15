@@ -286,14 +286,14 @@ fn main() -> io::Result<()> {
                     // Filter out any instances which are not either in the `deletions` or `replacements` lists.
                     cell.references.clear();
 
+                    if cell.water_height.is_some() {
+                        cell.water_height = None
+                    }
+
                     let mut replaced = false;
 
                     if light_config.disable_interior_sun {
                         atmo.sunlight_color = [0, 0, 0, 0];
-
-                        if cell.water_height.is_some() {
-                            cell.water_height = None
-                        }
 
                         replaced = true;
                     }
