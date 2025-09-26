@@ -2,12 +2,12 @@
 
 S3LightFixes is a descendant of [Waza-lightfixes](https://modding-openmw.com/mods/waza_lightfixes/), which itself is a descendant of [Lightfixes.pl](https://modding-openmw.com/tips/custom-shaders/#lightfixes-plugin) by vtastek. All three applications are designed to make ESP files which adjust the lighting values from *all* mods listed in one's openmw.cfg.
 
-In other words, make light gud. What sets this version apart is that it's a standalone binary application, instead of piggybacking off tes3cmd. The changes it makes are the same as the previous two, but with additional conveniences like automatic installation and support for portable installs of OpenMW, and itself having greater portability.
+In other words, make light gud. What sets this version apart is that it's a standalone binary application, instead of piggybacking off tes3cmd. The changes it makes are the same as the previous two, but with additional conveniences like automatic installation, support for portable installs of OpenMW, itself having greater portability, and *ultimate* customization of lighting values in your configuration as quickly and easily as I could come up with. Anything you can imagine doing with lighting is doable with lightfixes, and support for PBR shaders can be disabled or enabled at will.
 
 <div align="center">
 <h1>DOWNLOAD</h1>
 
-[Windows](https://github.com/magicaldave/S3LightFixes/releases/latest/download/windows-latest.zip) | [Mac](https://github.com/magicaldave/S3LightFixes/releases/latest/download/macos-latest.zip) | [Linux](https://github.com/magicaldave/S3LightFixes/releases/latest/download/ubuntu-latest.zip)
+[Windows](https://github.com/magicaldave/S3LightFixes/releases/latest/download/windows-latest.zip) | [Mac](https://github.com/magicaldave/S3LightFixes/releases/latest/download/macos-latest.zip) | [Linux](https://github.com/magicaldave/S3LightFixes/releases/latest/download/ubuntu-latest.zip) | [Development Builds (All Platforms)](https://github.com/DreamWeave-MP/S3LightFixes/releases/tag/development)
 </div>
 
 # Security
@@ -73,6 +73,41 @@ excluded_plugins = [
     # Exclude oaab plugins and master files
     "OAAB*", ".*esm"
 ]
+
+# By default, this is the data-local directory of your openmw installation. If one is not found, then, the plugin will output to the location specified using the `-o` or `--output` argument. 
+# If neither is specified, the plugin saves to the current working directory.
+output_dir = "/home/s3kshun8/.config/openmw/sw0rdsinger/override/"
+
+# Normally this field is always false, and must be set on the command line using `-u` or `--update`.
+# However, if you're prone to trying many tweaks on the command line yourself, you can set it to true here once and never do it again.
+save_config = false
+
+
+# You may also set custom values for light configurations for each light *or* cell record in lightConfig.toml.
+# This allows complete control and customization over all light colors, durations, radii, and even types(pulse, flicker, etc) in your lightConfig.toml
+# A few examples are shown below.
+# These customizations to lights may also be applied on the command line and saved to lightConfig.toml by using the `-u` argument, along with `--light` for each light record, or `--ambient` for each cell you wish to edit.
+# See further below for command-line examples.
+
+[light_overrides.light_com_candle_02_64]
+hue = 3
+saturation = -1.7599999904632568
+value = -1.46299999952316284
+
+[light_overrides.Torch_000]
+hue = 239
+radius = 254
+duration = 1199.0
+
+[light_overrides.Torch_001]
+hue_mult = 0.2999999523162842
+radius_mult = 1.0
+flag = "PULSESLOW"
+
+[ambient_overrides."caius cosades' house".ambient]
+hue = 34
+saturation = -1.2
+value = -1.12
 ```
 
 All parameters available in the lightConfig.toml may also be used as command line arguments. See below for further details on supported command line arguments.
@@ -110,7 +145,7 @@ Additionally, S3LightFixes will perform the following:
   -7, --classic
           Enables classic mode using vtastek shaders. ONLY for openmw 0.47. Relevant shaders can be found in the OpenMW discord: https://discord.com/channels/260439894298460160/718892786157617163/966468825321177148
   -o, --output <OUTPUT>
-          Output file path. Accepts relative and absolute terms
+          Output directory. The plugin may be saved to any location, but its name will always be `S3Lightfixes.omwaddon`. Accepts relative and absolute terms
   -l, --write-log
           Whether to save a text form of the generated plugin. Extremely verbose! You probably don't want to enable this unless asked specifically to do so
   -e, --auto-enable
@@ -153,13 +188,34 @@ Additionally, S3LightFixes will perform the following:
   -M, --duration-mult <DURATION_MULT>
           Multiplies the duration of all carryable lights.
           If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 2.5.
-      --excluded-ids <EXCLUDED_IDS>
+  -x, --excluded-ids <EXCLUDED_IDS>
           List of Regex patterns of light recordIds to exclude. This setting is *merged* onto values defined by lightconfig.toml.
           If this argument is not used, the value will be derived from lightConfig.toml.
-      --excluded-plugins <EXCLUDED_PLUGINS>
+  -X, --excluded-plugins <EXCLUDED_PLUGINS>
           List of Regex patterns of plugins to exclude. This setting is *merged* onto values defined by lightconfig.toml.
           If this argument is not used, the value will be derived from lightConfig.toml.
+      --light <LIGHT_OVERRIDES>
+          Colon-separated list of regexes to light values.
+               May be specified multiple times instead of as a separated list.
+               Light values are specified as *either* fixed HSV values or as multipliers of existing ones.
+               EG:
+               --light "Torch_001=radius=255,hue=240,duration=1200,flag=FLICKERSLOW" --light "Torch_002=radius_mult=2.0,hue_mult=1.3,duration_mult=5.0,flag=NONE"
+               OR
+               --light "Torch_001=radius=255,hue=240,duration=1200,flag=FLICKERSLOW:Torch_002=radius_mult=2.0,hue_mult=1.3,duration_mult=5.0,flag=NONE"
+               Hue is a range from 0-360 and saturation/value are normalized floats (0.0 - 1.0). Radius and duration are u32 (can be very big).
+               `flag` may be: NONE, FLICKER, FLICKERSLOW, PULSE, PULSESLOW
+               Fixed values are mutually exclusive with multipliers for each value and setting both will cause an error.
+      --ambient <AMBIENT_OVERRIDES>
+          
+                      Colon-separated list of cell id regexes, to the corresponding ambient data.
+                      `sunlight`, `ambient`, `fog`, and `fog_density` are available parameters.
+                      Values are provided as fixed HSV values, no multipliers.
+                      Hue is a range from 0-360 and saturation/value are normalized floats (0.0 - 1.0).
+                      Each field of cell ambient data is separated by a semicolon, as below:
+                      --ambient "caius cosades' house=sun=hue=360,saturation=1.0,value=1.0;ambient=hue=24,saturation=0.25,value=0.69"
+                      
+  -U, --update-light-config
+          Force-saves the light config on this run. Note that this parameter does not merge into lightConfig.toml like others, and must be manually set there.
   -h, --help
           Print help
-
 ```

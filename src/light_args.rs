@@ -37,7 +37,7 @@ pub struct LightArgs {
     pub write_log: bool,
 
     /// Whether to automatically enable the output plugin in openmw.cfg.
-    /// Disabled by default, and only available via CLI.
+    /// Disabled by default.
     /// Typically lightfixes is ran under momw-configurator, making this param
     /// unnecessary for many users.
     #[arg(short = 'e', long = "auto-enable")]
