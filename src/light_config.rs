@@ -1,15 +1,86 @@
 use std::{
-    collections::HashMap,
+    fmt,
     fs::{File, read_dir, read_to_string},
     io::{self, Write},
+    marker::PhantomData,
     path::PathBuf,
 };
 
-use serde::{Deserialize, Serialize};
+use ordered_hash_map::OrderedHashMap;
+use serde::{
+    Deserialize, Deserializer, Serialize, Serializer,
+    de::{MapAccess, Visitor},
+};
 
 use crate::{
     CustomCellAmbient, CustomLightData, DEFAULT_CONFIG_NAME, default, notification_box, to_io_error,
 };
+
+pub fn deserialize_ordered_hash_map<'de, D, K, V>(
+    deserializer: D,
+) -> Result<OrderedHashMap<K, V>, D::Error>
+where
+    D: Deserializer<'de>,
+    K: Deserialize<'de> + Eq + std::hash::Hash,
+    V: Deserialize<'de>,
+{
+    struct OrderedHashMapVisitor<K, V> {
+        marker: PhantomData<fn() -> OrderedHashMap<K, V>>,
+    }
+
+    impl<K, V> OrderedHashMapVisitor<K, V> {
+        fn new() -> Self {
+            OrderedHashMapVisitor {
+                marker: PhantomData,
+            }
+        }
+    }
+
+    impl<'de, K, V> Visitor<'de> for OrderedHashMapVisitor<K, V>
+    where
+        K: Deserialize<'de> + Eq + std::hash::Hash,
+        V: Deserialize<'de>,
+    {
+        type Value = OrderedHashMap<K, V>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a map")
+        }
+
+        fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+        where
+            M: MapAccess<'de>,
+        {
+            let mut map = OrderedHashMap::with_capacity(access.size_hint().unwrap_or(0));
+
+            while let Some((key, value)) = access.next_entry()? {
+                map.insert(key, value);
+            }
+
+            Ok(map)
+        }
+    }
+
+    deserializer.deserialize_map(OrderedHashMapVisitor::new())
+}
+
+pub fn serialize_ordered_hash_map<S, K, V>(
+    map: &OrderedHashMap<K, V>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    K: Serialize,
+    V: Serialize,
+{
+    use serde::ser::SerializeMap;
+
+    let mut ser_map = serializer.serialize_map(Some(map.len()))?;
+    for (k, v) in map {
+        ser_map.serialize_entry(k, v)?;
+    }
+    ser_map.end()
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct LightConfig {
@@ -70,11 +141,19 @@ pub struct LightConfig {
     #[serde(default)]
     pub excluded_ids: Vec<String>,
 
-    #[serde(default)]
-    pub light_overrides: HashMap<String, CustomLightData>,
+    #[serde(
+        default,
+        serialize_with = "serialize_ordered_hash_map",
+        deserialize_with = "deserialize_ordered_hash_map"
+    )]
+    pub light_overrides: OrderedHashMap<String, CustomLightData>,
 
-    #[serde(default)]
-    pub ambient_overrides: HashMap<String, CustomCellAmbient>,
+    #[serde(
+        default,
+        serialize_with = "serialize_ordered_hash_map",
+        deserialize_with = "deserialize_ordered_hash_map"
+    )]
+    pub ambient_overrides: OrderedHashMap<String, CustomCellAmbient>,
 
     pub output_dir: Option<PathBuf>,
 
@@ -377,8 +456,8 @@ impl Default for LightConfig {
             excluded_id_regexes: Vec::new(),
             excluded_plugin_regexes: Vec::new(),
             light_regexes: Vec::new(),
-            light_overrides: HashMap::new(),
-            ambient_overrides: HashMap::new(),
+            light_overrides: OrderedHashMap::new(),
+            ambient_overrides: OrderedHashMap::new(),
             ambient_regexes: Vec::new(),
         }
     }
