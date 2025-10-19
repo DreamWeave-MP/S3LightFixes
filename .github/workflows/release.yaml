@@ -3,7 +3,36 @@ on:
   push:
 
 jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions: write-all
+    outputs:
+      release_name: ${{ steps.release_type.outputs.release_name }}
+      tagged: ${{ steps.release_type.outputs.tagged }}
+    steps:
+      - name: Determine Release Type and Cleanup
+        id: release_type
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "tagged=true" >> $GITHUB_OUTPUT
+            echo "release_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tagged=false" >> $GITHUB_OUTPUT
+            echo "release_name=development" >> $GITHUB_OUTPUT
+            
+            release_id=$(gh release list --limit 100 | grep "development" | awk '{print $1}' | head -1)
+            if [ -n "$release_id" ]; then
+              echo "Deleting existing development release: $release_id"
+              gh release delete "$release_id" --yes
+            else
+              echo "No existing development release found"
+            fi
+          fi
+
   build:
+    needs: cleanup
     strategy:
       matrix:
         os: [macos-latest, ubuntu-22.04, windows-latest]
@@ -43,36 +72,13 @@ jobs:
       - name: compress
         run: 7z a -tzip ${{matrix.archive}} S3LF-${{ matrix.os }}.bundle ./target/release/${{matrix.binary}} Readme.md LICENSE
 
-      - name: Determine Release Type
-        id: release_type
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "tagged=true" >> $GITHUB_ENV
-            echo "release_name=${{ github.ref_name }}" >> $GITHUB_ENV
-          else
-            echo "tagged=false" >> $GITHUB_ENV
-            echo "release_name=development" >> $GITHUB_ENV
-
-            # List releases and find development release ID
-            release_id=$(gh release list --limit 100 | grep "development" | awk '{print $1}' | head -1)
-            if [ -n "$release_id" ]; then
-              echo "Deleting existing development release: $release_id"
-              gh release delete "$release_id" --yes
-            else
-              echo "No existing development release found"
-            fi
-          fi
-        shell: bash
-
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ env.release_name }}
-          prerelease: ${{ env.tagged == 'false' }}
+          tag_name: ${{ needs.cleanup.outputs.release_name }}
+          prerelease: ${{ needs.cleanup.outputs.tagged == 'false' }}
           generate_release_notes: true
           files: |
             ${{ matrix.archive }}
