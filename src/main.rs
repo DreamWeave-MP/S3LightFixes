@@ -276,7 +276,7 @@ fn main() -> io::Result<()> {
         }) {
             let cell_id = cell.editor_id_ascii_lowercase().into_owned();
 
-            if used_ids.contains(&cell_id) {
+            if used_ids.contains(&cell_id) || light_config.is_excluded_id(&cell_id) {
                 continue;
             };
 
