@@ -45,6 +45,8 @@ jobs:
 
       - name: Determine Release Type
         id: release_type
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             echo "tagged=true" >> $GITHUB_ENV
