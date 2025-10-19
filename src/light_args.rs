@@ -173,7 +173,7 @@ pub struct LightArgs {
             Values are provided as fixed HSV values, no multipliers.
             Hue is a range from 0-360 and saturation/value are normalized floats (0.0 - 1.0).
             Each field of cell ambient data is separated by a semicolon, as below:
-            --ambient \"caius cosades\' house=sun=hue=360,saturation=1.0,value=1.0;ambient=hue=24,saturation=0.25,value=0.69\"
+            --ambient \"caius cosades\' house=sunlight=hue=360,saturation=1.0,value=1.0;ambient=hue=24,saturation=0.25,value=0.69\"
             "
         )
     )]
