@@ -52,6 +52,15 @@ jobs:
           else
             echo "tagged=false" >> $GITHUB_ENV
             echo "release_name=development" >> $GITHUB_ENV
+
+            # List releases and find development release ID
+            release_id=$(gh release list --limit 100 | grep "development" | awk '{print $1}' | head -1)
+            if [ -n "$release_id" ]; then
+              echo "Deleting existing development release: $release_id"
+              gh release delete "$release_id" --yes
+            else
+              echo "No existing development release found"
+            fi
           fi
         shell: bash
 
