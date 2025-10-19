@@ -10,6 +10,8 @@ jobs:
       release_name: ${{ steps.release_type.outputs.release_name }}
       tagged: ${{ steps.release_type.outputs.tagged }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Determine Release Type and Cleanup
         id: release_type
         env:
