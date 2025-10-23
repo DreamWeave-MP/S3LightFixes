@@ -378,7 +378,7 @@ impl LightConfig {
         std::mem::take(&mut light_config.excluded_plugins)
             .into_iter()
             .for_each(|id| {
-                if let Ok(pattern) = regex::Regex::new(&id) {
+                if let Ok(pattern) = regex::Regex::new(&id.to_ascii_lowercase()) {
                     light_config.excluded_plugin_regexes.push(pattern);
                 }
             });
@@ -407,7 +407,7 @@ impl LightConfig {
     pub fn is_excluded_plugin(&self, plugin_path: &std::path::Path) -> bool {
         let file_name = match plugin_path.file_name() {
             None => return false,
-            Some(name) => name.to_string_lossy(),
+            Some(name) => name.to_ascii_lowercase().into_string().unwrap_or_default(),
         };
 
         for pattern in &self.excluded_plugin_regexes {

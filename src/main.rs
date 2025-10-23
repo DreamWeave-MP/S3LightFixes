@@ -249,7 +249,7 @@ fn main() -> io::Result<()> {
         let vfs_file = vfs.get_file(plugin)?;
         let path = vfs_file.path();
 
-        if !is_fixable_plugin(path) {
+        if !is_fixable_plugin(path) || light_config.is_excluded_plugin(&path) {
             return None;
         }
 
