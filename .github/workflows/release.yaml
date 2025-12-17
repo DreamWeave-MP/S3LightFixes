@@ -18,6 +18,9 @@ jobs:
       rust_toolchain: 'stable'
       vt_api_key: ${{ secrets.VT_API_KEY }}
     
+    secrets:
+      VT_API_KEY: ${{ secrets.VT_API_KEY }}
+    
     permissions:
       contents: write
       id-token: write
