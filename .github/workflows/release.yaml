@@ -27,4 +27,5 @@ jobs:
           include_files: 'Readme.md,LICENSE'
           rust_toolchain: 'stable'
           vt_api_key: ${{ secrets.VT_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
     
