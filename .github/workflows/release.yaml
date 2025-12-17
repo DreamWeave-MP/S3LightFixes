@@ -1,94 +1,25 @@
-name: release
+name: Corprus Crucible Manufacturing
+
 on:
   push:
+    branches: [main, master]
+    tags: ['*']
 
 jobs:
-  cleanup:
-    runs-on: ubuntu-latest
-    permissions: write-all
-    outputs:
-      release_name: ${{ steps.release_type.outputs.release_name }}
-      tagged: ${{ steps.release_type.outputs.tagged }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Determine Release Type and Cleanup
-        id: release_type
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "tagged=true" >> $GITHUB_OUTPUT
-            echo "release_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          else
-            echo "tagged=false" >> $GITHUB_OUTPUT
-            echo "release_name=development" >> $GITHUB_OUTPUT
-            
-            release_id=$(gh release list --limit 100 | grep "development" | awk '{print $1}' | head -1)
-            if [ -n "$release_id" ]; then
-              echo "Deleting existing development release: $release_id"
-              gh release delete "$release_id" --yes
-            else
-              echo "No existing development release found"
-            fi
-          fi
-
-  build:
-    needs: cleanup
+  release:
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-22.04, windows-latest]
-        include:
-          - os: macos-latest
-            binary: s3lightfixes
-            archive: macos-latest.zip
-          - os: ubuntu-22.04
-            binary: s3lightfixes
-            archive: ubuntu-latest.zip
-          - os: windows-latest
-            binary: s3lightfixes.exe
-            archive: windows-latest.zip
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    
+    uses: DreamWeave-MP/StroggForge/.github/actions/corprus-crucible@main
+    with:
+      binary_name: 's3lightfixes'
+      include_files: 'Readme.md,LICENSE'
+      rust_toolchain: 'stable'
+      vt_api_key: ${{ secrets.VT_API_KEY }}
+    
+    permissions:
+      contents: write
+      id-token: write
+    
     runs-on: ${{ matrix.os }}
-    permissions: write-all
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@nightly
-
-      - name: ⚡ Cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: build
-        run: cargo build --release
-
-      - uses: sigstore/cosign-installer@main
-      - name: sign
-        run: cosign sign-blob -y ./target/release/${{ matrix.binary }} --bundle S3LF-${{ matrix.os }}.bundle
-
-      - name: compress
-        run: 7z a -tzip ${{matrix.archive}} S3LF-${{ matrix.os }}.bundle ./target/release/${{matrix.binary}} Readme.md LICENSE
-
-      - name: Upload Release
-        uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ needs.cleanup.outputs.release_name }}
-          prerelease: ${{ needs.cleanup.outputs.tagged == 'false' }}
-          generate_release_notes: true
-          files: |
-            ${{ matrix.archive }}
-
-      - name: VirusTotal Scan
-        uses: crazy-max/ghaction-virustotal@v4
-        with:
-          update_release_body: true
-          vt_api_key: ${{ secrets.VT_API_KEY }}
-          files: |
-            ./target/release/${{ matrix.binary }}
