@@ -2,7 +2,7 @@ name: Corprus Crucible Manufacturing
 
 on:
   push:
-    branches: [main, master]
+    branches: main
     tags: ['*']
 
 jobs:
@@ -21,11 +21,9 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Run Corprus Crucible
-        uses: DreamWeave-MP/StroggForge/.github/actions/corprus-crucible@main
+        uses: DreamWeave-MP/StroggForge/.github/actions/corprus-crucible@v1
         with:
           binary_name: 's3lightfixes'
-          include_files: 'Readme.md,LICENSE'
-          rust_toolchain: 'stable'
           vt_api_key: ${{ secrets.VT_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
     
