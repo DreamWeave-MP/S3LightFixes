@@ -1,8 +1,7 @@
 name: AUR Publish
 on:
-  workflow_dispatch:
-  release:
-    types: [published]
+  push:
+    branches: main
 
 jobs:
   aur-publish:
@@ -17,8 +16,20 @@ jobs:
           git_username: magicaldave
           git_email: corleycomputerrepair@protonmail.ch
 
+      - name: Detect Release URL
+        id: detect
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "release_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "release_name=development" >> $GITHUB_OUTPUT
+          fi
+
       - name: Discord Webhook Action
         uses: tsickert/discord-webhook@v7.0.0
         with:
+          username: ${{ github.event.repository.name }}-Daemon
           webhook-url: ${{ secrets.WEBHOOK_URL }}
-          content: "S3lightfixes-git has been updated."
+          content: |
+            [${{ github.event.repository.name }}](https://github.com/DreamWeave-MP/S3LightFixes/releases/tag/${{ steps.detect.outputs.release_name }}) has been updated to ${{ github.ref_name }} GitHub and the AUR.
