@@ -1,0 +1,18 @@
+name: AUR Publish
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  aur-publish:
+    runs-on: ubuntu-latest
+    environment: AUR
+    steps:
+      - uses: actions/checkout@v4
+      - uses: varrcan/aur-publish-action@v1
+        with:
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          package_name: s3lightfixes-git
+          commit_username: S3ctor
+          commit_email: corleycomputerrepair@protonmail.ch
