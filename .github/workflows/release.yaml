@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Run Corprus Crucible
-        uses: DreamWeave-MP/StroggForge/.github/actions/corprus-crucible@main
+        uses: DreamWeave-MP/StroggForge/.github/actions/corprus-crucible@v3
         with:
           binary_name: 's3lightfixes'
           vt_api_key: ${{ secrets.VT_API_KEY }}
