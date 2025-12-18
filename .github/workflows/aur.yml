@@ -16,3 +16,9 @@ jobs:
           package_name: s3lightfixes-git
           git_username: magicaldave
           git_email: corleycomputerrepair@protonmail.ch
+
+      - name: Discord Webhook Action
+        uses: tsickert/discord-webhook@v7.0.0
+        with:
+          webhook-url: ${{ secrets.WEBHOOK_URL }}
+          content: "S3lightfixes-git has been updated."
