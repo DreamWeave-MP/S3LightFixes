@@ -32,7 +32,7 @@ jobs:
       - name: Discord Webhook Action
         uses: tsickert/discord-webhook@v7.0.0
         with:
-          username: ${{ github.event.repository.name }}-Daemon
+          username: DreamWeave
           webhook-url: ${{ secrets.WEBHOOK_URL }}
           content: |
-            <[${{ github.event.repository.name }}](https://github.com/DreamWeave-MP/S3LightFixes/releases/tag/${{ steps.detect.outputs.release_name }})> has been updated to ${{ steps.detect.outputs.display_name }} GitHub and the AUR.
+            [${{ github.event.repository.name }}](https://github.com/DreamWeave-MP/S3LightFixes/releases/tag/${{ steps.detect.outputs.release_name }}) has been updated to ${{ steps.detect.outputs.display_name }} on GitHub and the AUR.
