@@ -22,8 +22,11 @@ jobs:
         run: |
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             echo "release_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "display_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           else
             echo "release_name=development" >> $GITHUB_OUTPUT
+            github_sha_hash=${{ github.sha }}
+            echo "display_name=${github_sha_hash:0:7}" >> $GITHUB_OUTPUT
           fi
 
       - name: Discord Webhook Action
@@ -32,4 +35,4 @@ jobs:
           username: ${{ github.event.repository.name }}-Daemon
           webhook-url: ${{ secrets.WEBHOOK_URL }}
           content: |
-            [${{ github.event.repository.name }}](https://github.com/DreamWeave-MP/S3LightFixes/releases/tag/${{ steps.detect.outputs.release_name }}) has been updated to ${{ github.ref_name }} GitHub and the AUR.
+            <[${{ github.event.repository.name }}](https://github.com/DreamWeave-MP/S3LightFixes/releases/tag/${{ steps.detect.outputs.release_name }})> has been updated to ${{ steps.detect.outputs.display_name }} GitHub and the AUR.
