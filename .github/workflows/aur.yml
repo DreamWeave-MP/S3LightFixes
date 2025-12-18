@@ -14,5 +14,5 @@ jobs:
         with:
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
           package_name: s3lightfixes-git
-          commit_username: S3ctor
-          commit_email: corleycomputerrepair@protonmail.ch
+          git_username: magicaldave
+          git_email: corleycomputerrepair@protonmail.ch
