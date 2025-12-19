@@ -55,4 +55,5 @@ jobs:
             --repo "${{ inputs.target_repo }}" \
             --title "$ISSUE_TITLE" \
             --body "$ISSUE_BODY" \
+            --label "dependencies,automated" \
             --assignee "${{ github.actor }}"
