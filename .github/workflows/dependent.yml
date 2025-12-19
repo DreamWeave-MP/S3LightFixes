@@ -41,7 +41,6 @@ jobs:
           3. Close this issue when completed
 
           ### 🔗 Useful Links
-          - [Release Changelog]($RELEASE_URL)
           - [AUR Package](https://aur.archlinux.org/packages/${{ inputs.aur_package_name }})
           - [Source Code](https://github.com/${{ github.repository }})
 
