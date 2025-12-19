@@ -8,6 +8,7 @@ on:
 
 jobs:
   discord-notify:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     name: Discord Notification
     runs-on: ubuntu-latest
 
