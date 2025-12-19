@@ -25,6 +25,19 @@ jobs:
       - name: Run Corprus Crucible
         uses: DreamWeave-MP/StroggForge/.github/actions/corprus-crucible@main
         with:
-          binary_name: 's3lightfixes'
+          binary_name: s3lightfixes
           vt_api_key: ${{ secrets.VT_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  aur-publish:
+    runs-on: ubuntu-latest
+    needs: release
+    environment: AUR
+    steps:
+      - uses: actions/checkout@v4
+      - uses: varrcan/aur-publish-action@v1
+        with:
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          package_name: s3lightfixes-git
+          git_username: magicaldave
+          git_email: corleycomputerrepair@protonmail.ch
