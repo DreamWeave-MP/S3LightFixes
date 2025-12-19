@@ -1,4 +1,4 @@
-name: AUR Publish
+name: Third Party Publish
 
 on:
   workflow_run:

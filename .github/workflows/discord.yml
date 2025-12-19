@@ -2,7 +2,7 @@ name: DreamWeave Webhook
 
 on:
   workflow_run:
-    workflows: Corprus Crucible Manufacturing
+    workflows: [Third Party Publish]
     types: completed
     branches: main
 
@@ -11,8 +11,6 @@ jobs:
     name: Discord Notification
     needs: release
     runs-on: ubuntu-latest
-
-    if: needs.release.result == 'success'
 
     steps:
       - name: Detect Release URL
@@ -35,5 +33,5 @@ jobs:
           webhook-url: ${{ secrets.DW_TOOLS_CHANNEL_WEBHOOK }}
           avatar-url: "https://avatars.githubusercontent.com/u/138459727?s=400&u=827e40e3dd9c110c15b3bff26eec0144841e657d&v=4"
           embed-title: "${{ github.event.repository.name }} has been updated."
-          embed-description: "[${{ needs.release.outputs.display_name }}](https://github.com/DreamWeave-MP/S3LightFixes/releases/tag/${{ needs.release.outputs.release_name }}) is now available on GitHub and the AUR."
+          embed-description: "[${{ steps.detect.outputs.display_name }}](https://github.com/${{ github.repository }}/releases/tag/${{ steps.detect.outputs.release_name }}) is now available on GitHub and the AUR."
           embed-footer-text: "Workflow: ${{ github.run_id }} by: ${{ github.triggering_actor }} at: $(date +%F)"
