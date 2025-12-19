@@ -59,8 +59,15 @@ jobs:
   nag-dependents:
     if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs: aur-publish
+
+    strategy:
+      matrix:
+        target_repo: [DreamWeave-MP/DW-tools]
+
     uses: ./.github/workflows/dependent.yml
+
     secrets:
       DW_BOT_PAT: ${{ secrets.DW_BOT_PAT }}
     with:
       aur_package_name: ${{ needs.aur-publish.outputs.pkg_name }}
+      target_repo: ${{ matrix.target_repo }}
