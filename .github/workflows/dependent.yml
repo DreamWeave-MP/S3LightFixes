@@ -22,12 +22,13 @@ jobs:
           TARGET_REPO: ${{ matrix.target_repo }}
         run: |
           ISSUE_TITLE="📦 Update ${{ github.event.repository.name }} dependency to ${{ github.ref_name }}"
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
 
           ISSUE_BODY=$(cat <<EOF
           ## 🚨 Dependency Update Required
 
           **Source Repository:** ${{ github.repository }}
-          **New Release:** [$RELEASE_TAG]($RELEASE_URL)
+          **New Release:** [${{ github.ref_name }}]($RELEASE_URL)
           **Released By:** @${{ github.actor }}
           **Release Date:** $(date -u +"%Y-%m-%d %H:%M UTC")
 
@@ -37,7 +38,7 @@ jobs:
           3. Close this issue when completed
 
           ### 🔗 Useful Links
-          - [Release Changelog](https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }})
+          - [Release Changelog]($RELEASE_URL)
           - [AUR Package](https://aur.archlinux.org/packages/s3lightfixes-git)
           - [Source Code](https://github.com/${{ github.repository }})
 
