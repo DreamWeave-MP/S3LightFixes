@@ -24,25 +24,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.DW_BOT_PAT }}
         run: |
-          ISSUE_TITLE="📦 Update ${{ github.event.repository.name }} dependency to ${{ github.ref_name }}"
-          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+          VERSION="${{ github.ref_name }}"
+
+          ISSUE_TITLE="📦 Update $REPO_NAME dependency to $VERSION"
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/$VERSION"
 
           ISSUE_BODY=$(cat <<EOF
-          ## 🚨 Dependency Update Required
+          ## 🚨 Dependency Update Required: [${{ github.repository }}](https://github.com/${{ github.repository }})
 
-          **Source Repository:** ${{ github.repository }}
-          **New Release:** [${{ github.ref_name }}]($RELEASE_URL)
-          **Released By:** @${{ github.actor }}
-          **Release Date:** $(date -u +"%Y-%m-%d %H:%M UTC")
+          **New Version:** [${{ github.ref_name }}]($RELEASE_URL)
+          **Released By:** @${{ github.actor }} **on** $(date -u +"%Y-%m-%d %H:%M UTC")
+          [$REPO_NAME on the AUR](https://aur.archlinux.org/packages/${{ inputs.aur_package_name }})
 
           ### 📋 Required Actions
-          1. Update dependency version in your repository
-          2. Test the integration
-          3. Close this issue when completed
-
-          ### 🔗 Useful Links
-          - [AUR Package](https://aur.archlinux.org/packages/${{ inputs.aur_package_name }})
-          - [Source Code](https://github.com/${{ github.repository }})
+          Please test integration with $REPO_NAME version $VERSION.
+          Close this issue via linked pull request when the integration is confirmed working.
 
           *This issue was automatically created by GitHub Actions.*
           EOF
