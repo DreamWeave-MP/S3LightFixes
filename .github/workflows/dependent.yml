@@ -1,0 +1,57 @@
+name: Notify DreamWeave Ecosystem
+
+on:
+  workflow_run:
+    workflows: Corprus Crucible Manufacturing
+    types: completed
+    branches: main
+
+jobs:
+  notify-dependents:
+    name: Notify Dependent Repositories
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }} && startsWith(github.ref, 'refs/tags/')
+
+    strategy:
+      matrix:
+        target_repo:
+          - DreamWeave-MP/DW-tools
+
+    steps:
+      - name: Create Update Issue
+        env:
+          GH_TOKEN: ${{ secrets.DW_BOT_PAT }}
+          TARGET_REPO: ${{ matrix.target_repo }}
+        run: |
+          ISSUE_TITLE="📦 Update ${{ github.event.repository.name }} dependency to ${{ github.ref_name }}"
+
+          ISSUE_BODY=$(cat <<EOF
+          ## 🚨 Dependency Update Required
+
+          **Source Repository:** ${{ github.repository }}
+          **New Release:** [$RELEASE_TAG]($RELEASE_URL)
+          **Released By:** @${{ github.actor }}
+          **Release Date:** $(date -u +"%Y-%m-%d %H:%M UTC")
+
+          ### 📋 Required Actions
+          1. Update dependency version in your repository
+          2. Test the integration
+          3. Close this issue when completed
+
+          ### 🔗 Useful Links
+          - [Release Changelog](https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }})
+          - [AUR Package](https://aur.archlinux.org/packages/s3lightfixes-git)
+          - [Source Code](https://github.com/${{ github.repository }})
+
+          *This issue was automatically created by GitHub Actions.*
+          EOF
+          )
+
+          echo "Creating issue in $TARGET_REPO..."
+
+          gh issue create \
+            --repo "$TARGET_REPO" \
+            --title "$ISSUE_TITLE" \
+            --body "$ISSUE_BODY" \
+            --label "dependencies,automated" \
+            --assignee "${{ github.actor }}"
