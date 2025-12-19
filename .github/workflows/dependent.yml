@@ -1,14 +1,20 @@
 name: Notify DreamWeave Ecosystem
 
 on:
-  release:
-    types: created
+  workflow_call:
+    secrets:
+      DW_BOT_PAT:
+        required: true
+
+    inputs:
+      aur_package_name:
+        type: string
+        required: true
 
 jobs:
   notify-dependents:
     name: Notify Dependent Repositories
     runs-on: ubuntu-latest
-    if: github.event.release.tag_name != 'development'
 
     strategy:
       matrix:
@@ -39,7 +45,7 @@ jobs:
 
           ### 🔗 Useful Links
           - [Release Changelog]($RELEASE_URL)
-          - [AUR Package](https://aur.archlinux.org/packages/s3lightfixes-git)
+          - [AUR Package](https://aur.archlinux.org/packages/${{ inputs.aur_package_name }})
           - [Source Code](https://github.com/${{ github.repository }})
 
           *This issue was automatically created by GitHub Actions.*
@@ -52,5 +58,4 @@ jobs:
             --repo "$TARGET_REPO" \
             --title "$ISSUE_TITLE" \
             --body "$ISSUE_BODY" \
-            --label "dependencies,automated" \
             --assignee "${{ github.actor }}"
