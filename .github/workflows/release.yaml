@@ -7,6 +7,9 @@ on:
     branches: main
     tags: ['*']
 
+env:
+  AUR_PACKAGE_NAME: s3lightfixes-git
+
 jobs:
   release:
     strategy:
@@ -39,7 +42,7 @@ jobs:
       - uses: varrcan/aur-publish-action@v1
         with:
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          package_name: s3lightfixes-git
+          package_name: ${{ env.AUR_PACKAGE_NAME }}
           git_username: magicaldave
           git_email: corleycomputerrepair@protonmail.ch
 
