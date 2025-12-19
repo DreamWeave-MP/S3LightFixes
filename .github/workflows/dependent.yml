@@ -1,16 +1,14 @@
 name: Notify DreamWeave Ecosystem
 
 on:
-  workflow_run:
-    workflows: Corprus Crucible Manufacturing
-    types: completed
-    branches: main
+  release:
+    types: published
 
 jobs:
   notify-dependents:
     name: Notify Dependent Repositories
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }} && startsWith(github.ref, 'refs/tags/')
+    if: github.event.release.tag_name != 'development'
 
     strategy:
       matrix:
