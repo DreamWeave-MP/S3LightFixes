@@ -2,7 +2,7 @@ name: Notify DreamWeave Ecosystem
 
 on:
   release:
-    types: published
+    types: released
 
 jobs:
   notify-dependents:
