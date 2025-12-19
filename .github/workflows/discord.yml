@@ -9,7 +9,6 @@ on:
 jobs:
   discord-notify:
     name: Discord Notification
-    needs: release
     runs-on: ubuntu-latest
 
     steps:
