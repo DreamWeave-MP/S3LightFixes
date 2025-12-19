@@ -4,7 +4,6 @@ on:
   workflow_run:
     workflows: [Third Party Publish]
     types: completed
-    branches: main
 
 jobs:
   discord-notify:
