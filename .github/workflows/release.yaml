@@ -44,5 +44,11 @@ jobs:
           git_email: corleycomputerrepair@protonmail.ch
 
   call-discord-webhook:
+    if: success() && github.event_name == 'push'
+
+    needs:
+      - release
+      - aur-publish
+
     uses: ./.github/workflows/discord.yml
     secrets: inherit
