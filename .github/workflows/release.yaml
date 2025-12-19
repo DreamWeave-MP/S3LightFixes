@@ -46,4 +46,4 @@ jobs:
   call-discord-webhook:
     if: success() && github.event_name == 'push'
     needs: [release, aur-publish]
-    uses: DreamWeave-MP/StroggForge/.github/workflows/discord.yml
+    uses: DreamWeave-MP/StroggForge/.github/workflows/discord.yml@v5
