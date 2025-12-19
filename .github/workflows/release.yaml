@@ -59,7 +59,7 @@ jobs:
   nag-dependents:
     if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs: [aur-publish, call-discord-webhook]
-    uses: ./.github/workflows/dependent.yml@main
+    uses: ./.github/workflows/dependent.yml
     secrets:
       DW_BOT_PAT: ${{ secrets.DW_BOT_PAT }}
     with:
