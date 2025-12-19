@@ -10,22 +10,19 @@ on:
       aur_package_name:
         type: string
         required: true
+      target_repo:
+        type: string
+        required: true
 
 jobs:
   notify-dependents:
     name: Notify Dependent Repositories
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        target_repo:
-          - DreamWeave-MP/DW-tools
-
     steps:
       - name: Create Update Issue
         env:
           GH_TOKEN: ${{ secrets.DW_BOT_PAT }}
-          TARGET_REPO: ${{ matrix.target_repo }}
         run: |
           ISSUE_TITLE="📦 Update ${{ github.event.repository.name }} dependency to ${{ github.ref_name }}"
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
@@ -52,10 +49,10 @@ jobs:
           EOF
           )
 
-          echo "Creating issue in $TARGET_REPO..."
+          echo "Creating issue in ${{ inputs.target_repo }}..."
 
           gh issue create \
-            --repo "$TARGET_REPO" \
+            --repo "${{ inputs.target_repo }}" \
             --title "$ISSUE_TITLE" \
             --body "$ISSUE_BODY" \
             --assignee "${{ github.actor }}"
