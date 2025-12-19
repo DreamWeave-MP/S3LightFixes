@@ -47,5 +47,6 @@ jobs:
     if: success() && github.event_name == 'push'
     needs: [release, aur-publish]
     uses: DreamWeave-MP/StroggForge/.github/workflows/discord.yml@main
+
     secrets:
-      DW_TOOLS_CHANNEL_WEBHOOK: ${{ secrets.DW_TOOLS_CHANNEL_WEBHOOK }}
+      WEBHOOK_URL: ${{ secrets.DW_TOOLS_CHANNEL_WEBHOOK }}
