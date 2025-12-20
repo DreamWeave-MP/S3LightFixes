@@ -2,6 +2,10 @@ name: Create DreamWeave Release
 
 on:
   workflow_call:
+    outputs:
+      release_name:
+        description: "Release name generated based on tag or branch."
+        value: ${{ jobs.ensure-fresh-release.outputs.release_name }}
 
 jobs:
   ensure-fresh-release:
