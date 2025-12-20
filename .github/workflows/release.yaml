@@ -8,12 +8,12 @@ on:
     tags: ['*']
 
 jobs:
-  ensure-fresh-release:
+  release_cleanup:
     uses: ./.github/workflows/createRelease.yml
     secrets: inherit
 
   release:
-    needs: ensure-fresh-release
+    needs: release_cleanup
 
     strategy:
       matrix:
@@ -38,7 +38,7 @@ jobs:
           binary_name: s3lightfixes
           vt_api_key: ${{ secrets.VT_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          release_name: ${{ needs.ensure-fresh-release.outputs.release_name }}
+          release_name: ${{ needs.release_cleanup.outputs.release_name }}
 
   aur-publish:
     env:
