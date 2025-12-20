@@ -3,8 +3,7 @@ name: Create DreamWeave Release
 on:
   workflow_call:
     outputs:
-      description: 'Name of the release (tag or development)'
-      value: ${{ jobs.ensure-fresh-release.outputs.release_name }}
+      release_name: ${{ jobs.ensure-fresh-release.outputs.release_name }}
 
 jobs:
   ensure-fresh-release:
