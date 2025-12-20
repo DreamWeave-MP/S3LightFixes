@@ -27,11 +27,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Check Release Name
-        run: |
-          echo "Release name is: ${{ needs.release_cleanup.outputs.release_name }}"
-      
       - name: Run Corprus Crucible
         uses: DreamWeave-MP/StroggForge/.github/actions/corprus-crucible@main
         with:
