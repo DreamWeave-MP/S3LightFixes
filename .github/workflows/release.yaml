@@ -8,24 +8,25 @@ on:
     tags: ['*']
 
 jobs:
+  ensure-fresh-release:
+    uses: ./.github/workflows/createRelease.yml
+    secrets: inherit
+
   release:
+    needs: ensure-fresh-release
+
     strategy:
       matrix:
         os: [macos-latest, macos-15-intel, ubuntu-latest, windows-latest]
-    
+
     runs-on: ${{ matrix.os }}
-    
+
     permissions:
       contents: write
       id-token: write
-    
+
     steps:
       - uses: actions/checkout@v4
-
-      - name: Ensure Clean Release
-        id: setup
-        uses: ./.github/workflows/createRelease.yml
-        secrets: inherit
       
       - name: Run Corprus Crucible
         uses: DreamWeave-MP/StroggForge/.github/actions/corprus-crucible@main
@@ -33,7 +34,7 @@ jobs:
           binary_name: s3lightfixes
           vt_api_key: ${{ secrets.VT_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          release_name: ${{ steps.setup.outputs.release_name }}
+          release_name: ${{ jobs.ensure-fresh-release.outputs.release_name }}
 
   aur-publish:
     env:
