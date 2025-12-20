@@ -21,6 +21,10 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
+
+      - name: Ensure Clean Release
+        uses: ./.github/workflows/createRelease.yml
+        secrets: inherit
       
       - name: Run Corprus Crucible
         uses: DreamWeave-MP/StroggForge/.github/actions/corprus-crucible@main
