@@ -8,10 +8,13 @@ on:
     tags: ['*']
 
 jobs:
+  # Ensure any previously-existing releases are deleted,
+  # And create a new one with auto-generated changelog & workflow ID
   release_cleanup:
     uses: DreamWeave-MP/StroggForge/.github/workflows/createRelease.yml@v6
     secrets: inherit
 
+  # Build, test, sign, package, & release a Rust app on all platforms
   release:
     needs: release_cleanup
 
@@ -35,6 +38,8 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           release_name: ${{ needs.release_cleanup.outputs.release_name }}
 
+  # For application repositories which are also hosted in the AUR,
+  # update the AUR package as well.
   aur-publish:
     env:
       AUR_PACKAGE_NAME: s3lightfixes-git
@@ -55,6 +60,7 @@ jobs:
           git_username: magicaldave
           git_email: corleycomputerrepair@protonmail.ch
 
+  # For workflows where users may now receive a new deliverable, notify them about it!
   call-discord-webhook:
     if: always() && github.event_name == 'push'
     needs: release
@@ -65,6 +71,8 @@ jobs:
       title: ${{ needs.release.result == 'failure' && format('{0} pipeline failed! 😭', github.event.repository.name) || '' }}
       description: ${{ needs.release.result == 'failure' && format('[Workflow Results](https://github.com/{0}/actions/runs/{1})', github.repository, github.run_id) || ''}}
 
+  # For any repositories which use this one as a dependent,
+  # notify them by creating an issue within the DreamWeave org's scope.
   nag-dependents:
     if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs: release
