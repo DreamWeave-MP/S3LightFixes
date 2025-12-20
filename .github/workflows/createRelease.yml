@@ -2,8 +2,6 @@ name: Create DreamWeave Release
 
 on:
   workflow_call:
-    outputs:
-      release_name: ${{ jobs.ensure-fresh-release.outputs.release_name }}
 
 jobs:
   ensure-fresh-release:
