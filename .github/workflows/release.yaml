@@ -34,7 +34,7 @@ jobs:
           binary_name: s3lightfixes
           vt_api_key: ${{ secrets.VT_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          release_name: ${{ jobs.ensure-fresh-release.outputs.release_name }}
+          release_name: ${{ needs.ensure-fresh-release.outputs.release_name }}
 
   aur-publish:
     env:
