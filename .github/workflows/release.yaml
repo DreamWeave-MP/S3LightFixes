@@ -56,8 +56,8 @@ jobs:
           git_email: corleycomputerrepair@protonmail.ch
 
   call-discord-webhook:
-    if: github.event_name == 'push'
-    needs: [release, aur-publish]
+    if: always() && github.event_name == 'push'
+    needs: release
     uses: DreamWeave-MP/StroggForge/.github/workflows/discord.yml@main
     secrets:
       WEBHOOK_URL: ${{ secrets.DW_TOOLS_CHANNEL_WEBHOOK }}
