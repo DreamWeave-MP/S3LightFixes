@@ -62,7 +62,7 @@ jobs:
     secrets:
       WEBHOOK_URL: ${{ secrets.DW_TOOLS_CHANNEL_WEBHOOK }}
     with:
-      title: ${{ needs.release.result == 'failure' && format('{0} Pipeline failed! 😭', github.event.repository.name) || '' }}
+      title: ${{ needs.release.result == 'failure' && format('{0} pipeline failed! 😭', github.event.repository.name) || '' }}
       description: ${{ needs.release.result == 'failure' && format('[Workflow Results](https://github.com/{0}/actions/runs/{1})', github.repository, github.run_id) || ''}}
 
   nag-dependents:
