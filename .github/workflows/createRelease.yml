@@ -23,6 +23,8 @@ jobs:
           echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
 
       - name: Ensure Fresh Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           WORKFLOW_ID="${{ github.run_id }}"
           RELEASE_NAME="${{ steps.setup.outputs.release_name }}"
