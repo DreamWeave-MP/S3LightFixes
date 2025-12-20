@@ -56,6 +56,7 @@ jobs:
           git_email: corleycomputerrepair@protonmail.ch
 
   call-discord-webhook:
+    runs-on: ubuntu-latest
     if: github.event_name == 'push'
     needs: [release, aur-publish]
 
