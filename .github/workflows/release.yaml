@@ -9,7 +9,7 @@ on:
 
 jobs:
   release_cleanup:
-    uses: ./.github/workflows/createRelease.yml
+    uses: DreamWeave-MP/StroggForge/.github/workflows/createRelease.yml@v6
     secrets: inherit
 
   release:
@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run Corprus Crucible
-        uses: DreamWeave-MP/StroggForge/.github/actions/corprus-crucible@main
+        uses: DreamWeave-MP/StroggForge/.github/actions/corprus-crucible@v6
         with:
           binary_name: s3lightfixes
           vt_api_key: ${{ secrets.VT_API_KEY }}
@@ -58,7 +58,7 @@ jobs:
   call-discord-webhook:
     if: always() && github.event_name == 'push'
     needs: release
-    uses: DreamWeave-MP/StroggForge/.github/workflows/discord.yml@main
+    uses: DreamWeave-MP/StroggForge/.github/workflows/discord.yml@v6
     secrets:
       WEBHOOK_URL: ${{ secrets.DW_TOOLS_CHANNEL_WEBHOOK }}
     with:
@@ -73,7 +73,7 @@ jobs:
       matrix:
         target_repo: [DreamWeave-MP/DW-tools]
 
-    uses: ./.github/workflows/dependent.yml
+    uses: DreamWeave-MP/StroggForge/.github/workflows/dependent.yml@v6
 
     secrets:
       DW_BOT_PAT: ${{ secrets.DW_BOT_PAT }}
