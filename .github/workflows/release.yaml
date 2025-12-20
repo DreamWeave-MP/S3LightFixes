@@ -29,7 +29,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check Release Name
-        run: echo "Release name is: ${{ needs.ensure-fresh-release.outputs.release_name }}"
+        run: |
+          echo "Release name is: ${{ needs.ensure-fresh-release.outputs.release_name }}"
       
       - name: Run Corprus Crucible
         uses: DreamWeave-MP/StroggForge/.github/actions/corprus-crucible@main
