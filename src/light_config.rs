@@ -370,35 +370,61 @@ impl LightConfig {
         std::mem::take(&mut light_config.excluded_ids)
             .into_iter()
             .for_each(|id| {
-                if let Ok(pattern) = regex::Regex::new(&id) {
-                    light_config.excluded_id_regexes.push(pattern);
-                }
+                match regex::Regex::new(&id) {
+                    Ok(pattern) => light_config.excluded_id_regexes.push(pattern),
+                    Err(error) => {
+                        notification_box(
+                            "Invalid excluded id regex!",
+                            &format!("Couldn't compile excluded id regex: {id}: {error}"),
+                            light_config.no_notifications,
+                        );
+                    }
+                };
             });
 
         std::mem::take(&mut light_config.excluded_plugins)
             .into_iter()
             .for_each(|id| {
-                if let Ok(pattern) = regex::Regex::new(&id.to_ascii_lowercase()) {
-                    light_config.excluded_plugin_regexes.push(pattern);
-                }
+                match regex::Regex::new(&id) {
+                    Ok(pattern) => light_config.excluded_plugin_regexes.push(pattern),
+                    Err(error) => {
+                        notification_box(
+                            "Invalid excluded plugin regex!",
+                            &format!("Couldn't compile excluded plugin regex: {id}: {error}"),
+                            light_config.no_notifications,
+                        );
+                    }
+                };
             });
 
         std::mem::take(&mut light_config.light_overrides)
             .into_iter()
             .for_each(|(id, light_data)| {
-                if let Ok(pattern) = regex::Regex::new(&id) {
-                    light_config.light_regexes.push((pattern, light_data));
-                } // Handle bad patterns and bail here
-                // Later
+                match regex::Regex::new(&id) {
+                    Ok(pattern) => light_config.light_regexes.push((pattern, light_data)),
+                    Err(error) => {
+                        notification_box(
+                            "Invalid light override!",
+                            &format!("Couldn't compile light override regex: {id}: {error}"),
+                            light_config.no_notifications,
+                        );
+                    }
+                };
             });
 
         std::mem::take(&mut light_config.ambient_overrides)
             .into_iter()
             .for_each(|(id, light_data)| {
-                if let Ok(pattern) = regex::Regex::new(&id) {
-                    light_config.ambient_regexes.push((pattern, light_data));
-                } // Handle bad patterns and bail here
-                // Later
+                match regex::Regex::new(&id) {
+                    Ok(pattern) => light_config.ambient_regexes.push((pattern, light_data)),
+                    Err(error) => {
+                        notification_box(
+                            "Invalid ambient override!",
+                            &format!("Couldn't compile ambient override regex: {id}: {error}"),
+                            light_config.no_notifications,
+                        );
+                    }
+                };
             });
 
         Ok(light_config)
