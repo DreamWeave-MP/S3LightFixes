@@ -1,12 +1,15 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use clap_complete::Shell;
 
 use crate::default;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "S3 Lightfixes",
+    name = "s3lightfixes",
+    author,
+    version,
     about = "A tool for modifying light values globally across an OpenMW installation.\nPlease note that arguments provided here, which also exist in lightConfig.toml, will override any values in lightConfig.toml when used.\nAdditionally, if the lightConfig.toml does not exist, the used values will be saved into the new lightConfig.toml."
 )]
 // CLI flags are naturally boolean. Turning these into enums would make the Rust type prettier
@@ -56,10 +59,13 @@ pub struct LightArgs {
     #[arg(short = 'd', long = "debug")]
     pub debug: bool,
 
-    /// Outputs version info
-    // Might be more later?
-    #[arg(short = 'i', long = "info")]
-    pub info: bool,
+    /// Generate shell completion script to stdout
+    #[arg(long, value_name = "SHELL", conflicts_with = "generate_manpage")]
+    pub generate_completion: Option<Shell>,
+
+    /// Generate roff manpage to stdout
+    #[arg(long, conflicts_with = "generate_completion")]
+    pub generate_manpage: bool,
 
     /// Whether to disable flickering lights during lightfixes generation
     #[arg(short = 'f', long = "no-flicker")]
@@ -111,7 +117,6 @@ pub struct LightArgs {
     pub colored_saturation: Option<f32>,
 
     #[arg(
-        short = 'V',
         long = "colored-value",
         help = &format!("For lights that are red, purple, blue, green, or yellow, multiply their HSV value by this amount.\nIf this argument is not used, the value will be derived from lightConfig.toml or use the default value of {}.", default::colored_value())
     )]

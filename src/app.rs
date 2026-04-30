@@ -8,7 +8,7 @@ use std::{
     process::exit,
 };
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use rayon::prelude::*;
 use tes3::esp::{
     AtmosphereData, Cell, CellFlags, EditorId, FixedString, Header, Light, ObjectFlags, Plugin,
@@ -362,6 +362,21 @@ fn write_log_to(mut writer: impl Write, generated_plugin: &Plugin) {
     let _ = write!(writer, "{generated_plugin:#?}");
 }
 
+fn handle_generated_output(args: &LightArgs, stdout: &mut dyn Write) -> io::Result<bool> {
+    if let Some(shell) = args.generate_completion {
+        let mut command = LightArgs::command();
+        clap_complete::generate(shell, &mut command, "s3lightfixes", stdout);
+        return Ok(true);
+    }
+
+    if args.generate_manpage {
+        clap_mangen::Man::new(LightArgs::command()).render(stdout)?;
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
 /// Runs the command-line application.
 ///
 /// # Errors
@@ -373,9 +388,8 @@ fn write_log_to(mut writer: impl Write, generated_plugin: &Plugin) {
 pub fn run() -> io::Result<()> {
     let mut args = LightArgs::parse();
 
-    if args.info {
-        println!("S3LightFixes Version: {}", env!("CARGO_PKG_VERSION"));
-        exit(0);
+    if handle_generated_output(&args, &mut io::stdout())? {
+        return Ok(());
     }
 
     let no_notifications = var("S3L_NO_NOTIFICATIONS").is_ok() || args.no_notifications;
@@ -521,6 +535,43 @@ mod tests {
             duration_mult: 1.0,
             ..LightConfig::default()
         }
+    }
+
+    #[test]
+    fn generated_completion_goes_to_stdout_without_running_lightfixes() {
+        let args = LightArgs::parse_from(["s3lightfixes", "--generate-completion", "bash"]);
+        let mut stdout = Vec::new();
+
+        assert!(handle_generated_output(&args, &mut stdout).unwrap());
+
+        let completion = String::from_utf8(stdout).unwrap();
+        assert!(completion.contains("_s3lightfixes"));
+        assert!(completion.contains("--generate-manpage"));
+    }
+
+    #[test]
+    fn generated_manpage_goes_to_stdout_without_running_lightfixes() {
+        let args = LightArgs::parse_from(["s3lightfixes", "--generate-manpage"]);
+        let mut stdout = Vec::new();
+
+        assert!(handle_generated_output(&args, &mut stdout).unwrap());
+
+        let manpage = String::from_utf8(stdout).unwrap();
+        assert!(manpage.contains("s3lightfixes"));
+        assert!(manpage.contains("A tool for modifying light values globally"));
+    }
+
+    #[test]
+    fn generated_outputs_conflict_with_each_other() {
+        let err = LightArgs::try_parse_from([
+            "s3lightfixes",
+            "--generate-completion",
+            "bash",
+            "--generate-manpage",
+        ])
+        .unwrap_err();
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 
     fn interior_cell(id: &str) -> Cell {
