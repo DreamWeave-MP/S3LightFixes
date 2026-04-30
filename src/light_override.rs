@@ -765,6 +765,13 @@ mod tests {
     }
 
     #[test]
+    fn cli_light_override_rejects_out_of_range_rgb_component() {
+        let err = parse_light_override("Torch=red=999,green=128,blue=64").unwrap_err();
+
+        assert!(matches!(err, ParseLightError::BadNumber("red", _)));
+    }
+
+    #[test]
     fn cli_light_override_rejects_rgb_color_with_hsv_multiplier() {
         let err = parse_light_override("Torch=red=255,green=128,blue=64,hue_mult=2.0").unwrap_err();
 
@@ -824,6 +831,14 @@ mod tests {
 
         assert_eq!(color.to_esp_color(), [10, 20, 30, 0]);
         assert!(!color.migrated_from_hsv);
+    }
+
+    #[test]
+    fn toml_typed_light_color_rejects_out_of_range_rgb_component() {
+        let err =
+            toml::from_str::<TypedLightColor>("red = 256\ngreen = 20\nblue = 30").unwrap_err();
+
+        assert!(err.to_string().contains("invalid value"));
     }
 
     #[test]

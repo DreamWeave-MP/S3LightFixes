@@ -85,17 +85,21 @@ save_config = false
 
 # You may also set custom values for light configurations for each light *or* cell record in lightConfig.toml.
 # This allows complete control and customization over all light colors, durations, radii, and even types(pulse, flicker, etc) in your lightConfig.toml
+# Fixed colors use RGB components matching the TES3 Construction Set values: red, green, and blue from 0 to 255.
+# Complete legacy HSV color triples are automatically converted to RGB and rewritten. Partial legacy HSV light overrides still work, but S3LightFixes will warn because they cannot be automatically converted without the original light color.
 # A few examples are shown below.
 # These customizations to lights may also be applied on the command line and saved to lightConfig.toml by using the `-u` argument, along with `--light` for each light record, or `--ambient` for each cell you wish to edit.
 # See further below for command-line examples.
 
 [light_overrides.light_com_candle_02_64]
-hue = 3
-saturation = -1.7599999904632568
-value = -1.46299999952316284
+red = 255
+green = 128
+blue = 64
 
 [light_overrides.Torch_000]
-hue = 239
+red = 64
+green = 128
+blue = 255
 radius = 254
 duration = 1199.0
 
@@ -105,9 +109,9 @@ radius_mult = 1.0
 flag = "PULSESLOW"
 
 [ambient_overrides."caius cosades' house".ambient]
-hue = 34
-saturation = -1.2
-value = -1.12
+red = 64
+green = 48
+blue = 32
 ```
 
 All parameters available in the lightConfig.toml may also be used as command line arguments. See below for further details on supported command line arguments.
@@ -194,25 +198,25 @@ Additionally, S3LightFixes will perform the following:
   -X, --excluded-plugins <EXCLUDED_PLUGINS>
           List of Regex patterns of plugins to exclude. This setting is *merged* onto values defined by lightconfig.toml.
           If this argument is not used, the value will be derived from lightConfig.toml.
-      --light <LIGHT_OVERRIDES>
+     --light <LIGHT_OVERRIDES>
           Colon-separated list of regexes to light values.
                May be specified multiple times instead of as a separated list.
-               Light values are specified as *either* fixed HSV values or as multipliers of existing ones.
+               Light values are specified as *either* fixed RGB values or as HSV multipliers of existing ones.
                EG:
-               --light "Torch_001=radius=255,hue=240,duration=1200,flag=FLICKERSLOW" --light "Torch_002=radius_mult=2.0,hue_mult=1.3,duration_mult=5.0,flag=NONE"
+               --light "Torch_001=radius=255,red=255,green=128,blue=64,duration=1200,flag=FLICKERSLOW" --light "Torch_002=radius_mult=2.0,hue_mult=1.3,duration_mult=5.0,flag=NONE"
                OR
-               --light "Torch_001=radius=255,hue=240,duration=1200,flag=FLICKERSLOW:Torch_002=radius_mult=2.0,hue_mult=1.3,duration_mult=5.0,flag=NONE"
-               Hue is a range from 0-360 and saturation/value are normalized floats (0.0 - 1.0). Radius and duration are u32 (can be very big).
+               --light "Torch_001=radius=255,red=255,green=128,blue=64,duration=1200,flag=FLICKERSLOW:Torch_002=radius_mult=2.0,hue_mult=1.3,duration_mult=5.0,flag=NONE"
+               RGB color components are 0-255, matching TES3/Construction Set values. Radius and duration are u32 (can be very big).
                `flag` may be: NONE, FLICKER, FLICKERSLOW, PULSE, PULSESLOW
-               Fixed values are mutually exclusive with multipliers for each value and setting both will cause an error.
+               Fixed RGB values are mutually exclusive with HSV multipliers and setting both will cause an error.
       --ambient <AMBIENT_OVERRIDES>
           
                       Colon-separated list of cell id regexes, to the corresponding ambient data.
                       `sunlight`, `ambient`, `fog`, and `fog_density` are available parameters.
-                      Values are provided as fixed HSV values, no multipliers.
-                      Hue is a range from 0-360 and saturation/value are normalized floats (0.0 - 1.0).
+                      Values are provided as fixed RGB values, no multipliers.
+                      RGB color components are 0-255, matching TES3/Construction Set values.
                       Each field of cell ambient data is separated by a semicolon, as below:
-                      --ambient "caius cosades' house=sun=hue=360,saturation=1.0,value=1.0;ambient=hue=24,saturation=0.25,value=0.69"
+                      --ambient "caius cosades' house=sunlight=red=255,green=255,blue=255;ambient=red=64,green=48,blue=32"
                       
   -U, --update-light-config
           Force-saves the light config on this run. Note that this parameter does not merge into lightConfig.toml like others, and must be manually set there.
