@@ -191,7 +191,7 @@ fn main() -> io::Result<()> {
     let mut args = LightArgs::parse();
 
     if args.info {
-        println!("S3LightFixes Version: {}", env!("CARGO_PKG_VERSION"),);
+        println!("S3LightFixes Version: {}", env!("CARGO_PKG_VERSION"));
         exit(0);
     }
 
