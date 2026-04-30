@@ -129,3 +129,90 @@ pub fn save_plugin(output_dir: &PathBuf, generated_plugin: &mut Plugin) -> io::R
 pub fn to_io_error<E: std::fmt::Display>(err: E) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::InvalidData, err.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        path::{Path, PathBuf},
+        sync::atomic::{AtomicU64, Ordering},
+    };
+
+    use super::*;
+
+    static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(0);
+
+    struct TempFile {
+        path: PathBuf,
+    }
+
+    impl TempFile {
+        fn new(name: &str) -> Self {
+            let (stem, extension) = name
+                .rsplit_once('.')
+                .map_or((name, ""), |(stem, extension)| (stem, extension));
+            let extension = if extension.is_empty() {
+                String::new()
+            } else {
+                format!(".{extension}")
+            };
+            let path = std::env::temp_dir().join(format!(
+                "s3lightfixes-lib-{stem}-{}-{}{extension}",
+                std::process::id(),
+                NEXT_TEMP_FILE.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::write(&path, []).unwrap();
+
+            Self { path }
+        }
+
+        fn with_exact_name_in_unique_dir(name: &str) -> Self {
+            let directory = std::env::temp_dir().join(format!(
+                "s3lightfixes-lib-dir-{}-{}",
+                std::process::id(),
+                NEXT_TEMP_FILE.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir(&directory).unwrap();
+            let path = directory.join(name);
+            std::fs::write(&path, []).unwrap();
+
+            Self { path }
+        }
+
+        fn as_path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.path);
+            if let Some(parent) = self.path.parent() {
+                let _ = std::fs::remove_dir(parent);
+            }
+        }
+    }
+
+    #[test]
+    fn is_fixable_plugin_accepts_supported_extensions_case_insensitively() {
+        for name in ["mod.esp", "mod.ESM", "mod.OmWaDdOn", "mod.omwgame"] {
+            let file = TempFile::new(name);
+
+            assert!(is_fixable_plugin(file.as_path()), "{name}");
+        }
+    }
+
+    #[test]
+    fn is_fixable_plugin_rejects_missing_files_unsupported_extensions_and_generated_plugin() {
+        let txt = TempFile::new("mod.txt");
+        let generated = TempFile::with_exact_name_in_unique_dir(PLUGIN_NAME);
+        let missing = std::env::temp_dir().join(format!(
+            "s3lightfixes-lib-missing-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_FILE.fetch_add(1, Ordering::Relaxed)
+        ));
+
+        assert!(!is_fixable_plugin(txt.as_path()));
+        assert!(!is_fixable_plugin(generated.as_path()));
+        assert!(!is_fixable_plugin(&missing));
+    }
+}

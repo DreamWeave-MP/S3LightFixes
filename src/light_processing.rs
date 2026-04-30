@@ -194,3 +194,266 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) {
     let rgb8_color: Srgb<u8> = <Hsv as IntoColor<Srgb>>::into_color(light_as_hsv).into_format();
     light.data.color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
 }
+
+#[cfg(test)]
+mod tests {
+    use regex::Regex;
+    use tes3::esp::{Light, LightData, LightFlags, ObjectFlags};
+
+    use super::*;
+    use crate::light_override::LightFlag;
+
+    fn rgb_from_hsv(hue: f32, saturation: f32, value: f32) -> [u8; 4] {
+        let hsv = Hsv::from_components((palette::RgbHue::from_degrees(hue), saturation, value));
+        let rgb8_color: Srgb<u8> = <Hsv as IntoColor<Srgb>>::into_color(hsv).into_format();
+
+        [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0]
+    }
+
+    fn light(id: &str, hue: f32, radius: u32, time: i32, flags: LightFlags) -> Light {
+        Light {
+            flags: ObjectFlags::default(),
+            id: id.to_owned(),
+            data: LightData {
+                radius,
+                time,
+                color: rgb_from_hsv(hue, 1.0, 1.0),
+                flags,
+                ..LightData::default()
+            },
+            ..Light::default()
+        }
+    }
+
+    fn config() -> LightConfig {
+        LightConfig {
+            disable_flickering: false,
+            disable_pulse: false,
+            standard_hue: 1.0,
+            standard_saturation: 1.0,
+            standard_value: 1.0,
+            standard_radius: 1.0,
+            colored_hue: 1.0,
+            colored_saturation: 1.0,
+            colored_value: 1.0,
+            colored_radius: 1.0,
+            duration_mult: 1.0,
+            ..LightConfig::default()
+        }
+    }
+
+    #[test]
+    fn negative_lights_are_zeroed_and_return_early() {
+        let mut light_config = config();
+        light_config.disable_flickering = true;
+        light_config.disable_pulse = true;
+        light_config.standard_radius = 100.0;
+        light_config.duration_mult = 100.0;
+        light_config.light_regexes.push((
+            Regex::new("negative").unwrap(),
+            CustomLightData {
+                radius: Some(777),
+                duration: Some(888.0),
+                ..CustomLightData::default()
+            },
+        ));
+
+        let mut light = light(
+            "negative_light",
+            30.0,
+            42,
+            13,
+            LightFlags::NEGATIVE | LightFlags::FLICKER | LightFlags::PULSE,
+        );
+
+        process_light(&light_config, &mut light);
+
+        assert!(!light.data.flags.contains(LightFlags::NEGATIVE));
+        assert!(light.data.flags.contains(LightFlags::FLICKER));
+        assert!(light.data.flags.contains(LightFlags::PULSE));
+        assert_eq!(light.data.radius, 0);
+        assert_eq!(light.data.time, 13);
+        assert_eq!(light.data.color, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn disabling_flicker_and_pulse_removes_only_those_flags() {
+        let mut light_config = config();
+        light_config.disable_flickering = true;
+        light_config.disable_pulse = true;
+
+        let mut light = light(
+            "animated_light",
+            30.0,
+            100,
+            10,
+            LightFlags::FLICKER
+                | LightFlags::FLICKER_SLOW
+                | LightFlags::PULSE
+                | LightFlags::PULSE_SLOW
+                | LightFlags::FIRE,
+        );
+
+        process_light(&light_config, &mut light);
+
+        assert!(!light.data.flags.contains(LightFlags::FLICKER));
+        assert!(!light.data.flags.contains(LightFlags::FLICKER_SLOW));
+        assert!(!light.data.flags.contains(LightFlags::PULSE));
+        assert!(!light.data.flags.contains(LightFlags::PULSE_SLOW));
+        assert!(light.data.flags.contains(LightFlags::FIRE));
+    }
+
+    #[test]
+    fn light_to_hsv_classifies_orange_boundaries_as_standard() {
+        for (hue, expected_colored) in [(13.0, true), (14.0, false), (64.0, false), (65.0, true)] {
+            let light = light("classified", hue, 1, 1, LightFlags::default());
+            let (_, is_colored) = light_to_hsv(&light.data);
+
+            assert_eq!(is_colored, expected_colored, "hue {hue}");
+        }
+    }
+
+    #[test]
+    fn standard_and_colored_lights_use_their_own_global_multipliers() {
+        let mut light_config = config();
+        light_config.standard_radius = 2.0;
+        light_config.colored_radius = 3.0;
+        light_config.duration_mult = 4.0;
+
+        let mut standard = light("standard", 30.0, 10, 5, LightFlags::default());
+        let mut colored = light("colored", 180.0, 10, 5, LightFlags::default());
+
+        process_light(&light_config, &mut standard);
+        process_light(&light_config, &mut colored);
+
+        assert_eq!(standard.data.radius, 20);
+        assert_eq!(colored.data.radius, 30);
+        assert_eq!(standard.data.time, 20);
+        assert_eq!(colored.data.time, 20);
+    }
+
+    #[test]
+    fn matching_light_overrides_beat_globals_and_fall_back_per_field() {
+        let mut light_config = config();
+        light_config.standard_radius = 2.0;
+        light_config.duration_mult = 3.0;
+        light_config.light_regexes.push((
+            Regex::new("fixed").unwrap(),
+            CustomLightData {
+                radius: Some(123),
+                duration: Some(456.0),
+                hue: Some(180),
+                saturation: Some(0.5),
+                value: Some(0.25),
+                ..CustomLightData::default()
+            },
+        ));
+        light_config.light_regexes.push((
+            Regex::new("partial").unwrap(),
+            CustomLightData {
+                radius: Some(321),
+                ..CustomLightData::default()
+            },
+        ));
+        light_config.light_regexes.push((
+            Regex::new("mult").unwrap(),
+            CustomLightData {
+                radius_mult: Some(5.0),
+                duration_mult: Some(7.0),
+                ..CustomLightData::default()
+            },
+        ));
+
+        let mut fixed = light("fixed_light", 30.0, 10, 10, LightFlags::default());
+        let mut partial = light("partial_light", 30.0, 10, 10, LightFlags::default());
+        let mut mult = light("mult_light", 30.0, 10, 10, LightFlags::default());
+
+        process_light(&light_config, &mut fixed);
+        process_light(&light_config, &mut partial);
+        process_light(&light_config, &mut mult);
+
+        assert_eq!(fixed.data.radius, 123);
+        assert_eq!(fixed.data.time, 456);
+        assert_eq!(fixed.data.color, rgb_from_hsv(180.0, 0.5, 0.25));
+
+        assert_eq!(partial.data.radius, 321);
+        assert_eq!(partial.data.time, 30);
+
+        assert_eq!(mult.data.radius, 50);
+        assert_eq!(mult.data.time, 70);
+    }
+
+    #[test]
+    fn first_matching_light_override_wins_and_flag_replacement_is_exact() {
+        let mut light_config = config();
+        light_config.standard_radius = 10.0;
+        light_config.light_regexes.push((
+            Regex::new("torch").unwrap(),
+            CustomLightData {
+                radius: Some(111),
+                flag: Some(LightFlag::PulseSlow),
+                ..CustomLightData::default()
+            },
+        ));
+        light_config.light_regexes.push((
+            Regex::new("torch_special").unwrap(),
+            CustomLightData {
+                radius: Some(222),
+                flag: Some(LightFlag::Flicker),
+                ..CustomLightData::default()
+            },
+        ));
+        let mut light = light(
+            "torch_special",
+            30.0,
+            10,
+            10,
+            LightFlags::FIRE | LightFlags::FLICKER,
+        );
+
+        process_light(&light_config, &mut light);
+
+        assert_eq!(light.data.radius, 111);
+        assert_eq!(light.data.flags, LightFlags::PULSE_SLOW);
+    }
+
+    #[test]
+    fn hsv_multiplier_overrides_apply_to_matching_lights() {
+        let mut light_config = config();
+        light_config.light_regexes.push((
+            Regex::new("hsv_mult").unwrap(),
+            CustomLightData {
+                hue_mult: Some(2.0),
+                saturation_mult: Some(0.5),
+                value_mult: Some(0.25),
+                ..CustomLightData::default()
+            },
+        ));
+        let mut light = light("hsv_mult_light", 30.0, 10, 10, LightFlags::default());
+
+        process_light(&light_config, &mut light);
+
+        assert_eq!(light.data.color, rgb_from_hsv(60.0, 0.5, 0.25));
+    }
+
+    #[test]
+    fn negative_radius_multipliers_clamp_to_zero_instead_of_wrapping() {
+        let mut light_config = config();
+        light_config.standard_radius = -2.0;
+        light_config.light_regexes.push((
+            Regex::new("override").unwrap(),
+            CustomLightData {
+                radius_mult: Some(-3.0),
+                ..CustomLightData::default()
+            },
+        ));
+        let mut global = light("global", 30.0, 10, 10, LightFlags::default());
+        let mut overridden = light("override", 30.0, 10, 10, LightFlags::default());
+
+        process_light(&light_config, &mut global);
+        process_light(&light_config, &mut overridden);
+
+        assert_eq!(global.data.radius, 0);
+        assert_eq!(overridden.data.radius, 0);
+    }
+}

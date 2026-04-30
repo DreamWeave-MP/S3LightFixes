@@ -496,3 +496,126 @@ impl FromStr for LightFlag {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_f32_eq(actual: f32, expected: f32) {
+        assert!((actual - expected).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn parses_cli_light_override_fixed_fields() {
+        let (id, data) = parse_light_override(
+            "Torch_001=radius=255,duration=1200,hue=240,saturation=0.5,value=0.25,flag=FLICKERSLOW",
+        )
+        .unwrap();
+
+        assert_eq!(id, "Torch_001");
+        assert_eq!(data.radius, Some(255));
+        assert_eq!(data.duration, Some(1200.0));
+        assert_eq!(data.hue, Some(240));
+        assert_eq!(data.saturation, Some(0.5));
+        assert_eq!(data.value, Some(0.25));
+        assert!(matches!(data.flag, Some(LightFlag::FlickerSlow)));
+    }
+
+    #[test]
+    fn parses_cli_light_override_multiplier_fields() {
+        let (_, data) = parse_light_override(
+            "Torch_002=radius_mult=2.0,duration_mult=3.0,hue_mult=4.0,saturation_mult=0.5,value_mult=0.25",
+        )
+        .unwrap();
+
+        assert_eq!(data.radius_mult, Some(2.0));
+        assert_eq!(data.duration_mult, Some(3.0));
+        assert_eq!(data.hue_mult, Some(4.0));
+        assert_eq!(data.saturation_mult, Some(0.5));
+        assert_eq!(data.value_mult, Some(0.25));
+    }
+
+    #[test]
+    fn cli_light_override_rejects_fixed_and_multiplier_for_same_field() {
+        let err = parse_light_override("Torch=radius=10,radius_mult=2.0").unwrap_err();
+
+        assert!(matches!(
+            err,
+            ParseLightError::ExclusiveFields("radius", "radius_mult")
+        ));
+    }
+
+    #[test]
+    fn cli_light_override_clamps_fixed_color_fields() {
+        let (_, data) = parse_light_override("Torch=hue=999,saturation=2.0,value=-1.0").unwrap();
+
+        assert_eq!(data.hue, Some(360));
+        assert_eq!(data.saturation, Some(1.0));
+        assert_eq!(data.value, Some(0.0));
+    }
+
+    #[test]
+    fn parses_cli_ambient_override_all_fields() {
+        let (id, ambient) = parse_ambient_override(
+            "caius=ambient=hue=30,saturation=0.5,value=0.6;sunlight=hue=40,saturation=0.7,value=0.8;fog=hue=50,saturation=0.9,value=1.0;fog_density=0.25",
+        )
+        .unwrap();
+
+        assert_eq!(id, "caius");
+        assert_eq!(ambient.ambient.as_ref().unwrap().hue, 30);
+        assert_f32_eq(ambient.sunlight.as_ref().unwrap().saturation, 0.7);
+        assert_f32_eq(ambient.fog.as_ref().unwrap().value, 1.0);
+        assert_eq!(ambient.fog_density, Some(0.25));
+    }
+
+    #[test]
+    fn cli_ambient_override_reports_bad_nested_color() {
+        let err = parse_ambient_override("caius=ambient=hue=30,saturation=0.5").unwrap_err();
+
+        assert!(matches!(err, ParseAmbientError::BadColor(field, _) if field == "ambient"));
+    }
+
+    #[test]
+    fn cli_ambient_override_rejects_unknown_fields() {
+        let err = parse_ambient_override("caius=glow=hue=30,saturation=0.5,value=0.6").unwrap_err();
+
+        assert!(matches!(err, ParseAmbientError::UnknownField(field) if field == "glow"));
+    }
+
+    #[test]
+    fn toml_light_data_rejects_fixed_and_multiplier_for_same_field() {
+        let err = toml::from_str::<CustomLightData>("radius = 10\nradius_mult = 2.0").unwrap_err();
+
+        assert!(err.to_string().contains("mutually exclusive"));
+    }
+
+    #[test]
+    fn toml_typed_light_color_clamps_fields() {
+        let color =
+            toml::from_str::<TypedLightColor>("hue = 999\nsaturation = 2.0\nvalue = -1.0").unwrap();
+
+        assert_eq!(color.hue, 360);
+        assert_f32_eq(color.saturation, 1.0);
+        assert_f32_eq(color.value, 0.0);
+    }
+
+    #[test]
+    fn toml_light_flag_accepts_documented_uppercase_names() {
+        #[derive(Deserialize)]
+        struct FlagWrapper {
+            flag: LightFlag,
+        }
+
+        for (raw, expected) in [
+            ("FLICKERSLOW", LightFlag::FlickerSlow),
+            ("FLICKER", LightFlag::Flicker),
+            ("PULSE", LightFlag::Pulse),
+            ("PULSESLOW", LightFlag::PulseSlow),
+            ("NONE", LightFlag::None),
+        ] {
+            let parsed = toml::from_str::<FlagWrapper>(&format!("flag = '{raw}'")).unwrap();
+
+            assert!(std::mem::discriminant(&parsed.flag) == std::mem::discriminant(&expected));
+        }
+    }
+}
