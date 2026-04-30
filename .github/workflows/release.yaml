@@ -1,4 +1,4 @@
-name: Corprus Crucible Manufacturing
+name: Lightfixes CI
 
 on:
   workflow_dispatch:
@@ -8,83 +8,14 @@ on:
     tags: ['*']
 
 jobs:
-  # Ensure any previously-existing releases are deleted,
-  # And create a new one with auto-generated changelog & workflow ID
-  release_cleanup:
-    uses: DreamWeave-MP/StroggForge/.github/workflows/createRelease.yml@v6
-    secrets: inherit
-
-  # Build, test, sign, package, & release a Rust app on all platforms
-  release:
-    needs: release_cleanup
-
-    strategy:
-      matrix:
-        os: [macos-latest, macos-15-intel, ubuntu-latest, windows-latest]
-
-    runs-on: ${{ matrix.os }}
-
+  build:
     permissions:
       contents: write
+      pages: write
       id-token: write
-
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run Corprus Crucible
-        uses: DreamWeave-MP/StroggForge/.github/actions/corprus-crucible@v6
-        with:
-          binary_name: s3lightfixes
-          vt_api_key: ${{ secrets.VT_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          release_name: ${{ needs.release_cleanup.outputs.release_name }}
-
-  # For application repositories which are also hosted in the AUR,
-  # update the AUR package as well.
-  aur-publish:
-    env:
-      AUR_PACKAGE_NAME: s3lightfixes-git
-
-    outputs:
-      pkg_name: ${{ env.AUR_PACKAGE_NAME }}
-
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    needs: release
-    environment: AUR
-    steps:
-      - uses: actions/checkout@v4
-      - uses: varrcan/aur-publish-action@v1
-        with:
-          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          package_name: ${{ env.AUR_PACKAGE_NAME }}
-          git_username: magicaldave
-          git_email: corleycomputerrepair@protonmail.ch
-
-  # For workflows where users may now receive a new deliverable, notify them about it!
-  call-discord-webhook:
-    if: always() && github.event_name == 'push'
-    needs: release
-    uses: DreamWeave-MP/StroggForge/.github/workflows/discord.yml@v6
-    secrets:
-      WEBHOOK_URL: ${{ secrets.DW_TOOLS_CHANNEL_WEBHOOK }}
+    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v20
+    secrets: inherit
     with:
-      title: ${{ needs.release.result == 'failure' && format('{0} pipeline failed! 😭', github.event.repository.name) || '' }}
-      description: ${{ needs.release.result == 'failure' && format('[Workflow Results](https://github.com/{0}/actions/runs/{1})', github.repository, github.run_id) || ''}}
-
-  # For any repositories which use this one as a dependent,
-  # notify them by creating an issue within the DreamWeave org's scope.
-  nag-dependents:
-    if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    needs: release
-
-    strategy:
-      matrix:
-        target_repo: [DreamWeave-MP/DW-tools]
-
-    uses: DreamWeave-MP/StroggForge/.github/workflows/dependent.yml@v6
-
-    secrets:
-      DW_BOT_PAT: ${{ secrets.DW_BOT_PAT }}
-    with:
-      aur_package_name: ${{ needs.aur-publish.outputs.pkg_name }}
-      target_repo: ${{ matrix.target_repo }}
+      # Required: JSON array of binary names to build. Add more for monorepos.
+      binary_names: '["s3lightfixes"]'
+      cargo_publish: false
