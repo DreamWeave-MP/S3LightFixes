@@ -22,8 +22,40 @@ use s3lightfixes::{
     is_fixable_plugin, notification_box, save_plugin,
 };
 
-/// Given a LightData reference from an ESP light,
+// TES3 stores these values as integers, while lightfixes intentionally exposes multipliers as
+// floats. The casts are the conversion boundary between the file format and user-authored math.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
+fn scaled_u32(value: u32, multiplier: f32) -> u32 {
+    (value as f32 * multiplier).max(0.0) as u32
+}
+
+// Same boundary as `scaled_u32`, but TES3 light duration is signed.
+#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+fn scaled_i32(value: i32, multiplier: f32) -> i32 {
+    (value as f32 * multiplier) as i32
+}
+
+// Hue is clamped to 0..=360 before this point, so the precision-loss lint is technically correct
+// and practically useless. There are 361 possible values. IEEE-754 will survive this one.
+#[allow(clippy::cast_precision_loss)]
+fn hue_degrees(hue: u32) -> f32 {
+    hue as f32
+}
+
+// User-provided fixed durations are floats to share parser machinery with multipliers, but TES3
+// stores the result as an integer duration.
+#[allow(clippy::cast_possible_truncation)]
+fn fixed_duration_to_i32(duration: f32) -> i32 {
+    duration as i32
+}
+
+/// Given a `LightData` reference from an ESP light,
 /// returns the HSV version and whether it is colored or not (for the global modifier)
+#[must_use]
 pub fn light_to_hsv(light_data: &tes3::esp::LightData) -> (Hsv, bool) {
     let rgb: palette::rgb::Rgb = Srgb::new(
         light_data.color[0],
@@ -35,7 +67,7 @@ pub fn light_to_hsv(light_data: &tes3::esp::LightData) -> (Hsv, bool) {
     let hsv: Hsv = Hsv::from_color(rgb);
     let hue_degrees = hsv.get_hue().into_positive_degrees();
 
-    (hsv, hue_degrees > 64. || hue_degrees < 14.)
+    (hsv, !(14. ..=64.).contains(&hue_degrees))
 }
 
 pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) {
@@ -72,21 +104,20 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) {
         }
     }
 
-    let (global_radius, global_hue, global_saturation, global_value) = match is_colored {
-        // Red, purple, blue, green, yellow
-        true => (
+    let (global_radius, global_hue, global_saturation, global_value) = if is_colored {
+        (
             light_config.colored_radius,
             light_config.colored_hue,
             light_config.colored_saturation,
             light_config.colored_value,
-        ),
-        // Everything else
-        false => (
+        )
+    } else {
+        (
             light_config.standard_radius,
             light_config.standard_hue,
             light_config.standard_saturation,
             light_config.standard_value,
-        ),
+        )
     };
 
     if let Some(replacement) = replacement_light_data {
@@ -95,7 +126,7 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) {
                 palette::RgbHue::from_degrees(light_as_hsv.hue.into_raw_degrees() * hue_mult);
             light_as_hsv.set_hue(new_hue);
         } else if let Some(fixed_hue) = replacement.hue {
-            light_as_hsv.set_hue(palette::RgbHue::from_degrees(fixed_hue as f32));
+            light_as_hsv.set_hue(palette::RgbHue::from_degrees(hue_degrees(fixed_hue)));
         } else {
             let new_hue =
                 palette::RgbHue::from_degrees(light_as_hsv.hue.into_raw_degrees() * global_hue);
@@ -119,19 +150,19 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) {
         }
 
         if let Some(duration_mult) = replacement.duration_mult {
-            light.data.time = (duration_mult * light.data.time as f32) as i32;
+            light.data.time = scaled_i32(light.data.time, duration_mult);
         } else if let Some(fixed_duration) = replacement.duration {
-            light.data.time = fixed_duration as i32;
+            light.data.time = fixed_duration_to_i32(fixed_duration);
         } else {
-            light.data.time = (light.data.time as f32 * light_config.duration_mult) as i32;
+            light.data.time = scaled_i32(light.data.time, light_config.duration_mult);
         }
 
         if let Some(radius_mult) = replacement.radius_mult {
-            light.data.radius = (radius_mult * light.data.radius as f32) as u32;
+            light.data.radius = scaled_u32(light.data.radius, radius_mult);
         } else if let Some(fixed_radius) = replacement.radius {
             light.data.radius = fixed_radius;
         } else {
-            light.data.radius = (global_radius * light.data.radius as f32) as u32;
+            light.data.radius = scaled_u32(light.data.radius, global_radius);
         }
 
         if let Some(flag) = &replacement.flag {
@@ -145,21 +176,24 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) {
         light_as_hsv.saturation *= global_saturation;
         light_as_hsv.value *= global_value;
 
-        light.data.radius = (global_radius * light.data.radius as f32) as u32;
-        light.data.time = (light.data.time as f32 * light_config.duration_mult) as i32;
+        light.data.radius = scaled_u32(light.data.radius, global_radius);
+        light.data.time = scaled_i32(light.data.time, light_config.duration_mult);
     }
 
     let rgb8_color: Srgb<u8> = <Hsv as IntoColor<Srgb>>::into_color(light_as_hsv).into_format();
     light.data.color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
 }
 
+// The entry point is mostly command orchestration and plugin emission. Splitting this further tends
+// to hide the order-sensitive TES3 master/header mutation, which is worse than a long function.
+#[allow(clippy::too_many_lines)]
 fn main() -> io::Result<()> {
     let mut args = LightArgs::parse();
 
     if args.info {
         println!("S3LightFixes Version: {}", env!("CARGO_PKG_VERSION"),);
         exit(0);
-    };
+    }
 
     let no_notifications = var("S3L_NO_NOTIFICATIONS").is_ok() || args.no_notifications;
     let config_dir = get_config_path(&mut args);
@@ -170,7 +204,7 @@ fn main() -> io::Result<()> {
         Ok(config) => config,
         Err(error) => {
             notification_box(
-                &"Failed to read configuration file!",
+                "Failed to read configuration file!",
                 &error.to_string(),
                 no_notifications,
             );
@@ -195,9 +229,10 @@ fn main() -> io::Result<()> {
 
         None => match &mut config.data_local() {
             Some(dir) => dir.parsed().to_owned(),
-            None => match current_dir() {
-                Ok(dir) => dir,
-                Err(_) => {
+            None => {
+                if let Ok(dir) = current_dir() {
+                    dir
+                } else {
                     notification_box(
                         "Can't get workdir!",
                         "[ CRITICAL FAILURE ]: FAILED TO READ CURRENT WORKING DIRECTORY!",
@@ -205,7 +240,7 @@ fn main() -> io::Result<()> {
                     );
                     std::process::exit(256);
                 }
-            },
+            }
         },
     };
 
@@ -244,7 +279,7 @@ fn main() -> io::Result<()> {
 
     let directories: Vec<&Path> = config
         .data_directories_iter()
-        .map(|directory| directory.parsed())
+        .map(openmw_config::DirectorySetting::parsed)
         .collect();
 
     let vfs = VFS::from_directories(directories, None);
@@ -284,88 +319,84 @@ fn main() -> io::Result<()> {
 
             if used_ids.contains(&cell_id) || light_config.is_excluded_id(&cell_id) {
                 continue;
-            };
+            }
 
-            match cell.atmosphere_data {
-                Some(ref mut atmo) => {
-                    // Need additional handling here for instance replacements!
-                    // Filter out any instances which are not either in the `deletions` or `replacements` lists.
-                    cell.references.clear();
+            if let Some(ref mut atmo) = cell.atmosphere_data {
+                // Need additional handling here for instance replacements!
+                // Filter out any instances which are not either in the `deletions` or `replacements` lists.
+                cell.references.clear();
 
-                    if cell.water_height.is_some() {
-                        cell.water_height = None
+                if cell.water_height.is_some() {
+                    cell.water_height = None;
+                }
+
+                let mut replaced = false;
+
+                if light_config.disable_interior_sun {
+                    atmo.sunlight_color = [0, 0, 0, 0];
+
+                    replaced = true;
+                }
+
+                for (pattern, replacement_data) in &light_config.ambient_regexes {
+                    if !pattern.is_match(&cell_id) {
+                        continue;
                     }
 
-                    let mut replaced = false;
+                    if let Some(ambient) = &replacement_data.ambient {
+                        let hsv: Hsv = Hsv::from_components((
+                            palette::RgbHue::from_degrees(hue_degrees(ambient.hue)),
+                            ambient.saturation,
+                            ambient.value,
+                        ));
 
-                    if light_config.disable_interior_sun {
-                        atmo.sunlight_color = [0, 0, 0, 0];
+                        let rgb8_color: Srgb<u8> =
+                            <Hsv as IntoColor<Srgb>>::into_color(hsv).into_format();
 
+                        atmo.ambient_color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
+                        replaced = true;
+                    }
+                    if let Some(fog) = &replacement_data.fog {
+                        let hsv: Hsv = Hsv::from_components((
+                            palette::RgbHue::from_degrees(hue_degrees(fog.hue)),
+                            fog.saturation,
+                            fog.value,
+                        ));
+
+                        let rgb8_color: Srgb<u8> =
+                            <Hsv as IntoColor<Srgb>>::into_color(hsv).into_format();
+
+                        atmo.fog_color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
                         replaced = true;
                     }
 
-                    for (pattern, replacement_data) in &light_config.ambient_regexes {
-                        if !pattern.is_match(&cell_id) {
-                            continue;
-                        };
+                    if let Some(sunlight) = &replacement_data.sunlight {
+                        let hsv: Hsv = Hsv::from_components((
+                            palette::RgbHue::from_degrees(hue_degrees(sunlight.hue)),
+                            sunlight.saturation,
+                            sunlight.value,
+                        ));
 
-                        if let Some(ambient) = &replacement_data.ambient {
-                            let hsv: Hsv = Hsv::from_components((
-                                palette::RgbHue::from_degrees(ambient.hue as f32),
-                                ambient.saturation,
-                                ambient.value,
-                            ));
+                        let rgb8_color: Srgb<u8> =
+                            <Hsv as IntoColor<Srgb>>::into_color(hsv).into_format();
 
-                            let rgb8_color: Srgb<u8> =
-                                <Hsv as IntoColor<Srgb>>::into_color(hsv).into_format();
-
-                            atmo.ambient_color =
-                                [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
-                            replaced = true;
-                        }
-                        if let Some(fog) = &replacement_data.fog {
-                            let hsv: Hsv = Hsv::from_components((
-                                palette::RgbHue::from_degrees(fog.hue as f32),
-                                fog.saturation,
-                                fog.value,
-                            ));
-
-                            let rgb8_color: Srgb<u8> =
-                                <Hsv as IntoColor<Srgb>>::into_color(hsv).into_format();
-
-                            atmo.fog_color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
-                            replaced = true;
-                        }
-
-                        if let Some(sunlight) = &replacement_data.sunlight {
-                            let hsv: Hsv = Hsv::from_components((
-                                palette::RgbHue::from_degrees(sunlight.hue as f32),
-                                sunlight.saturation,
-                                sunlight.value,
-                            ));
-
-                            let rgb8_color: Srgb<u8> =
-                                <Hsv as IntoColor<Srgb>>::into_color(hsv).into_format();
-
-                            atmo.sunlight_color =
-                                [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
-                            replaced = true;
-                        }
-
-                        if let Some(density) = &replacement_data.fog_density {
-                            atmo.fog_density = density.to_owned();
-                            replaced = true;
-                        }
+                        atmo.sunlight_color =
+                            [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
+                        replaced = true;
                     }
 
-                    if replaced {
-                        generated_plugin.objects.push(TakeAndSwitch(cell).into());
-
-                        used_ids.insert(cell_id);
-                        used_objects += 1;
+                    if let Some(density) = &replacement_data.fog_density {
+                        density.clone_into(&mut atmo.fog_density);
+                        replaced = true;
                     }
                 }
-                None => {}
+
+                if replaced {
+                    generated_plugin.objects.push(TakeAndSwitch(cell).into());
+
+                    used_ids.insert(cell_id);
+                    used_objects += 1;
+                }
             }
         }
 
@@ -390,16 +421,15 @@ fn main() -> io::Result<()> {
 
         if used_objects > 0 {
             let plugin_size = metadata(plugin_path)?.len();
-            let plugin_string = match plugin_path.file_name() {
-                Some(name) => name.to_string_lossy().to_string(),
-                None => {
-                    notification_box(
-                        "Bad plugin path!",
-                        "Lightfixes could not resolve the name of one of your plugins! This is UBER Bad and should never happen!",
-                        light_config.no_notifications,
-                    );
-                    std::process::exit(3);
-                }
+            let plugin_string = if let Some(name) = plugin_path.file_name() {
+                name.to_string_lossy().to_string()
+            } else {
+                notification_box(
+                    "Bad plugin path!",
+                    "Lightfixes could not resolve the name of one of your plugins! This is UBER Bad and should never happen!",
+                    light_config.no_notifications,
+                );
+                std::process::exit(3);
             };
 
             header.masters.insert(0, (plugin_string, plugin_size));
@@ -412,7 +442,7 @@ fn main() -> io::Result<()> {
         dbg!(&header);
     }
 
-    if header.masters.len() == 0 {
+    if header.masters.is_empty() {
         notification_box(
             "No masters found!",
             "The generated plugin was not found to have any master files! It's empty! Try running lightfixes again using the S3L_DEBUG environment variable",
@@ -439,43 +469,41 @@ fn main() -> io::Result<()> {
             &err.to_string(),
             light_config.no_notifications,
         );
-    };
+    }
 
     // Handle this arg via clap
-    if light_config.auto_enable {
-        if !config.has_content_file(&PLUGIN_NAME) {
-            match config.add_content_file(&PLUGIN_NAME) {
-                Ok(_) => {
-                    if let Err(err) = config.save_user() {
-                        notification_box(
-                            "Failed to resave openmw.cfg!",
-                            &err.to_string(),
-                            light_config.no_notifications,
-                        );
-                    } else {
-                        let lightfix_enabled_msg = format!(
-                            "Wrote user openmw.cfg at {} successfully!",
-                            config.user_config_path().display()
-                        );
-                        notification_box(
-                            "Lightfixes enabled!",
-                            &lightfix_enabled_msg,
-                            light_config.no_notifications,
-                        );
-                    }
+    if light_config.auto_enable && !config.has_content_file(PLUGIN_NAME) {
+        match config.add_content_file(PLUGIN_NAME) {
+            Ok(()) => {
+                if let Err(err) = config.save_user() {
+                    notification_box(
+                        "Failed to resave openmw.cfg!",
+                        &err.to_string(),
+                        light_config.no_notifications,
+                    );
+                } else {
+                    let lightfix_enabled_msg = format!(
+                        "Wrote user openmw.cfg at {} successfully!",
+                        config.user_config_path().display()
+                    );
+                    notification_box(
+                        "Lightfixes enabled!",
+                        &lightfix_enabled_msg,
+                        light_config.no_notifications,
+                    );
                 }
-                Err(err) => {
-                    eprintln!("{err}");
-                    std::process::exit(256);
-                }
-            };
+            }
+            Err(err) => {
+                eprintln!("{err}");
+                std::process::exit(256);
+            }
         }
     }
 
     if light_config.save_log {
         let path = config.user_config_path().join(LOG_NAME);
         let mut file = File::create(path)?;
-        let _ = write!(file, "{}", format!("{:#?}", &generated_plugin));
+        let _ = write!(file, "{generated_plugin:#?}");
     }
 
     let lights_fixed = format!(
@@ -484,7 +512,7 @@ fn main() -> io::Result<()> {
     );
 
     notification_box(
-        &"Lightfixes successful!",
+        "Lightfixes successful!",
         &lights_fixed,
         light_config.no_notifications,
     );

@@ -14,7 +14,9 @@ pub enum ParseLightError {
 
 impl std::fmt::Display for ParseLightError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use ParseLightError::*;
+        use ParseLightError::{
+            BadNumber, BadPair, ExclusiveFields, MissingPrefix, UnknownField, UnknownVariant,
+        };
         match self {
             BadPair(s) => write!(f, "Expected key=value pair, got: `{s}`"),
             ExclusiveFields(existing_field, bad_field) => write!(
@@ -51,130 +53,7 @@ impl FromStr for CustomLightData {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut data = CustomLightData::default();
-
-        parse_pairs(s, |k, v| {
-            match k {
-                "radius_mult" => {
-                    if let Some(_) = data.radius {
-                        return Err(ParseLightError::ExclusiveFields("radius", "radius_mult"));
-                    }
-
-                    data.radius_mult = Some(v.parse().map_err(|e: std::num::ParseFloatError| {
-                        ParseLightError::BadNumber("radius", e.to_string())
-                    })?)
-                }
-                "hue_mult" => {
-                    if let Some(_) = data.hue {
-                        return Err(ParseLightError::ExclusiveFields("hue", "hue_mult"));
-                    }
-
-                    data.hue_mult = Some(v.parse().map_err(|e: std::num::ParseFloatError| {
-                        ParseLightError::BadNumber("hue", e.to_string())
-                    })?)
-                }
-                "saturation_mult" => {
-                    if let Some(_) = data.saturation {
-                        return Err(ParseLightError::ExclusiveFields(
-                            "saturation",
-                            "saturation_mult",
-                        ));
-                    }
-
-                    data.saturation_mult =
-                        Some(v.parse().map_err(|e: std::num::ParseFloatError| {
-                            ParseLightError::BadNumber("saturation", e.to_string())
-                        })?)
-                }
-                "value_mult" => {
-                    if let Some(_) = data.value {
-                        return Err(ParseLightError::ExclusiveFields("value", "value_mult"));
-                    }
-
-                    data.value_mult = Some(v.parse().map_err(|e: std::num::ParseFloatError| {
-                        ParseLightError::BadNumber("value_mult", e.to_string())
-                    })?)
-                }
-
-                "duration_mult" => {
-                    if let Some(_) = data.duration {
-                        return Err(ParseLightError::ExclusiveFields(
-                            "duration",
-                            "duration_mult",
-                        ));
-                    }
-
-                    data.duration_mult =
-                        Some(v.parse().map_err(|e: std::num::ParseFloatError| {
-                            ParseLightError::BadNumber("duration_mult", e.to_string())
-                        })?)
-                }
-
-                "duration" => {
-                    if let Some(_) = data.duration_mult {
-                        return Err(ParseLightError::ExclusiveFields(
-                            "duration_mult",
-                            "duration",
-                        ));
-                    }
-
-                    data.duration = Some(v.parse().map_err(|e: std::num::ParseFloatError| {
-                        ParseLightError::BadNumber("duration", e.to_string())
-                    })?)
-                }
-
-                "radius" => {
-                    if let Some(_) = data.radius_mult {
-                        return Err(ParseLightError::ExclusiveFields("radius_mult", "radius"));
-                    }
-
-                    data.radius = Some(v.parse().map_err(|e: std::num::ParseIntError| {
-                        ParseLightError::BadNumber("radius", e.to_string())
-                    })?)
-                }
-                "hue" => {
-                    if let Some(_) = data.hue_mult {
-                        return Err(ParseLightError::ExclusiveFields("hue_mult", "hue"));
-                    }
-
-                    let parsed: u32 = v.parse().map_err(|e: std::num::ParseIntError| {
-                        ParseLightError::BadNumber("hue", e.to_string())
-                    })?;
-
-                    data.hue = Some(parsed.clamp(0, 360))
-                }
-                "saturation" => {
-                    if let Some(_) = data.saturation_mult {
-                        return Err(ParseLightError::ExclusiveFields(
-                            "saturation_mult",
-                            "saturation",
-                        ));
-                    }
-
-                    let parsed: f32 = v.parse().map_err(|e: std::num::ParseFloatError| {
-                        ParseLightError::BadNumber("saturation", e.to_string())
-                    })?;
-
-                    data.saturation = Some(parsed.clamp(0.0, 1.0))
-                }
-                "value" => {
-                    if let Some(_) = data.value_mult {
-                        return Err(ParseLightError::ExclusiveFields("value_mult", "value"));
-                    }
-
-                    let parsed: f32 = v.parse().map_err(|e: std::num::ParseFloatError| {
-                        ParseLightError::BadNumber("value", e.to_string())
-                    })?;
-
-                    data.value = Some(parsed.clamp(0.0, 1.0))
-                }
-                "flag" => {
-                    let parsed: LightFlag = v.parse()?;
-                    data.flag = Some(parsed);
-                }
-                _ => return Err(ParseLightError::UnknownField(k.to_owned())),
-            }
-            Ok(())
-        })?;
+        parse_pairs(s, |key, value| data.set_pair(key, value))?;
 
         Ok(data)
     }
@@ -270,6 +149,134 @@ pub struct CustomLightData {
     pub flag: Option<LightFlag>,
 }
 
+impl CustomLightData {
+    fn set_float_mult(
+        target: &mut Option<f32>,
+        fixed_is_set: bool,
+        fixed_name: &'static str,
+        mult_name: &'static str,
+        value: &str,
+    ) -> Result<(), ParseLightError> {
+        if fixed_is_set {
+            return Err(ParseLightError::ExclusiveFields(fixed_name, mult_name));
+        }
+
+        *target = Some(value.parse().map_err(|e: std::num::ParseFloatError| {
+            ParseLightError::BadNumber(mult_name, e.to_string())
+        })?);
+        Ok(())
+    }
+
+    fn set_pair(&mut self, key: &str, value: &str) -> Result<(), ParseLightError> {
+        match key {
+            "radius_mult" => Self::set_float_mult(
+                &mut self.radius_mult,
+                self.radius.is_some(),
+                "radius",
+                "radius_mult",
+                value,
+            ),
+            "hue_mult" => Self::set_float_mult(
+                &mut self.hue_mult,
+                self.hue.is_some(),
+                "hue",
+                "hue_mult",
+                value,
+            ),
+            "saturation_mult" => Self::set_float_mult(
+                &mut self.saturation_mult,
+                self.saturation.is_some(),
+                "saturation",
+                "saturation_mult",
+                value,
+            ),
+            "value_mult" => Self::set_float_mult(
+                &mut self.value_mult,
+                self.value.is_some(),
+                "value",
+                "value_mult",
+                value,
+            ),
+            "duration_mult" => Self::set_float_mult(
+                &mut self.duration_mult,
+                self.duration.is_some(),
+                "duration",
+                "duration_mult",
+                value,
+            ),
+            "duration" => self.set_duration(value),
+            "radius" => self.set_radius(value),
+            "hue" => self.set_hue(value),
+            "saturation" => self.set_saturation(value),
+            "value" => self.set_value(value),
+            "flag" => {
+                self.flag = Some(value.parse()?);
+                Ok(())
+            }
+            _ => Err(ParseLightError::UnknownField(key.to_owned())),
+        }
+    }
+
+    fn set_duration(&mut self, value: &str) -> Result<(), ParseLightError> {
+        if self.duration_mult.is_some() {
+            return Err(ParseLightError::ExclusiveFields(
+                "duration_mult",
+                "duration",
+            ));
+        }
+        self.duration = Some(value.parse().map_err(|e: std::num::ParseFloatError| {
+            ParseLightError::BadNumber("duration", e.to_string())
+        })?);
+        Ok(())
+    }
+
+    fn set_radius(&mut self, value: &str) -> Result<(), ParseLightError> {
+        if self.radius_mult.is_some() {
+            return Err(ParseLightError::ExclusiveFields("radius_mult", "radius"));
+        }
+        self.radius = Some(value.parse().map_err(|e: std::num::ParseIntError| {
+            ParseLightError::BadNumber("radius", e.to_string())
+        })?);
+        Ok(())
+    }
+
+    fn set_hue(&mut self, value: &str) -> Result<(), ParseLightError> {
+        if self.hue_mult.is_some() {
+            return Err(ParseLightError::ExclusiveFields("hue_mult", "hue"));
+        }
+        let parsed: u32 = value.parse().map_err(|e: std::num::ParseIntError| {
+            ParseLightError::BadNumber("hue", e.to_string())
+        })?;
+        self.hue = Some(parsed.clamp(0, 360));
+        Ok(())
+    }
+
+    fn set_saturation(&mut self, value: &str) -> Result<(), ParseLightError> {
+        if self.saturation_mult.is_some() {
+            return Err(ParseLightError::ExclusiveFields(
+                "saturation_mult",
+                "saturation",
+            ));
+        }
+        let parsed: f32 = value.parse().map_err(|e: std::num::ParseFloatError| {
+            ParseLightError::BadNumber("saturation", e.to_string())
+        })?;
+        self.saturation = Some(parsed.clamp(0.0, 1.0));
+        Ok(())
+    }
+
+    fn set_value(&mut self, value: &str) -> Result<(), ParseLightError> {
+        if self.value_mult.is_some() {
+            return Err(ParseLightError::ExclusiveFields("value_mult", "value"));
+        }
+        let parsed: f32 = value.parse().map_err(|e: std::num::ParseFloatError| {
+            ParseLightError::BadNumber("value", e.to_string())
+        })?;
+        self.value = Some(parsed.clamp(0.0, 1.0));
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 /// Struct used to store color replacements for cells.
 /// No fields are optional, unlike light record replacements. Nor are multipliers supported.
@@ -311,7 +318,7 @@ pub enum ParseTypedColorError {
 
 impl fmt::Display for ParseTypedColorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use ParseTypedColorError::*;
+        use ParseTypedColorError::{BadNumber, BadPair, MissingField, UnknownField};
         match self {
             MissingField(name) => write!(f, "Missing required field: `{name}`"),
             UnknownField(name) => write!(f, "Unknown field: `{name}`"),
@@ -384,7 +391,7 @@ pub enum ParseAmbientError {
 
 impl fmt::Display for ParseAmbientError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use ParseAmbientError::*;
+        use ParseAmbientError::{BadColor, BadPair, UnknownField};
         match self {
             BadPair(pair) => write!(f, "Expected key=value pair, got: `{pair}`"),
             UnknownField(field) => write!(f, "Unknown field: `{field}`"),
@@ -449,23 +456,28 @@ impl FromStr for CustomCellAmbient {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub enum LightFlag {
-    FLICKERSLOW,
-    FLICKER,
-    PULSE,
-    PULSESLOW,
+    #[serde(rename = "FLICKERSLOW")]
+    FlickerSlow,
+    #[serde(rename = "FLICKER")]
+    Flicker,
+    #[serde(rename = "PULSE")]
+    Pulse,
+    #[serde(rename = "PULSESLOW")]
+    PulseSlow,
     #[default]
-    NONE,
+    #[serde(rename = "NONE")]
+    None,
 }
 
 use tes3::esp::LightFlags;
 impl LightFlag {
     pub fn to_esp_flag(&self) -> LightFlags {
         match &self {
-            Self::FLICKER => LightFlags::FLICKER,
-            Self::FLICKERSLOW => LightFlags::FLICKER_SLOW,
-            Self::PULSE => LightFlags::PULSE,
-            Self::PULSESLOW => LightFlags::PULSE_SLOW,
-            Self::NONE => LightFlags::empty(),
+            Self::Flicker => LightFlags::FLICKER,
+            Self::FlickerSlow => LightFlags::FLICKER_SLOW,
+            Self::Pulse => LightFlags::PULSE,
+            Self::PulseSlow => LightFlags::PULSE_SLOW,
+            Self::None => LightFlags::empty(),
         }
     }
 }
@@ -475,11 +487,11 @@ impl FromStr for LightFlag {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_ascii_lowercase().as_str() {
-            "flicker" => Ok(LightFlag::FLICKER),
-            "flickerslow" => Ok(LightFlag::FLICKERSLOW),
-            "pulse" => Ok(LightFlag::PULSE),
-            "pulseslow" => Ok(LightFlag::PULSESLOW),
-            "none" => Ok(LightFlag::NONE),
+            "flicker" => Ok(LightFlag::Flicker),
+            "flickerslow" => Ok(LightFlag::FlickerSlow),
+            "pulse" => Ok(LightFlag::Pulse),
+            "pulseslow" => Ok(LightFlag::PulseSlow),
+            "none" => Ok(LightFlag::None),
             _ => Err(ParseLightError::UnknownVariant(s.to_string())),
         }
     }
