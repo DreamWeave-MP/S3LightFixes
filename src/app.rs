@@ -377,9 +377,13 @@ fn save_log_if_requested(
 
     let path = config.user_config_path().join(LOG_NAME);
     let mut file = File::create(path)?;
-    let _ = write!(file, "{generated_plugin:#?}");
+    write_log_to(&mut file, generated_plugin);
 
     Ok(())
+}
+
+fn write_log_to(mut writer: impl Write, generated_plugin: &Plugin) {
+    let _ = write!(writer, "{generated_plugin:#?}");
 }
 
 /// Runs the command-line application.
@@ -459,4 +463,371 @@ pub fn run() -> io::Result<()> {
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use regex::Regex;
+    use tes3::esp::{AtmosphereData, CellData, LightData, LightFlags, Reference, TES3Object};
+
+    use super::*;
+    use crate::{CustomCellAmbient, light_override::TypedLightColor};
+
+    static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(0);
+
+    struct TempPluginFile {
+        path: PathBuf,
+    }
+
+    impl TempPluginFile {
+        fn as_path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempPluginFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+
+    fn temp_plugin_file(name: &str, size: usize) -> TempPluginFile {
+        let path = std::env::temp_dir().join(format!(
+            "s3lightfixes-{name}-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_FILE.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::write(&path, vec![0; size]).unwrap();
+
+        TempPluginFile { path }
+    }
+
+    fn light(id: &str, radius: u32) -> Light {
+        Light {
+            id: id.to_owned(),
+            data: LightData {
+                radius,
+                time: 10,
+                color: [255, 128, 0, 0],
+                flags: LightFlags::default(),
+                ..LightData::default()
+            },
+            ..Light::default()
+        }
+    }
+
+    fn plugin_with_lights(lights: impl IntoIterator<Item = Light>) -> Plugin {
+        Plugin {
+            objects: lights.into_iter().map(TES3Object::from).collect(),
+        }
+    }
+
+    fn generated_lights(plugin: &Plugin) -> Vec<&Light> {
+        plugin.objects_of_type::<Light>().collect()
+    }
+
+    fn generated_cells(plugin: &Plugin) -> Vec<&Cell> {
+        plugin.objects_of_type::<Cell>().collect()
+    }
+
+    fn config() -> LightConfig {
+        LightConfig {
+            standard_hue: 1.0,
+            standard_saturation: 1.0,
+            standard_value: 1.0,
+            standard_radius: 1.0,
+            colored_hue: 1.0,
+            colored_saturation: 1.0,
+            colored_value: 1.0,
+            colored_radius: 1.0,
+            duration_mult: 1.0,
+            ..LightConfig::default()
+        }
+    }
+
+    fn interior_cell(id: &str) -> Cell {
+        Cell {
+            name: id.to_owned(),
+            data: CellData {
+                flags: CellFlags::IS_INTERIOR,
+                ..CellData::default()
+            },
+            atmosphere_data: Some(AtmosphereData {
+                ambient_color: [1, 2, 3, 0],
+                sunlight_color: [4, 5, 6, 0],
+                fog_color: [7, 8, 9, 0],
+                fog_density: 0.25,
+            }),
+            water_height: Some(10.0),
+            references: [((0, 1), Reference::default())].into(),
+            ..Cell::default()
+        }
+    }
+
+    fn exterior_cell(id: &str) -> Cell {
+        Cell {
+            name: id.to_owned(),
+            atmosphere_data: Some(AtmosphereData::default()),
+            water_height: Some(10.0),
+            references: [((0, 1), Reference::default())].into(),
+            ..Cell::default()
+        }
+    }
+
+    #[test]
+    fn generate_plugin_uses_first_processed_duplicate_id_and_keeps_unique_lights() {
+        let later_path = temp_plugin_file("later.omwaddon", 11);
+        let earlier_path = temp_plugin_file("earlier.omwaddon", 13);
+        let light_config = config();
+        let plugins = vec![
+            (
+                plugin_with_lights([light("Shared_Light", 300), light("later_only", 301)]),
+                later_path.as_path(),
+            ),
+            (
+                plugin_with_lights([light("shared_light", 100), light("earlier_only", 101)]),
+                earlier_path.as_path(),
+            ),
+        ];
+
+        let result = generate_plugin(plugins, &light_config).unwrap();
+        let lights = generated_lights(&result.plugin);
+
+        assert_eq!(lights.len(), 3);
+        assert_eq!(
+            lights
+                .iter()
+                .find(|light| light.id.eq_ignore_ascii_case("shared_light"))
+                .unwrap()
+                .data
+                .radius,
+            300
+        );
+        assert!(lights.iter().any(|light| light.id == "later_only"));
+        assert!(lights.iter().any(|light| light.id == "earlier_only"));
+        assert_eq!(result.header.num_objects, 3);
+    }
+
+    #[test]
+    fn generate_plugin_adds_masters_only_for_plugins_that_contribute_objects() {
+        let contributing_a = temp_plugin_file("contributing_a.omwaddon", 11);
+        let duplicate_only = temp_plugin_file("duplicate_only.omwaddon", 13);
+        let contributing_c = temp_plugin_file("contributing_c.omwaddon", 17);
+        let light_config = config();
+        let plugins = vec![
+            (
+                plugin_with_lights([light("shared", 100)]),
+                contributing_a.as_path(),
+            ),
+            (
+                plugin_with_lights([light("shared", 200)]),
+                duplicate_only.as_path(),
+            ),
+            (
+                plugin_with_lights([light("unique", 300)]),
+                contributing_c.as_path(),
+            ),
+        ];
+
+        let result = generate_plugin(plugins, &light_config).unwrap();
+
+        assert_eq!(result.header.num_objects, 2);
+        assert_eq!(
+            result.header.masters,
+            vec![
+                (
+                    contributing_c
+                        .as_path()
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string(),
+                    17
+                ),
+                (
+                    contributing_a
+                        .as_path()
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string(),
+                    11
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn process_lights_skips_excluded_ids_that_would_otherwise_emit() {
+        let mut light_config = config();
+        light_config
+            .excluded_id_regexes
+            .push(Regex::new("excluded_light").unwrap());
+        let source_plugin = plugin_with_lights([light("excluded_light", 100), light("kept", 200)]);
+        let mut generated_plugin = Plugin::new();
+        let mut used_ids = HashSet::new();
+
+        let used_objects = process_lights(
+            source_plugin,
+            &mut generated_plugin,
+            &light_config,
+            &mut used_ids,
+        );
+
+        let lights = generated_lights(&generated_plugin);
+        assert_eq!(used_objects, 1);
+        assert_eq!(lights.len(), 1);
+        assert_eq!(lights[0].id, "kept");
+        assert!(!used_ids.contains("excluded_light"));
+        assert!(used_ids.contains("kept"));
+    }
+
+    #[test]
+    fn process_cells_emits_ambient_replacement_and_strips_instance_state() {
+        let mut light_config = config();
+        light_config.ambient_regexes.push((
+            Regex::new("ambient_cell").unwrap(),
+            CustomCellAmbient {
+                ambient: Some(TypedLightColor {
+                    hue: 180,
+                    saturation: 1.0,
+                    value: 1.0,
+                }),
+                sunlight: Some(TypedLightColor {
+                    hue: 240,
+                    saturation: 1.0,
+                    value: 1.0,
+                }),
+                fog: Some(TypedLightColor {
+                    hue: 120,
+                    saturation: 1.0,
+                    value: 1.0,
+                }),
+                fog_density: Some(0.75),
+            },
+        ));
+        let mut source_plugin = Plugin {
+            objects: vec![interior_cell("ambient_cell").into()],
+        };
+        let mut generated_plugin = Plugin::new();
+        let mut used_ids = HashSet::new();
+
+        let used_objects = process_cells(
+            &mut source_plugin,
+            &mut generated_plugin,
+            &light_config,
+            &mut used_ids,
+        );
+
+        let cells = generated_cells(&generated_plugin);
+        assert_eq!(used_objects, 1);
+        assert_eq!(cells.len(), 1);
+        assert!(used_ids.contains("ambient_cell"));
+        assert!(cells[0].references.is_empty());
+        assert!(cells[0].water_height.is_none());
+
+        let atmo = cells[0].atmosphere_data.as_ref().unwrap();
+        assert_eq!(atmo.ambient_color, [0, 255, 255, 0]);
+        assert_eq!(atmo.sunlight_color, [0, 0, 255, 0]);
+        assert_eq!(atmo.fog_color, [0, 255, 0, 0]);
+        assert!((atmo.fog_density - 0.75).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn process_cells_disable_interior_sun_counts_as_replacement() {
+        let mut light_config = config();
+        light_config.disable_interior_sun = true;
+        let mut source_plugin = Plugin {
+            objects: vec![interior_cell("sun_cell").into()],
+        };
+        let mut generated_plugin = Plugin::new();
+        let mut used_ids = HashSet::new();
+
+        let used_objects = process_cells(
+            &mut source_plugin,
+            &mut generated_plugin,
+            &light_config,
+            &mut used_ids,
+        );
+
+        let cells = generated_cells(&generated_plugin);
+        assert_eq!(used_objects, 1);
+        assert_eq!(cells.len(), 1);
+        assert_eq!(
+            cells[0].atmosphere_data.as_ref().unwrap().sunlight_color,
+            [0, 0, 0, 0]
+        );
+        assert!(cells[0].references.is_empty());
+        assert!(cells[0].water_height.is_none());
+        assert!(used_ids.contains("sun_cell"));
+    }
+
+    #[test]
+    fn process_cells_leaves_skipped_cells_out_of_generated_plugin() {
+        let mut light_config = config();
+        light_config.disable_interior_sun = true;
+        light_config
+            .excluded_id_regexes
+            .push(Regex::new("excluded_cell").unwrap());
+        let mut used_ids = HashSet::from(["duplicate_cell".to_owned()]);
+        let mut source_plugin = Plugin {
+            objects: vec![
+                exterior_cell("exterior_cell").into(),
+                Cell {
+                    name: "no_atmosphere".to_owned(),
+                    data: CellData {
+                        flags: CellFlags::IS_INTERIOR,
+                        ..CellData::default()
+                    },
+                    atmosphere_data: None,
+                    ..Cell::default()
+                }
+                .into(),
+                interior_cell("excluded_cell").into(),
+                interior_cell("duplicate_cell").into(),
+            ],
+        };
+        let mut generated_plugin = Plugin::new();
+
+        let used_objects = process_cells(
+            &mut source_plugin,
+            &mut generated_plugin,
+            &light_config,
+            &mut used_ids,
+        );
+
+        assert_eq!(used_objects, 0);
+        assert!(generated_cells(&generated_plugin).is_empty());
+        assert!(used_ids.contains("duplicate_cell"));
+        assert!(!used_ids.contains("excluded_cell"));
+    }
+
+    #[test]
+    fn write_errors_after_log_file_creation_are_ignored() {
+        struct BrokenWriter {
+            attempted_write: bool,
+        }
+
+        impl Write for BrokenWriter {
+            fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+                self.attempted_write = true;
+                Err(io::Error::other("broken writer"))
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let mut writer = BrokenWriter {
+            attempted_write: false,
+        };
+        let generated_plugin = Plugin::new();
+
+        write_log_to(&mut writer, &generated_plugin);
+
+        assert!(writer.attempted_write);
+    }
 }
