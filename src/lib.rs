@@ -8,6 +8,9 @@ use std::{
 pub use openmw_config::OpenMWConfiguration;
 pub use tes3::esp::Plugin;
 
+mod app;
+pub use app::run;
+
 pub mod default;
 
 pub mod light_args;
@@ -18,6 +21,9 @@ pub use light_config::LightConfig;
 
 mod light_override;
 pub use light_override::{CustomCellAmbient, CustomLightData};
+
+mod light_processing;
+pub use light_processing::{light_to_hsv, process_light};
 
 pub const DEFAULT_CONFIG_NAME: &str = "lightconfig.toml";
 pub const LOG_NAME: &str = "lightconfig.log";
