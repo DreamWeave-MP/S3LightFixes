@@ -23,17 +23,24 @@ pub const DEFAULT_CONFIG_NAME: &str = "lightconfig.toml";
 pub const LOG_NAME: &str = "lightconfig.log";
 pub const PLUGIN_NAME: &str = "S3LightFixes.omwaddon";
 
+/// Returns the `openmw.cfg` path selected by CLI arguments, the current directory, or platform defaults.
+///
+/// # Panics
+///
+/// Panics if the user explicitly supplied an `openmw.cfg` path that resolves to neither a file nor
+/// a directory containing `openmw.cfg`. That is a caller contract violation; continuing would make
+/// the rest of the run operate on a different config than requested.
 pub fn get_config_path(args: &mut LightArgs) -> PathBuf {
     if let Some(path) = &args.openmw_cfg {
         let absolute_path = if path.is_relative() {
-            path.canonicalize().unwrap()
+            path.canonicalize().unwrap_or_else(|_| path.to_owned())
         } else {
             path.to_owned()
         };
 
-        if absolute_path.is_dir() && absolute_path.join("openmw.cfg").is_file() {
-            return absolute_path;
-        } else if absolute_path.is_file() {
+        if absolute_path.is_file()
+            || (absolute_path.is_dir() && absolute_path.join("openmw.cfg").is_file())
+        {
             return absolute_path;
         }
 
@@ -51,50 +58,47 @@ pub fn get_config_path(args: &mut LightArgs) -> PathBuf {
     openmw_config::default_config_path()
 }
 
+#[must_use]
 pub fn is_fixable_plugin(plug_path: &Path) -> bool {
-    // If path doesn't exist
-    if metadata(plug_path).is_err() {
-        return false;
-    // If path is the lightfixes plugin
-    } else if plug_path.to_string_lossy().contains(PLUGIN_NAME) {
-        return false;
-    } else {
-        // Don't match extensionless files
-        // And also do the match in case-insensitive fashion
-        match plug_path.extension() {
-            None => return false,
-            Some(ext) => match ext.to_ascii_lowercase().to_str().unwrap_or_default() {
-                "esp" | "esm" | "omwaddon" | "omwgame" => return true,
-                _ => return false,
-            },
-        }
-    }
+    metadata(plug_path).is_ok()
+        && !plug_path.to_string_lossy().contains(PLUGIN_NAME)
+        && plug_path.extension().is_some_and(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().to_str().unwrap_or_default(),
+                "esp" | "esm" | "omwaddon" | "omwgame"
+            )
+        })
 }
 
 /// Displays a notification taking title and message as argument
 pub fn notification_box(title: &str, message: &str, no_notifications: bool) {
     #[cfg(target_os = "android")]
-    println!("{}", message);
+    println!("{message}");
 
     #[cfg(not(target_os = "android"))]
-    if !no_notifications {
+    if no_notifications {
+        println!("{message}");
+    } else {
         let _ = native_dialog::DialogBuilder::message()
             .set_title(title)
             .set_text(message)
             .alert()
             .show();
-    } else {
-        println!("{}", message);
     }
 }
 
+/// Saves the generated plugin to the requested output directory.
+///
+/// # Errors
+///
+/// Returns any filesystem error encountered while creating the output directory, resolving the
+/// fallback current directory, or writing the plugin file.
 pub fn save_plugin(output_dir: &PathBuf, generated_plugin: &mut Plugin) -> io::Result<()> {
     let mut plugin_path = output_dir.join(PLUGIN_NAME);
 
     match metadata(output_dir) {
         Ok(metadata) if !metadata.is_dir() => {
-            let cwd =
-                current_dir().expect("CRITICAL FAILURE: FAILED TO READ CURRENT WORKING DIRECTORY!");
+            let cwd = current_dir()?;
 
             eprintln!(
                 "WARNING: Couldn't use {} as an output directory, as it isn't a directory. Using the current working directory, {}, instead!",

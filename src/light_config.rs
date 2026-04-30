@@ -13,7 +13,8 @@ use serde::{
 };
 
 use crate::{
-    CustomCellAmbient, CustomLightData, DEFAULT_CONFIG_NAME, default, notification_box, to_io_error,
+    CustomCellAmbient, CustomLightData, DEFAULT_CONFIG_NAME, LightArgs, default, notification_box,
+    to_io_error,
 };
 
 pub fn deserialize_ordered_hash_map<'de, D, K, V>(
@@ -83,6 +84,9 @@ where
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+// This struct is the public TOML schema. Grouping the booleans into enum wrappers would either
+// change the config format or add serde indirection that exists only to satisfy clippy.
+#[allow(clippy::struct_excessive_bools)]
 pub struct LightConfig {
     /// This parameter is DANGEROUS
     /// It's only meant to be used with vtastek's experimental shaders for openmw 0.47
@@ -175,10 +179,173 @@ pub struct LightConfig {
 impl LightConfig {
     fn find(root_path: &PathBuf) -> Result<PathBuf, io::Error> {
         read_dir(root_path)?
-            .filter_map(|entry| entry.ok())
+            .filter_map(std::result::Result::ok)
             .find(|entry| entry.file_name().eq_ignore_ascii_case(DEFAULT_CONFIG_NAME))
             .map(|entry| entry.path())
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Light config not found"))
+    }
+
+    fn load(
+        user_config_path: &std::path::Path,
+        no_notifications: bool,
+    ) -> io::Result<(Self, bool)> {
+        let Ok(config_path) = Self::find(&user_config_path.to_path_buf()) else {
+            return Ok((LightConfig::default(), true));
+        };
+
+        let config_contents = read_to_string(config_path)?;
+        let config = toml::from_str(&config_contents).unwrap_or_else(|error| {
+            notification_box(
+                "Failed to read light config!",
+                &format!("Lightconfig.toml couldn't be read: {error}"),
+                no_notifications,
+            );
+            std::process::exit(256);
+        });
+
+        Ok((config, false))
+    }
+
+    fn apply_scalar_args(&mut self, light_args: &mut LightArgs) {
+        Self::overwrite_if_some([
+            (&mut self.standard_hue, &mut light_args.standard_hue),
+            (
+                &mut self.standard_saturation,
+                &mut light_args.standard_saturation,
+            ),
+            (&mut self.standard_value, &mut light_args.standard_value),
+            (&mut self.standard_radius, &mut light_args.standard_radius),
+            (&mut self.colored_hue, &mut light_args.colored_hue),
+            (
+                &mut self.colored_saturation,
+                &mut light_args.colored_saturation,
+            ),
+            (&mut self.colored_value, &mut light_args.colored_value),
+            (&mut self.colored_radius, &mut light_args.colored_radius),
+            (&mut self.duration_mult, &mut light_args.duration_mult),
+        ]);
+    }
+
+    fn apply_bool_args(&mut self, light_args: &LightArgs) {
+        Self::overwrite_if_some([
+            (
+                &mut self.disable_pulse,
+                &mut light_args.disable_pulse.clone(),
+            ),
+            (
+                &mut self.disable_flickering,
+                &mut light_args.disable_flickering.clone(),
+            ),
+            (
+                &mut self.save_log,
+                &mut light_args.write_log.then_some(true),
+            ),
+            (
+                &mut self.auto_enable,
+                &mut light_args.auto_enable.then_some(true),
+            ),
+            (
+                &mut self.no_notifications,
+                &mut light_args.no_notifications.then_some(true),
+            ),
+            (&mut self.debug, &mut light_args.debug.then_some(true)),
+        ]);
+    }
+
+    fn apply_collection_args(&mut self, light_args: &mut LightArgs) {
+        self.excluded_ids
+            .extend(std::mem::take(&mut light_args.excluded_ids));
+        self.excluded_plugins
+            .extend(std::mem::take(&mut light_args.excluded_plugins));
+        self.light_overrides
+            .extend(std::mem::take(&mut light_args.light_overrides));
+        self.ambient_overrides
+            .extend(std::mem::take(&mut light_args.ambient_overrides));
+    }
+
+    fn configure_output_dir(
+        &mut self,
+        output_dir: Option<PathBuf>,
+        openmw_config: &openmw_config::OpenMWConfiguration,
+    ) -> io::Result<()> {
+        if let Some(out_dir) = output_dir {
+            if out_dir.is_dir() {
+                self.output_dir = Some(out_dir);
+                return Ok(());
+            }
+
+            notification_box(
+                "Can't find output location!",
+                &format!(
+                    "WARNING: The requested output path {} does not exist! Terminating.",
+                    out_dir.display()
+                ),
+                self.no_notifications,
+            );
+            std::process::exit(1);
+        }
+
+        if self.output_dir.is_none() {
+            self.output_dir = Some(match openmw_config.data_local() {
+                Some(path) => path.parsed().to_owned(),
+                None => std::env::current_dir()?,
+            });
+        }
+
+        Ok(())
+    }
+
+    fn save_to_user_config(&self, user_config_path: &std::path::Path) -> io::Result<()> {
+        let config_serialized = toml::to_string_pretty(self).map_err(to_io_error)?;
+        let config_path = user_config_path.join(DEFAULT_CONFIG_NAME);
+        let mut config_file = File::create(config_path)?;
+        write!(config_file, "{config_serialized}")
+    }
+
+    fn compile_regexes(&mut self) {
+        for id in std::mem::take(&mut self.excluded_ids) {
+            match regex::Regex::new(&id) {
+                Ok(pattern) => self.excluded_id_regexes.push(pattern),
+                Err(error) => notification_box(
+                    "Invalid excluded id regex!",
+                    &format!("Couldn't compile excluded id regex: {id}: {error}"),
+                    self.no_notifications,
+                ),
+            }
+        }
+
+        for id in std::mem::take(&mut self.excluded_plugins) {
+            match regex::Regex::new(&id) {
+                Ok(pattern) => self.excluded_plugin_regexes.push(pattern),
+                Err(error) => notification_box(
+                    "Invalid excluded plugin regex!",
+                    &format!("Couldn't compile excluded plugin regex: {id}: {error}"),
+                    self.no_notifications,
+                ),
+            }
+        }
+
+        for (id, light_data) in std::mem::take(&mut self.light_overrides) {
+            match regex::Regex::new(&id) {
+                Ok(pattern) => self.light_regexes.push((pattern, light_data)),
+                Err(error) => notification_box(
+                    "Invalid light override!",
+                    &format!("Couldn't compile light override regex: {id}: {error}"),
+                    self.no_notifications,
+                ),
+            }
+        }
+
+        for (id, light_data) in std::mem::take(&mut self.ambient_overrides) {
+            match regex::Regex::new(&id) {
+                Ok(pattern) => self.ambient_regexes.push((pattern, light_data)),
+                Err(error) => notification_box(
+                    "Invalid ambient override!",
+                    &format!("Couldn't compile ambient override regex: {id}: {error}"),
+                    self.no_notifications,
+                ),
+            }
+        }
     }
 
     fn overwrite_if_some<'a, I, T>(pairs: I)
@@ -196,156 +363,29 @@ impl LightConfig {
     }
 
     /// Gives back the lightconfig adjacent to openmw.cfg when called
-    /// use_classic dictates whether or not a fixed radius of 2.0 will be used on orange-y lights
+    /// `use_classic` dictates whether or not a fixed radius of 2.0 will be used on orange-y lights
     /// and whether or not to disable interior sunlight
     /// the latter field is not de/serializable and can only be used via the --classic argument
+    ///
+    /// # Errors
+    ///
+    /// Returns filesystem errors encountered while reading or writing `lightconfig.toml`, or while
+    /// resolving the fallback output directory.
     pub fn get(
-        mut light_args: crate::LightArgs,
+        mut light_args: LightArgs,
         openmw_config: &openmw_config::OpenMWConfiguration,
     ) -> Result<LightConfig, io::Error> {
-        let mut write_config = false;
-
         let user_config_path = openmw_config.user_config_path();
 
-        let mut light_config: LightConfig = if let Ok(config_path) = Self::find(&user_config_path) {
-            let config_contents = read_to_string(config_path)?;
-
-            match toml::from_str(&config_contents) {
-                Ok(config) => config,
-                Err(e) => {
-                    notification_box(
-                        "Failed to read light config!",
-                        &format!("Lightconfig.toml couldn't be read: {e}"),
-                        light_args.no_notifications,
-                    );
-                    std::process::exit(256);
-                }
-            }
-        } else {
-            write_config = true;
-            LightConfig::default()
-        };
-
-        // Replace any values provided as CLI args in the config
-        // use_classic will always override the standard_radius and disable_interior_sun
-        Self::overwrite_if_some([
-            (&mut light_config.standard_hue, &mut light_args.standard_hue),
-            (
-                &mut light_config.standard_saturation,
-                &mut light_args.standard_saturation,
-            ),
-            (
-                &mut light_config.standard_value,
-                &mut light_args.standard_value,
-            ),
-            (
-                &mut light_config.standard_radius,
-                &mut light_args.standard_radius,
-            ),
-            (&mut light_config.colored_hue, &mut light_args.colored_hue),
-            (
-                &mut light_config.colored_saturation,
-                &mut light_args.colored_saturation,
-            ),
-            (
-                &mut light_config.colored_value,
-                &mut light_args.colored_value,
-            ),
-            (
-                &mut light_config.colored_radius,
-                &mut light_args.colored_radius,
-            ),
-            (
-                &mut light_config.duration_mult,
-                &mut light_args.duration_mult,
-            ),
-        ]);
-
-        Self::overwrite_if_some([
-            (
-                &mut light_config.disable_pulse,
-                &mut light_args.disable_pulse,
-            ),
-            (
-                &mut light_config.disable_flickering,
-                &mut light_args.disable_flickering,
-            ),
-            (
-                &mut light_config.save_log,
-                &mut if light_args.write_log {
-                    Some(light_args.write_log)
-                } else {
-                    None
-                },
-            ),
-            (
-                &mut light_config.auto_enable,
-                &mut if light_args.auto_enable {
-                    Some(light_args.auto_enable)
-                } else {
-                    None
-                },
-            ),
-            (
-                &mut light_config.no_notifications,
-                &mut if light_args.no_notifications {
-                    Some(light_args.no_notifications)
-                } else {
-                    None
-                },
-            ),
-            (
-                &mut light_config.debug,
-                &mut if light_args.debug {
-                    Some(light_args.debug)
-                } else {
-                    None
-                },
-            ),
-        ]);
+        let (mut light_config, write_config) =
+            Self::load(&user_config_path, light_args.no_notifications)?;
+        light_config.apply_scalar_args(&mut light_args);
+        light_config.apply_bool_args(&light_args);
 
         light_config.no_notifications |= std::env::var("S3L_NO_NOTIFICATIONS").is_ok();
         light_config.debug |= std::env::var("S3L_DEBUG").is_ok();
-
-        // If an output directory was specified via CLI, that should override config options
-        // If the provided path is valid
-        if let Some(out_dir) = light_args.output {
-            if out_dir.is_dir() {
-                light_config.output_dir = Some(out_dir);
-            } else {
-                notification_box(
-                    "Can't find output location!",
-                    &format!(
-                        "WARNING: The requested output path {out_dir:?} does not exist! Terminating."
-                    ),
-                    light_config.no_notifications,
-                );
-                std::process::exit(1)
-            }
-        // Otherwise, if there is neither an output directory specified by the config nor the CLI, use the default location,
-        // Being data-local, if defined by the current openmw.cfg, or the current working directory
-        } else if let None = light_config.output_dir {
-            light_config.output_dir = Some(match openmw_config.data_local() {
-                Some(path) => path.parsed().to_owned(),
-                None => std::env::current_dir().expect("Failed to get workdir!"),
-            });
-        };
-
-        light_config
-            .excluded_ids
-            .extend(std::mem::take(&mut light_args.excluded_ids));
-
-        light_config
-            .excluded_plugins
-            .extend(std::mem::take(&mut light_args.excluded_plugins));
-
-        light_config
-            .light_overrides
-            .extend(std::mem::take(&mut light_args.light_overrides));
-
-        light_config
-            .ambient_overrides
-            .extend(std::mem::take(&mut light_args.ambient_overrides));
+        light_config.configure_output_dir(light_args.output.take(), openmw_config)?;
+        light_config.apply_collection_args(&mut light_args);
 
         // This parameter indicates whether the user requested
         // To use compatibility mode for vtastek's old 0.47 shaders
@@ -356,80 +396,17 @@ impl LightConfig {
             light_config.disable_interior_sun = true;
         }
 
-        // If the configuration file didn't exist when we tried to find it, or the user specified to update
-        // serialize it here
         if write_config || light_config.save_config || light_args.update_light_config {
-            let config_serialized = toml::to_string_pretty(&light_config).map_err(to_io_error)?;
-
-            let config_path = user_config_path.join(DEFAULT_CONFIG_NAME);
-            let mut config_file = File::create(config_path)?;
-            write!(config_file, "{}", config_serialized)?;
+            light_config.save_to_user_config(&user_config_path)?;
         }
 
         // Consume the original values *after* reserializing the config
-        std::mem::take(&mut light_config.excluded_ids)
-            .into_iter()
-            .for_each(|id| {
-                match regex::Regex::new(&id) {
-                    Ok(pattern) => light_config.excluded_id_regexes.push(pattern),
-                    Err(error) => {
-                        notification_box(
-                            "Invalid excluded id regex!",
-                            &format!("Couldn't compile excluded id regex: {id}: {error}"),
-                            light_config.no_notifications,
-                        );
-                    }
-                };
-            });
-
-        std::mem::take(&mut light_config.excluded_plugins)
-            .into_iter()
-            .for_each(|id| {
-                match regex::Regex::new(&id) {
-                    Ok(pattern) => light_config.excluded_plugin_regexes.push(pattern),
-                    Err(error) => {
-                        notification_box(
-                            "Invalid excluded plugin regex!",
-                            &format!("Couldn't compile excluded plugin regex: {id}: {error}"),
-                            light_config.no_notifications,
-                        );
-                    }
-                };
-            });
-
-        std::mem::take(&mut light_config.light_overrides)
-            .into_iter()
-            .for_each(|(id, light_data)| {
-                match regex::Regex::new(&id) {
-                    Ok(pattern) => light_config.light_regexes.push((pattern, light_data)),
-                    Err(error) => {
-                        notification_box(
-                            "Invalid light override!",
-                            &format!("Couldn't compile light override regex: {id}: {error}"),
-                            light_config.no_notifications,
-                        );
-                    }
-                };
-            });
-
-        std::mem::take(&mut light_config.ambient_overrides)
-            .into_iter()
-            .for_each(|(id, light_data)| {
-                match regex::Regex::new(&id) {
-                    Ok(pattern) => light_config.ambient_regexes.push((pattern, light_data)),
-                    Err(error) => {
-                        notification_box(
-                            "Invalid ambient override!",
-                            &format!("Couldn't compile ambient override regex: {id}: {error}"),
-                            light_config.no_notifications,
-                        );
-                    }
-                };
-            });
+        light_config.compile_regexes();
 
         Ok(light_config)
     }
 
+    #[must_use]
     pub fn is_excluded_plugin(&self, plugin_path: &std::path::Path) -> bool {
         let file_name = match plugin_path.file_name() {
             None => return false,
@@ -445,11 +422,12 @@ impl LightConfig {
         false
     }
 
+    #[must_use]
     pub fn is_excluded_id(&self, record_id: &str) -> bool {
         for pattern in &self.excluded_id_regexes {
             if pattern.is_match(record_id) {
                 return true;
-            };
+            }
         }
 
         false

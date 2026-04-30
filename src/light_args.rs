@@ -9,18 +9,21 @@ use crate::default;
     name = "S3 Lightfixes",
     about = "A tool for modifying light values globally across an OpenMW installation.\nPlease note that arguments provided here, which also exist in lightConfig.toml, will override any values in lightConfig.toml when used.\nAdditionally, if the lightConfig.toml does not exist, the used values will be saved into the new lightConfig.toml."
 )]
+// CLI flags are naturally boolean. Turning these into enums would make the Rust type prettier
+// while making the command-line interface and clap mapping pointlessly dishonest.
+#[allow(clippy::struct_excessive_bools)]
 pub struct LightArgs {
     /// Path to openmw.cfg
     /// By default, uses the system paths defined by:
-    /// https://openmw.readthedocs.io/en/latest/reference/modding/paths.html
+    /// <https://openmw.readthedocs.io/en/latest/reference/modding/paths.html>
     /// Can be the literal path to an openmw.cfg file (including not literally being called openmw.cfg)
     /// Or the directory in which an openmw.cfg file lives.
     #[arg(short = 'c', long = "openmw-cfg")]
     pub openmw_cfg: Option<PathBuf>,
 
     /// Enables classic mode using vtastek shaders.
-    /// ONLY for openmw 0.47. Relevant shaders can be found in the OpenMW discord:
-    /// https://discord.com/channels/260439894298460160/718892786157617163/966468825321177148
+    /// ONLY for openmw 0.47. Relevant shaders can be found in the `OpenMW` discord:
+    /// <https://discord.com/channels/260439894298460160/718892786157617163/966468825321177148>
     #[arg(short = '7', long = "classic")]
     pub use_classic: bool,
 
