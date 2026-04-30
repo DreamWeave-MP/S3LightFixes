@@ -377,15 +377,17 @@ fn save_log_if_requested(
 
     let path = config.user_config_path().join(LOG_NAME);
     let mut file = File::create(path)?;
-    write!(file, "{generated_plugin:#?}")
+    let _ = write!(file, "{generated_plugin:#?}");
+
+    Ok(())
 }
 
 /// Runs the command-line application.
 ///
 /// # Errors
 ///
-/// Returns filesystem errors encountered while creating or saving the generated plugin and optional
-/// debug log. Configuration and user-facing validation errors keep the historical exit-code
+/// Returns filesystem errors encountered while creating the optional debug log. Configuration,
+/// plugin-save, and user-facing validation errors keep the historical notification/exit-code
 /// behavior of the binary.
 #[allow(clippy::too_many_lines)]
 pub fn run() -> io::Result<()> {
