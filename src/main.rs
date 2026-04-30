@@ -4,7 +4,7 @@ use std::{
     fs::{File, metadata, remove_file},
     io::{self, Write},
     mem::take as TakeAndSwitch,
-    path::PathBuf,
+    path::Path,
     process::exit,
 };
 
@@ -215,7 +215,12 @@ fn main() -> io::Result<()> {
         dbg!(&light_config, &config);
     }
 
-    if config.content_files().len() == 0 {
+    let content_files = config
+        .content_files_iter()
+        .map(|plugin| plugin.value_str().to_owned())
+        .collect::<Vec<_>>();
+
+    if content_files.is_empty() {
         notification_box(
             "No Plugins!",
             "No plugins were found in openmw.cfg! No lights to fix!",
@@ -237,19 +242,20 @@ fn main() -> io::Result<()> {
         masters: Vec::new(),
     };
 
-    let directories: Vec<&PathBuf> = config.data_directories();
+    let directories: Vec<&Path> = config
+        .data_directories_iter()
+        .map(|directory| directory.parsed())
+        .collect();
 
     let vfs = VFS::from_directories(directories, None);
 
-    let plugins = config
-    .content_files()
-    .par_iter()
+    let plugins = content_files.par_iter()
     .rev()
     .filter_map(|plugin| {
-        let vfs_file = vfs.get_file(plugin)?;
+        let vfs_file = vfs.get_file(plugin.as_str())?;
         let path = vfs_file.path();
 
-        if !is_fixable_plugin(path) || light_config.is_excluded_plugin(&path) {
+        if !is_fixable_plugin(path) || light_config.is_excluded_plugin(path) {
             return None;
         }
 
@@ -443,7 +449,7 @@ fn main() -> io::Result<()> {
                     if let Err(err) = config.save_user() {
                         notification_box(
                             "Failed to resave openmw.cfg!",
-                            &err,
+                            &err.to_string(),
                             light_config.no_notifications,
                         );
                     } else {
