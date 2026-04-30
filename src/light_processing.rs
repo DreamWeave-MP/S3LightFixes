@@ -416,4 +416,44 @@ mod tests {
         assert_eq!(light.data.radius, 111);
         assert_eq!(light.data.flags, LightFlags::PULSE_SLOW);
     }
+
+    #[test]
+    fn hsv_multiplier_overrides_apply_to_matching_lights() {
+        let mut light_config = config();
+        light_config.light_regexes.push((
+            Regex::new("hsv_mult").unwrap(),
+            CustomLightData {
+                hue_mult: Some(2.0),
+                saturation_mult: Some(0.5),
+                value_mult: Some(0.25),
+                ..CustomLightData::default()
+            },
+        ));
+        let mut light = light("hsv_mult_light", 30.0, 10, 10, LightFlags::default());
+
+        process_light(&light_config, &mut light);
+
+        assert_eq!(light.data.color, rgb_from_hsv(60.0, 0.5, 0.25));
+    }
+
+    #[test]
+    fn negative_radius_multipliers_clamp_to_zero_instead_of_wrapping() {
+        let mut light_config = config();
+        light_config.standard_radius = -2.0;
+        light_config.light_regexes.push((
+            Regex::new("override").unwrap(),
+            CustomLightData {
+                radius_mult: Some(-3.0),
+                ..CustomLightData::default()
+            },
+        ));
+        let mut global = light("global", 30.0, 10, 10, LightFlags::default());
+        let mut overridden = light("override", 30.0, 10, 10, LightFlags::default());
+
+        process_light(&light_config, &mut global);
+        process_light(&light_config, &mut overridden);
+
+        assert_eq!(global.data.radius, 0);
+        assert_eq!(overridden.data.radius, 0);
+    }
 }

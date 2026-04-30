@@ -466,3 +466,30 @@ impl Default for LightConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn toml_light_overrides_preserve_declaration_order() {
+        let config = toml::from_str::<LightConfig>(
+            r"
+            [light_overrides.first]
+            radius = 1
+
+            [light_overrides.second]
+            radius = 2
+
+            [light_overrides.third]
+            radius = 3
+            ",
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.light_overrides.keys().collect::<Vec<_>>(),
+            vec!["first", "second", "third"]
+        );
+    }
+}

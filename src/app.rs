@@ -685,6 +685,25 @@ mod tests {
     }
 
     #[test]
+    fn ambient_cell_replacement_consumes_id_before_light_processing() {
+        let mut light_config = config();
+        light_config.disable_interior_sun = true;
+        let path = temp_plugin_file("shared_cell_light.omwaddon", 19);
+        let plugin = Plugin {
+            objects: vec![
+                interior_cell("shared_id").into(),
+                light("shared_id", 100).into(),
+            ],
+        };
+
+        let result = generate_plugin(vec![(plugin, path.as_path())], &light_config).unwrap();
+
+        assert_eq!(generated_cells(&result.plugin).len(), 1);
+        assert!(generated_lights(&result.plugin).is_empty());
+        assert_eq!(result.header.num_objects, 1);
+    }
+
+    #[test]
     fn process_cells_emits_ambient_replacement_and_strips_instance_state() {
         let mut light_config = config();
         light_config.ambient_regexes.push((
