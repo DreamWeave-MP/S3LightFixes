@@ -316,7 +316,12 @@ fn migrate_or_keep_legacy_hsv(
         (Some(hue), Some(saturation), Some(value)) => {
             (Some(hsv_to_rgb8(hue, saturation, value)), None, None, None)
         }
-        (hue, saturation, value) => (None, hue, saturation, value),
+        (hue, saturation, value) => (
+            None,
+            hue.map(|hue| hue.clamp(0, 360)),
+            saturation.map(|saturation| saturation.clamp(0.0, 1.0)),
+            value.map(|value| value.clamp(0.0, 1.0)),
+        ),
     }
 }
 
@@ -834,10 +839,10 @@ mod tests {
 
     #[test]
     fn toml_partial_legacy_hsv_light_color_is_preserved() {
-        let data = toml::from_str::<CustomLightData>("hue = 180\nsaturation = 1.0").unwrap();
+        let data = toml::from_str::<CustomLightData>("hue = 999\nsaturation = 2.0\n").unwrap();
 
         assert_eq!(data.color, None);
-        assert_eq!(data.hue, Some(180));
+        assert_eq!(data.hue, Some(360));
         assert_eq!(data.saturation, Some(1.0));
         assert_eq!(data.value, None);
         assert!(!data.migrated_from_hsv);
