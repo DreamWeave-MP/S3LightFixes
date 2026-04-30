@@ -13,7 +13,7 @@ jobs:
       contents: write
       pages: write
       id-token: write
-    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v25
+    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v26
     secrets: inherit
     with:
       # Required: JSON array of binary names to build. Add more for monorepos.
