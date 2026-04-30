@@ -20,13 +20,6 @@ fn scaled_i32(value: i32, multiplier: f32) -> i32 {
     (value as f32 * multiplier) as i32
 }
 
-// Hue is clamped to 0..=360 before this point, so the precision-loss lint is technically correct
-// and practically useless. There are 361 possible values. IEEE-754 will survive this one.
-#[allow(clippy::cast_precision_loss)]
-pub(crate) fn hue_degrees(hue: u32) -> f32 {
-    hue as f32
-}
-
 // User-provided fixed durations are floats to share parser machinery with multipliers, but TES3
 // stores the result as an integer duration.
 #[allow(clippy::cast_possible_truncation)]
@@ -68,11 +61,16 @@ fn apply_hsv_replacement(
     global_saturation: f32,
     global_value: f32,
 ) {
+    if replacement.color.is_some() {
+        return;
+    }
+
     if let Some(hue_mult) = replacement.hue_mult {
         let new_hue = palette::RgbHue::from_degrees(light_as_hsv.hue.into_raw_degrees() * hue_mult);
         light_as_hsv.set_hue(new_hue);
     } else if let Some(fixed_hue) = replacement.hue {
-        light_as_hsv.set_hue(palette::RgbHue::from_degrees(hue_degrees(fixed_hue)));
+        let new_hue = palette::RgbHue::from_degrees(hue_degrees(fixed_hue));
+        light_as_hsv.set_hue(new_hue);
     } else {
         let new_hue =
             palette::RgbHue::from_degrees(light_as_hsv.hue.into_raw_degrees() * global_hue);
@@ -94,6 +92,11 @@ fn apply_hsv_replacement(
     } else {
         light_as_hsv.value *= global_value;
     }
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn hue_degrees(hue: u32) -> f32 {
+    hue.clamp(0, 360) as f32
 }
 
 fn apply_plain_hsv_adjustment(
@@ -191,8 +194,12 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) {
         light.data.time = scaled_i32(light.data.time, light_config.duration_mult);
     }
 
-    let rgb8_color: Srgb<u8> = <Hsv as IntoColor<Srgb>>::into_color(light_as_hsv).into_format();
-    light.data.color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
+    if let Some(replacement) = replacement_light_data.and_then(|replacement| replacement.color) {
+        light.data.color = replacement;
+    } else {
+        let rgb8_color: Srgb<u8> = <Hsv as IntoColor<Srgb>>::into_color(light_as_hsv).into_format();
+        light.data.color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
+    }
 }
 
 #[cfg(test)]
@@ -342,9 +349,7 @@ mod tests {
             CustomLightData {
                 radius: Some(123),
                 duration: Some(456.0),
-                hue: Some(180),
-                saturation: Some(0.5),
-                value: Some(0.25),
+                color: Some([0, 128, 64, 0]),
                 ..CustomLightData::default()
             },
         ));
@@ -374,13 +379,34 @@ mod tests {
 
         assert_eq!(fixed.data.radius, 123);
         assert_eq!(fixed.data.time, 456);
-        assert_eq!(fixed.data.color, rgb_from_hsv(180.0, 0.5, 0.25));
+        assert_eq!(fixed.data.color, [0, 128, 64, 0]);
 
         assert_eq!(partial.data.radius, 321);
         assert_eq!(partial.data.time, 30);
 
         assert_eq!(mult.data.radius, 50);
         assert_eq!(mult.data.time, 70);
+    }
+
+    #[test]
+    fn partial_legacy_hsv_overrides_are_still_applied_at_runtime() {
+        let mut light_config = config();
+        light_config.standard_hue = 1.0;
+        light_config.standard_saturation = 1.0;
+        light_config.standard_value = 1.0;
+        light_config.light_regexes.push((
+            Regex::new("legacy_partial").unwrap(),
+            CustomLightData {
+                hue: Some(180),
+                saturation: Some(0.5),
+                ..CustomLightData::default()
+            },
+        ));
+        let mut light = light("legacy_partial", 30.0, 10, 10, LightFlags::default());
+
+        process_light(&light_config, &mut light);
+
+        assert_eq!(light.data.color, rgb_from_hsv(180.0, 0.5, 1.0));
     }
 
     #[test]

@@ -1,10 +1,12 @@
 use std::{fmt, str::FromStr};
 
-use serde::{Deserialize, Serialize};
+use palette::{Hsv, IntoColor, rgb::Srgb};
+use serde::{Deserialize, Serialize, ser::SerializeStruct};
 
 #[derive(Debug)]
 pub enum ParseLightError {
     ExclusiveFields(&'static str, &'static str),
+    IncompleteRgb,
     BadPair(String),
     UnknownField(String),
     BadNumber(&'static str, String),
@@ -15,7 +17,8 @@ pub enum ParseLightError {
 impl std::fmt::Display for ParseLightError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use ParseLightError::{
-            BadNumber, BadPair, ExclusiveFields, MissingPrefix, UnknownField, UnknownVariant,
+            BadNumber, BadPair, ExclusiveFields, IncompleteRgb, MissingPrefix, UnknownField,
+            UnknownVariant,
         };
         match self {
             BadPair(s) => write!(f, "Expected key=value pair, got: `{s}`"),
@@ -23,6 +26,7 @@ impl std::fmt::Display for ParseLightError {
                 f,
                 "Key {existing_field} is mutually exclusive with {bad_field}"
             ),
+            IncompleteRgb => write!(f, "RGB overrides must specify red, green, and blue"),
             UnknownField(k) => write!(f, "Unknown field: `{k}`"),
             BadNumber(field, e) => write!(f, "Invalid number for `{field}`: {e}"),
             MissingPrefix => write!(f, "Missing type prefix (e.g., `Fixed:` or `Mult:`)"),
@@ -53,7 +57,9 @@ impl FromStr for CustomLightData {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut data = CustomLightData::default();
-        parse_pairs(s, |key, value| data.set_pair(key, value))?;
+        let mut color = RgbBuilder::default();
+        parse_pairs(s, |key, value| data.set_pair(key, value, &mut color))?;
+        data.color = color.finish()?;
 
         Ok(data)
     }
@@ -79,11 +85,14 @@ pub fn parse_ambient_override(s: &str) -> Result<(String, CustomCellAmbient), Pa
 
 #[derive(Deserialize)]
 struct RawCustomLightData {
+    red: Option<u8>,
+    green: Option<u8>,
+    blue: Option<u8>,
     hue: Option<u32>,
-    hue_mult: Option<f32>,
     saturation: Option<f32>,
-    saturation_mult: Option<f32>,
     value: Option<f32>,
+    hue_mult: Option<f32>,
+    saturation_mult: Option<f32>,
     value_mult: Option<f32>,
     radius: Option<u32>,
     radius_mult: Option<f32>,
@@ -112,18 +121,59 @@ impl<'de> serde::Deserialize<'de> for CustomLightData {
             };
         }
 
-        check_exclusive!(hue, hue_mult);
-        check_exclusive!(saturation, saturation_mult);
-        check_exclusive!(value, value_mult);
         check_exclusive!(radius, radius_mult);
         check_exclusive!(duration, duration_mult);
 
+        let rgb_color =
+            rgb_from_parts(raw.red, raw.green, raw.blue).map_err(serde::de::Error::custom)?;
+        let (legacy_hsv_color, hue, saturation, value) =
+            migrate_or_keep_legacy_hsv(raw.hue, raw.saturation, raw.value);
+
+        if rgb_color.is_some()
+            && (legacy_hsv_color.is_some()
+                || hue.is_some()
+                || saturation.is_some()
+                || value.is_some())
+        {
+            return Err(serde::de::Error::custom(
+                "RGB color fields are mutually exclusive with legacy HSV color fields",
+            ));
+        }
+
+        if hue.is_some() && raw.hue_mult.is_some() {
+            return Err(serde::de::Error::custom(
+                "Fields `hue` and `hue_mult` are mutually exclusive",
+            ));
+        }
+        if saturation.is_some() && raw.saturation_mult.is_some() {
+            return Err(serde::de::Error::custom(
+                "Fields `saturation` and `saturation_mult` are mutually exclusive",
+            ));
+        }
+        if value.is_some() && raw.value_mult.is_some() {
+            return Err(serde::de::Error::custom(
+                "Fields `value` and `value_mult` are mutually exclusive",
+            ));
+        }
+
+        let color = rgb_color.or(legacy_hsv_color);
+
+        if color.is_some()
+            && (raw.hue_mult.is_some() || raw.saturation_mult.is_some() || raw.value_mult.is_some())
+        {
+            return Err(serde::de::Error::custom(
+                "RGB color fields are mutually exclusive with HSV multiplier fields",
+            ));
+        }
+
         Ok(CustomLightData {
-            hue: raw.hue.map(|h| h.clamp(0, 360)),
+            color,
+            migrated_from_hsv: legacy_hsv_color.is_some(),
+            hue,
+            saturation,
+            value,
             hue_mult: raw.hue_mult,
-            saturation: raw.saturation.map(|s| s.clamp(0.0, 1.0)),
             saturation_mult: raw.saturation_mult,
-            value: raw.value.map(|v| v.clamp(0.0, 1.0)),
             value_mult: raw.value_mult,
             radius: raw.radius,
             radius_mult: raw.radius_mult,
@@ -134,19 +184,152 @@ impl<'de> serde::Deserialize<'de> for CustomLightData {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default)]
 pub struct CustomLightData {
+    pub color: Option<[u8; 4]>,
+    pub migrated_from_hsv: bool,
     pub hue: Option<u32>,
-    pub hue_mult: Option<f32>,
     pub saturation: Option<f32>,
-    pub saturation_mult: Option<f32>,
     pub value: Option<f32>,
+    pub hue_mult: Option<f32>,
+    pub saturation_mult: Option<f32>,
     pub value_mult: Option<f32>,
     pub radius: Option<u32>,
     pub radius_mult: Option<f32>,
     pub duration: Option<f32>,
     pub duration_mult: Option<f32>,
     pub flag: Option<LightFlag>,
+}
+
+impl Serialize for CustomLightData {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut fields = 0;
+        fields += usize::from(self.color.is_some()) * 3;
+        fields += usize::from(self.hue.is_some());
+        fields += usize::from(self.saturation.is_some());
+        fields += usize::from(self.value.is_some());
+        fields += usize::from(self.hue_mult.is_some());
+        fields += usize::from(self.saturation_mult.is_some());
+        fields += usize::from(self.value_mult.is_some());
+        fields += usize::from(self.radius.is_some());
+        fields += usize::from(self.radius_mult.is_some());
+        fields += usize::from(self.duration.is_some());
+        fields += usize::from(self.duration_mult.is_some());
+        fields += usize::from(self.flag.is_some());
+
+        let mut state = serializer.serialize_struct("CustomLightData", fields)?;
+        if let Some([red, green, blue, _]) = self.color {
+            state.serialize_field("red", &red)?;
+            state.serialize_field("green", &green)?;
+            state.serialize_field("blue", &blue)?;
+        }
+        if let Some(value) = self.hue {
+            state.serialize_field("hue", &value)?;
+        }
+        if let Some(value) = self.saturation {
+            state.serialize_field("saturation", &value)?;
+        }
+        if let Some(value) = self.value {
+            state.serialize_field("value", &value)?;
+        }
+        if let Some(value) = self.hue_mult {
+            state.serialize_field("hue_mult", &value)?;
+        }
+        if let Some(value) = self.saturation_mult {
+            state.serialize_field("saturation_mult", &value)?;
+        }
+        if let Some(value) = self.value_mult {
+            state.serialize_field("value_mult", &value)?;
+        }
+        if let Some(value) = self.radius {
+            state.serialize_field("radius", &value)?;
+        }
+        if let Some(value) = self.radius_mult {
+            state.serialize_field("radius_mult", &value)?;
+        }
+        if let Some(value) = self.duration {
+            state.serialize_field("duration", &value)?;
+        }
+        if let Some(value) = self.duration_mult {
+            state.serialize_field("duration_mult", &value)?;
+        }
+        if let Some(value) = &self.flag {
+            state.serialize_field("flag", value)?;
+        }
+
+        state.end()
+    }
+}
+
+#[derive(Default)]
+struct RgbBuilder {
+    red: Option<u8>,
+    green: Option<u8>,
+    blue: Option<u8>,
+}
+
+impl RgbBuilder {
+    fn has_any(&self) -> bool {
+        self.red.is_some() || self.green.is_some() || self.blue.is_some()
+    }
+
+    fn finish(self) -> Result<Option<[u8; 4]>, ParseLightError> {
+        rgb_from_parts(self.red, self.green, self.blue).map_err(|_| ParseLightError::IncompleteRgb)
+    }
+}
+
+fn rgb_from_parts(
+    red: Option<u8>,
+    green: Option<u8>,
+    blue: Option<u8>,
+) -> Result<Option<[u8; 4]>, &'static str> {
+    match (red, green, blue) {
+        (None, None, None) => Ok(None),
+        (Some(red), Some(green), Some(blue)) => Ok(Some([red, green, blue, 0])),
+        _ => Err("RGB overrides must specify red, green, and blue"),
+    }
+}
+
+fn legacy_hsv_to_rgb(
+    hue: Option<u32>,
+    saturation: Option<f32>,
+    value: Option<f32>,
+) -> Result<Option<[u8; 4]>, &'static str> {
+    match (hue, saturation, value) {
+        (None, None, None) => Ok(None),
+        (Some(hue), Some(saturation), Some(value)) => Ok(Some(hsv_to_rgb8(hue, saturation, value))),
+        _ => Err(
+            "legacy HSV color overrides must specify hue, saturation, and value to migrate to RGB",
+        ),
+    }
+}
+
+fn migrate_or_keep_legacy_hsv(
+    hue: Option<u32>,
+    saturation: Option<f32>,
+    value: Option<f32>,
+) -> (Option<[u8; 4]>, Option<u32>, Option<f32>, Option<f32>) {
+    match (hue, saturation, value) {
+        (Some(hue), Some(saturation), Some(value)) => {
+            (Some(hsv_to_rgb8(hue, saturation, value)), None, None, None)
+        }
+        (hue, saturation, value) => (None, hue, saturation, value),
+    }
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn hsv_to_rgb8(hue: u32, saturation: f32, value: f32) -> [u8; 4] {
+    let hsv = Hsv::from_components((
+        palette::RgbHue::from_degrees(hue.clamp(0, 360) as f32),
+        saturation.clamp(0.0, 1.0),
+        value.clamp(0.0, 1.0),
+    ));
+    let rgb8_color: Srgb<u8> = <Hsv as IntoColor<Srgb>>::into_color(hsv).into_format();
+
+    [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0]
 }
 
 impl CustomLightData {
@@ -167,7 +350,12 @@ impl CustomLightData {
         Ok(())
     }
 
-    fn set_pair(&mut self, key: &str, value: &str) -> Result<(), ParseLightError> {
+    fn set_pair(
+        &mut self,
+        key: &str,
+        value: &str,
+        color: &mut RgbBuilder,
+    ) -> Result<(), ParseLightError> {
         match key {
             "radius_mult" => Self::set_float_mult(
                 &mut self.radius_mult,
@@ -178,22 +366,22 @@ impl CustomLightData {
             ),
             "hue_mult" => Self::set_float_mult(
                 &mut self.hue_mult,
-                self.hue.is_some(),
-                "hue",
+                color.has_any(),
+                "RGB color",
                 "hue_mult",
                 value,
             ),
             "saturation_mult" => Self::set_float_mult(
                 &mut self.saturation_mult,
-                self.saturation.is_some(),
-                "saturation",
+                color.has_any(),
+                "RGB color",
                 "saturation_mult",
                 value,
             ),
             "value_mult" => Self::set_float_mult(
                 &mut self.value_mult,
-                self.value.is_some(),
-                "value",
+                color.has_any(),
+                "RGB color",
                 "value_mult",
                 value,
             ),
@@ -206,9 +394,9 @@ impl CustomLightData {
             ),
             "duration" => self.set_duration(value),
             "radius" => self.set_radius(value),
-            "hue" => self.set_hue(value),
-            "saturation" => self.set_saturation(value),
-            "value" => self.set_value(value),
+            "red" => self.set_color_component(&mut color.red, "red", value),
+            "green" => self.set_color_component(&mut color.green, "green", value),
+            "blue" => self.set_color_component(&mut color.blue, "blue", value),
             "flag" => {
                 self.flag = Some(value.parse()?);
                 Ok(())
@@ -240,71 +428,81 @@ impl CustomLightData {
         Ok(())
     }
 
-    fn set_hue(&mut self, value: &str) -> Result<(), ParseLightError> {
-        if self.hue_mult.is_some() {
-            return Err(ParseLightError::ExclusiveFields("hue_mult", "hue"));
-        }
-        let parsed: u32 = value.parse().map_err(|e: std::num::ParseIntError| {
-            ParseLightError::BadNumber("hue", e.to_string())
-        })?;
-        self.hue = Some(parsed.clamp(0, 360));
-        Ok(())
-    }
-
-    fn set_saturation(&mut self, value: &str) -> Result<(), ParseLightError> {
-        if self.saturation_mult.is_some() {
+    fn set_color_component(
+        &mut self,
+        target: &mut Option<u8>,
+        field: &'static str,
+        value: &str,
+    ) -> Result<(), ParseLightError> {
+        if self.hue_mult.is_some() || self.saturation_mult.is_some() || self.value_mult.is_some() {
             return Err(ParseLightError::ExclusiveFields(
-                "saturation_mult",
-                "saturation",
+                "HSV multiplier",
+                "RGB color",
             ));
         }
-        let parsed: f32 = value.parse().map_err(|e: std::num::ParseFloatError| {
-            ParseLightError::BadNumber("saturation", e.to_string())
-        })?;
-        self.saturation = Some(parsed.clamp(0.0, 1.0));
-        Ok(())
-    }
 
-    fn set_value(&mut self, value: &str) -> Result<(), ParseLightError> {
-        if self.value_mult.is_some() {
-            return Err(ParseLightError::ExclusiveFields("value_mult", "value"));
-        }
-        let parsed: f32 = value.parse().map_err(|e: std::num::ParseFloatError| {
-            ParseLightError::BadNumber("value", e.to_string())
-        })?;
-        self.value = Some(parsed.clamp(0.0, 1.0));
+        *target = Some(value.parse().map_err(|e: std::num::ParseIntError| {
+            ParseLightError::BadNumber(field, e.to_string())
+        })?);
         Ok(())
     }
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
-/// Struct used to store color replacements for cells.
-/// No fields are optional, unlike light record replacements. Nor are multipliers supported.
+/// RGB color replacement using the same component range as TES3 light records.
 pub struct TypedLightColor {
-    pub hue: u32,
-    pub saturation: f32,
-    pub value: f32,
+    pub red: u8,
+    pub green: u8,
+    pub blue: u8,
+    #[serde(skip)]
+    pub migrated_from_hsv: bool,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Deserialize)]
 struct RawTypedLightColor {
-    pub hue: u32,
-    pub saturation: f32,
-    pub value: f32,
+    red: Option<u8>,
+    green: Option<u8>,
+    blue: Option<u8>,
+    hue: Option<u32>,
+    saturation: Option<f32>,
+    value: Option<f32>,
 }
 
-impl<'de> serde::Deserialize<'de> for TypedLightColor {
+impl<'de> Deserialize<'de> for TypedLightColor {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let raw: RawTypedLightColor = RawTypedLightColor::deserialize(deserializer)?;
+        let raw = RawTypedLightColor::deserialize(deserializer)?;
+        let rgb_color =
+            rgb_from_parts(raw.red, raw.green, raw.blue).map_err(serde::de::Error::custom)?;
+        let legacy_hsv_color = legacy_hsv_to_rgb(raw.hue, raw.saturation, raw.value)
+            .map_err(serde::de::Error::custom)?;
 
-        Ok(TypedLightColor {
-            hue: raw.hue.clamp(0, 360),
-            saturation: raw.saturation.clamp(0.0, 1.0),
-            value: raw.value.clamp(0.0, 1.0),
+        if rgb_color.is_some() && legacy_hsv_color.is_some() {
+            return Err(serde::de::Error::custom(
+                "RGB color fields are mutually exclusive with legacy HSV color fields",
+            ));
+        }
+
+        let Some([red, green, blue, _]) = rgb_color.or(legacy_hsv_color) else {
+            return Err(serde::de::Error::custom(
+                "RGB colors must specify red, green, and blue",
+            ));
+        };
+
+        Ok(Self {
+            red,
+            green,
+            blue,
+            migrated_from_hsv: legacy_hsv_color.is_some(),
         })
+    }
+}
+
+impl TypedLightColor {
+    pub const fn to_esp_color(&self) -> [u8; 4] {
+        [self.red, self.green, self.blue, 0]
     }
 }
 
@@ -334,9 +532,9 @@ impl FromStr for TypedLightColor {
     type Err = ParseTypedColorError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut hue: Option<u32> = None;
-        let mut saturation: Option<f32> = None;
-        let mut value: Option<f32> = None;
+        let mut red: Option<u8> = None;
+        let mut green: Option<u8> = None;
+        let mut blue: Option<u8> = None;
 
         for pair in s.split(',').filter(|p| !p.trim().is_empty()) {
             let (k, v) = pair
@@ -344,32 +542,30 @@ impl FromStr for TypedLightColor {
                 .ok_or_else(|| ParseTypedColorError::BadPair(pair.to_string()))?;
 
             match k.trim() {
-                "hue" => {
-                    let raw: u32 = v.trim().parse().map_err(|e: std::num::ParseIntError| {
-                        ParseTypedColorError::BadNumber("hue", e.to_string())
-                    })?;
-                    hue = Some(raw.clamp(0, 360));
+                "red" => {
+                    red = Some(v.trim().parse().map_err(|e: std::num::ParseIntError| {
+                        ParseTypedColorError::BadNumber("red", e.to_string())
+                    })?);
                 }
-                "saturation" => {
-                    let raw: f32 = v.trim().parse().map_err(|e: std::num::ParseFloatError| {
-                        ParseTypedColorError::BadNumber("saturation", e.to_string())
-                    })?;
-                    saturation = Some(raw.clamp(0.0, 1.0));
+                "green" => {
+                    green = Some(v.trim().parse().map_err(|e: std::num::ParseIntError| {
+                        ParseTypedColorError::BadNumber("green", e.to_string())
+                    })?);
                 }
-                "value" => {
-                    let raw: f32 = v.trim().parse().map_err(|e: std::num::ParseFloatError| {
-                        ParseTypedColorError::BadNumber("value", e.to_string())
-                    })?;
-                    value = Some(raw.clamp(0.0, 1.0));
+                "blue" => {
+                    blue = Some(v.trim().parse().map_err(|e: std::num::ParseIntError| {
+                        ParseTypedColorError::BadNumber("blue", e.to_string())
+                    })?);
                 }
                 other => return Err(ParseTypedColorError::UnknownField(other.to_string())),
             }
         }
 
         Ok(TypedLightColor {
-            hue: hue.ok_or(ParseTypedColorError::MissingField("hue"))?,
-            saturation: saturation.ok_or(ParseTypedColorError::MissingField("saturation"))?,
-            value: value.ok_or(ParseTypedColorError::MissingField("value"))?,
+            red: red.ok_or(ParseTypedColorError::MissingField("red"))?,
+            green: green.ok_or(ParseTypedColorError::MissingField("green"))?,
+            blue: blue.ok_or(ParseTypedColorError::MissingField("blue"))?,
+            migrated_from_hsv: false,
         })
     }
 }
@@ -380,6 +576,23 @@ pub struct CustomCellAmbient {
     pub sunlight: Option<TypedLightColor>,
     pub fog: Option<TypedLightColor>,
     pub fog_density: Option<f32>,
+}
+
+impl CustomCellAmbient {
+    #[must_use]
+    pub fn migrated_from_hsv(&self) -> bool {
+        self.ambient
+            .as_ref()
+            .is_some_and(|color| color.migrated_from_hsv)
+            || self
+                .sunlight
+                .as_ref()
+                .is_some_and(|color| color.migrated_from_hsv)
+            || self
+                .fog
+                .as_ref()
+                .is_some_and(|color| color.migrated_from_hsv)
+    }
 }
 
 #[derive(Debug)]
@@ -501,23 +714,17 @@ impl FromStr for LightFlag {
 mod tests {
     use super::*;
 
-    fn assert_f32_eq(actual: f32, expected: f32) {
-        assert!((actual - expected).abs() < f32::EPSILON);
-    }
-
     #[test]
     fn parses_cli_light_override_fixed_fields() {
         let (id, data) = parse_light_override(
-            "Torch_001=radius=255,duration=1200,hue=240,saturation=0.5,value=0.25,flag=FLICKERSLOW",
+            "Torch_001=radius=255,duration=1200,red=10,green=20,blue=30,flag=FLICKERSLOW",
         )
         .unwrap();
 
         assert_eq!(id, "Torch_001");
         assert_eq!(data.radius, Some(255));
         assert_eq!(data.duration, Some(1200.0));
-        assert_eq!(data.hue, Some(240));
-        assert_eq!(data.saturation, Some(0.5));
-        assert_eq!(data.value, Some(0.25));
+        assert_eq!(data.color, Some([10, 20, 30, 0]));
         assert!(matches!(data.flag, Some(LightFlag::FlickerSlow)));
     }
 
@@ -546,38 +753,55 @@ mod tests {
     }
 
     #[test]
-    fn cli_light_override_clamps_fixed_color_fields() {
-        let (_, data) = parse_light_override("Torch=hue=999,saturation=2.0,value=-1.0").unwrap();
+    fn cli_light_override_rejects_incomplete_rgb_color() {
+        let err = parse_light_override("Torch=red=255,green=128").unwrap_err();
 
-        assert_eq!(data.hue, Some(360));
-        assert_eq!(data.saturation, Some(1.0));
-        assert_eq!(data.value, Some(0.0));
+        assert!(matches!(err, ParseLightError::IncompleteRgb));
+    }
+
+    #[test]
+    fn cli_light_override_rejects_rgb_color_with_hsv_multiplier() {
+        let err = parse_light_override("Torch=red=255,green=128,blue=64,hue_mult=2.0").unwrap_err();
+
+        assert!(matches!(
+            err,
+            ParseLightError::ExclusiveFields("RGB color", "hue_mult")
+        ));
     }
 
     #[test]
     fn parses_cli_ambient_override_all_fields() {
         let (id, ambient) = parse_ambient_override(
-            "caius=ambient=hue=30,saturation=0.5,value=0.6;sunlight=hue=40,saturation=0.7,value=0.8;fog=hue=50,saturation=0.9,value=1.0;fog_density=0.25",
+            "caius=ambient=red=10,green=20,blue=30;sunlight=red=40,green=50,blue=60;fog=red=70,green=80,blue=90;fog_density=0.25",
         )
         .unwrap();
 
         assert_eq!(id, "caius");
-        assert_eq!(ambient.ambient.as_ref().unwrap().hue, 30);
-        assert_f32_eq(ambient.sunlight.as_ref().unwrap().saturation, 0.7);
-        assert_f32_eq(ambient.fog.as_ref().unwrap().value, 1.0);
+        assert_eq!(
+            ambient.ambient.as_ref().unwrap().to_esp_color(),
+            [10, 20, 30, 0]
+        );
+        assert_eq!(
+            ambient.sunlight.as_ref().unwrap().to_esp_color(),
+            [40, 50, 60, 0]
+        );
+        assert_eq!(
+            ambient.fog.as_ref().unwrap().to_esp_color(),
+            [70, 80, 90, 0]
+        );
         assert_eq!(ambient.fog_density, Some(0.25));
     }
 
     #[test]
     fn cli_ambient_override_reports_bad_nested_color() {
-        let err = parse_ambient_override("caius=ambient=hue=30,saturation=0.5").unwrap_err();
+        let err = parse_ambient_override("caius=ambient=red=30,green=50").unwrap_err();
 
         assert!(matches!(err, ParseAmbientError::BadColor(field, _) if field == "ambient"));
     }
 
     #[test]
     fn cli_ambient_override_rejects_unknown_fields() {
-        let err = parse_ambient_override("caius=glow=hue=30,saturation=0.5,value=0.6").unwrap_err();
+        let err = parse_ambient_override("caius=glow=red=30,green=50,blue=60").unwrap_err();
 
         assert!(matches!(err, ParseAmbientError::UnknownField(field) if field == "glow"));
     }
@@ -590,13 +814,57 @@ mod tests {
     }
 
     #[test]
-    fn toml_typed_light_color_clamps_fields() {
-        let color =
-            toml::from_str::<TypedLightColor>("hue = 999\nsaturation = 2.0\nvalue = -1.0").unwrap();
+    fn toml_typed_light_color_uses_rgb_components() {
+        let color = toml::from_str::<TypedLightColor>("red = 10\ngreen = 20\nblue = 30").unwrap();
 
-        assert_eq!(color.hue, 360);
-        assert_f32_eq(color.saturation, 1.0);
-        assert_f32_eq(color.value, 0.0);
+        assert_eq!(color.to_esp_color(), [10, 20, 30, 0]);
+        assert!(!color.migrated_from_hsv);
+    }
+
+    #[test]
+    fn toml_legacy_hsv_light_color_migrates_to_rgb() {
+        let data = toml::from_str::<CustomLightData>(
+            "hue = 180\nsaturation = 1.0\nvalue = 1.0\nradius = 100",
+        )
+        .unwrap();
+
+        assert_eq!(data.color, Some([0, 255, 255, 0]));
+        assert!(data.migrated_from_hsv);
+    }
+
+    #[test]
+    fn toml_partial_legacy_hsv_light_color_is_preserved() {
+        let data = toml::from_str::<CustomLightData>("hue = 180\nsaturation = 1.0").unwrap();
+
+        assert_eq!(data.color, None);
+        assert_eq!(data.hue, Some(180));
+        assert_eq!(data.saturation, Some(1.0));
+        assert_eq!(data.value, None);
+        assert!(!data.migrated_from_hsv);
+    }
+
+    #[test]
+    fn toml_legacy_hsv_ambient_color_migrates_to_rgb() {
+        let color =
+            toml::from_str::<TypedLightColor>("hue = 120\nsaturation = 1.0\nvalue = 1.0").unwrap();
+
+        assert_eq!(color.to_esp_color(), [0, 255, 0, 0]);
+        assert!(color.migrated_from_hsv);
+    }
+
+    #[test]
+    fn toml_light_data_serializes_rgb_as_named_components() {
+        let serialized = toml::to_string(&CustomLightData {
+            color: Some([10, 20, 30, 0]),
+            radius: Some(100),
+            ..CustomLightData::default()
+        })
+        .unwrap();
+
+        assert!(serialized.contains("red = 10"));
+        assert!(serialized.contains("green = 20"));
+        assert!(serialized.contains("blue = 30"));
+        assert!(!serialized.contains("color"));
     }
 
     #[test]

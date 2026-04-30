@@ -9,7 +9,6 @@ use std::{
 };
 
 use clap::Parser;
-use palette::{Hsv, IntoColor, rgb::Srgb};
 use rayon::prelude::*;
 use tes3::esp::{
     AtmosphereData, Cell, CellFlags, EditorId, FixedString, Header, Light, ObjectFlags, Plugin,
@@ -22,7 +21,7 @@ use crate::{
     notification_box, save_plugin,
 };
 
-use crate::light_processing::{hue_degrees, process_light};
+use crate::light_processing::process_light;
 
 type LoadedPlugin<'a> = (Plugin, &'a Path);
 
@@ -137,11 +136,6 @@ fn load_plugins<'a>(
         .collect::<Vec<_>>()
 }
 
-fn hsv_to_rgb8(hsv: Hsv) -> [u8; 4] {
-    let rgb8_color: Srgb<u8> = <Hsv as IntoColor<Srgb>>::into_color(hsv).into_format();
-    [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0]
-}
-
 fn apply_cell_ambient_overrides(
     light_config: &LightConfig,
     cell_id: &str,
@@ -155,35 +149,17 @@ fn apply_cell_ambient_overrides(
         }
 
         if let Some(ambient) = &replacement_data.ambient {
-            let hsv = Hsv::from_components((
-                palette::RgbHue::from_degrees(hue_degrees(ambient.hue)),
-                ambient.saturation,
-                ambient.value,
-            ));
-
-            atmo.ambient_color = hsv_to_rgb8(hsv);
+            atmo.ambient_color = ambient.to_esp_color();
             replaced = true;
         }
 
         if let Some(fog) = &replacement_data.fog {
-            let hsv = Hsv::from_components((
-                palette::RgbHue::from_degrees(hue_degrees(fog.hue)),
-                fog.saturation,
-                fog.value,
-            ));
-
-            atmo.fog_color = hsv_to_rgb8(hsv);
+            atmo.fog_color = fog.to_esp_color();
             replaced = true;
         }
 
         if let Some(sunlight) = &replacement_data.sunlight {
-            let hsv = Hsv::from_components((
-                palette::RgbHue::from_degrees(hue_degrees(sunlight.hue)),
-                sunlight.saturation,
-                sunlight.value,
-            ));
-
-            atmo.sunlight_color = hsv_to_rgb8(hsv);
+            atmo.sunlight_color = sunlight.to_esp_color();
             replaced = true;
         }
 
@@ -710,19 +686,22 @@ mod tests {
             Regex::new("ambient_cell").unwrap(),
             CustomCellAmbient {
                 ambient: Some(TypedLightColor {
-                    hue: 180,
-                    saturation: 1.0,
-                    value: 1.0,
+                    red: 0,
+                    green: 255,
+                    blue: 255,
+                    migrated_from_hsv: false,
                 }),
                 sunlight: Some(TypedLightColor {
-                    hue: 240,
-                    saturation: 1.0,
-                    value: 1.0,
+                    red: 0,
+                    green: 0,
+                    blue: 255,
+                    migrated_from_hsv: false,
                 }),
                 fog: Some(TypedLightColor {
-                    hue: 120,
-                    saturation: 1.0,
-                    value: 1.0,
+                    red: 0,
+                    green: 255,
+                    blue: 0,
+                    migrated_from_hsv: false,
                 }),
                 fog_density: Some(0.75),
             },
