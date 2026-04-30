@@ -1,5 +1,5 @@
 use std::{
-    fmt,
+    fmt::{self, Write as FmtWrite},
     fs::{File, read_dir, read_to_string},
     io::{self, Write},
     marker::PhantomData,
@@ -16,6 +16,12 @@ use crate::{
     CustomCellAmbient, CustomLightData, DEFAULT_CONFIG_NAME, LightArgs, default, notification_box,
     to_io_error,
 };
+
+#[derive(Debug, PartialEq, Eq)]
+struct PartialLegacyHsvOverride {
+    table: String,
+    fields: Vec<(&'static str, usize)>,
+}
 
 pub fn deserialize_ordered_hash_map<'de, D, K, V>(
     deserializer: D,
@@ -172,6 +178,9 @@ pub struct LightConfig {
     pub light_regexes: Vec<(regex::Regex, CustomLightData)>,
     #[serde(skip)]
     pub ambient_regexes: Vec<(regex::Regex, CustomCellAmbient)>,
+
+    #[serde(skip)]
+    pub migrated_color_config: bool,
 }
 
 /// Primarily exists to provide default implementations
@@ -187,23 +196,24 @@ impl LightConfig {
 
     fn load(
         user_config_path: &std::path::Path,
-        no_notifications: bool,
-    ) -> io::Result<(Self, bool)> {
+        early_no_notifications: bool,
+    ) -> io::Result<(Self, bool, Vec<PartialLegacyHsvOverride>)> {
         let Ok(config_path) = Self::find(&user_config_path.to_path_buf()) else {
-            return Ok((LightConfig::default(), true));
+            return Ok((LightConfig::default(), true, Vec::new()));
         };
 
         let config_contents = read_to_string(config_path)?;
+        let partial_legacy_hsv = find_partial_legacy_hsv_overrides(&config_contents);
         let config = toml::from_str(&config_contents).unwrap_or_else(|error| {
             notification_box(
                 "Failed to read light config!",
                 &format!("Lightconfig.toml couldn't be read: {error}"),
-                no_notifications,
+                early_no_notifications,
             );
             std::process::exit(256);
         });
 
-        Ok((config, false))
+        Ok((config, false, partial_legacy_hsv))
     }
 
     fn apply_scalar_args(&mut self, light_args: &mut LightArgs) {
@@ -302,6 +312,35 @@ impl LightConfig {
         write!(config_file, "{config_serialized}")
     }
 
+    fn save_migration_before_cli_args(
+        &self,
+        user_config_path: &std::path::Path,
+        write_config: bool,
+        update_light_config: bool,
+    ) -> io::Result<()> {
+        if !write_config && self.migrated_color_config && !update_light_config {
+            self.save_to_user_config(user_config_path)?;
+        }
+
+        Ok(())
+    }
+
+    fn save_to_user_config_without_runtime_flags(
+        &mut self,
+        user_config_path: &std::path::Path,
+        persisted_no_notifications: bool,
+        persisted_debug: bool,
+    ) -> io::Result<()> {
+        let runtime_no_notifications =
+            std::mem::replace(&mut self.no_notifications, persisted_no_notifications);
+        let runtime_debug = std::mem::replace(&mut self.debug, persisted_debug);
+        let result = self.save_to_user_config(user_config_path);
+        self.no_notifications = runtime_no_notifications;
+        self.debug = runtime_debug;
+
+        result
+    }
+
     fn compile_regexes(&mut self) {
         for id in std::mem::take(&mut self.excluded_ids) {
             match regex::Regex::new(&id) {
@@ -377,15 +416,41 @@ impl LightConfig {
     ) -> Result<LightConfig, io::Error> {
         let user_config_path = openmw_config.user_config_path();
 
-        let (mut light_config, write_config) =
-            Self::load(&user_config_path, light_args.no_notifications)?;
+        let early_no_notifications =
+            std::env::var("S3L_NO_NOTIFICATIONS").is_ok() || light_args.no_notifications;
+        let (mut light_config, write_config, partial_legacy_hsv) =
+            Self::load(&user_config_path, early_no_notifications)?;
+
+        let effective_no_notifications = light_config.no_notifications || early_no_notifications;
+        let debug_from_env = std::env::var("S3L_DEBUG").is_ok();
+        light_config.update_migrated_color_config();
+
+        if !partial_legacy_hsv.is_empty() {
+            notification_box(
+                "Legacy HSV overrides need manual migration",
+                &partial_legacy_hsv_message(&partial_legacy_hsv),
+                effective_no_notifications,
+            );
+        }
+
+        // Migration-only saves must happen before applying transient CLI arguments. Otherwise a
+        // harmless one-shot run with --light or --classic would be fossilized in lightconfig.toml.
+        light_config.save_migration_before_cli_args(
+            &user_config_path,
+            write_config,
+            light_args.update_light_config,
+        )?;
+
         light_config.apply_scalar_args(&mut light_args);
         light_config.apply_bool_args(&light_args);
-
+        let persisted_no_notifications = light_config.no_notifications;
+        let persisted_debug = light_config.debug;
         light_config.no_notifications |= std::env::var("S3L_NO_NOTIFICATIONS").is_ok();
-        light_config.debug |= std::env::var("S3L_DEBUG").is_ok();
+        light_config.debug |= debug_from_env;
+
         light_config.configure_output_dir(light_args.output.take(), openmw_config)?;
         light_config.apply_collection_args(&mut light_args);
+        light_config.update_migrated_color_config();
 
         // This parameter indicates whether the user requested
         // To use compatibility mode for vtastek's old 0.47 shaders
@@ -397,7 +462,11 @@ impl LightConfig {
         }
 
         if write_config || light_config.save_config || light_args.update_light_config {
-            light_config.save_to_user_config(&user_config_path)?;
+            light_config.save_to_user_config_without_runtime_flags(
+                &user_config_path,
+                persisted_no_notifications,
+                persisted_debug,
+            )?;
         }
 
         // Consume the original values *after* reserializing the config
@@ -432,6 +501,120 @@ impl LightConfig {
 
         false
     }
+
+    fn update_migrated_color_config(&mut self) {
+        self.migrated_color_config = self
+            .light_overrides
+            .values()
+            .any(|light_data| light_data.migrated_from_hsv)
+            || self
+                .ambient_overrides
+                .values()
+                .any(CustomCellAmbient::migrated_from_hsv);
+    }
+}
+
+fn find_partial_legacy_hsv_overrides(config_contents: &str) -> Vec<PartialLegacyHsvOverride> {
+    let mut results = Vec::new();
+    let mut current_table: Option<String> = None;
+    let mut current_fields: Vec<(&'static str, usize)> = Vec::new();
+
+    for (index, raw_line) in config_contents.lines().enumerate() {
+        let line_number = index + 1;
+        let line = strip_toml_comment(raw_line).trim();
+
+        if line.starts_with('[') && line.ends_with(']') {
+            flush_partial_legacy_hsv_override(
+                &mut results,
+                &mut current_table,
+                &mut current_fields,
+            );
+            let table = line.trim_matches(['[', ']']);
+            if table.starts_with("light_overrides.") {
+                current_table = Some(table.to_owned());
+            }
+            continue;
+        }
+
+        let Some(table) = &current_table else {
+            continue;
+        };
+        if !table.starts_with("light_overrides.") {
+            continue;
+        }
+
+        let Some((key, _)) = line.split_once('=') else {
+            continue;
+        };
+        match key.trim() {
+            "hue" => current_fields.push(("hue", line_number)),
+            "saturation" => current_fields.push(("saturation", line_number)),
+            "value" => current_fields.push(("value", line_number)),
+            _ => {}
+        }
+    }
+
+    flush_partial_legacy_hsv_override(&mut results, &mut current_table, &mut current_fields);
+    results
+}
+
+fn strip_toml_comment(line: &str) -> &str {
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut previous_was_escape = false;
+
+    for (index, ch) in line.char_indices() {
+        match ch {
+            '\'' if !in_double_quote => in_single_quote = !in_single_quote,
+            '"' if !in_single_quote && !previous_was_escape => in_double_quote = !in_double_quote,
+            '#' if !in_single_quote && !in_double_quote => return &line[..index],
+            _ => {}
+        }
+
+        previous_was_escape = ch == '\\' && !previous_was_escape;
+        if ch != '\\' {
+            previous_was_escape = false;
+        }
+    }
+
+    line
+}
+
+fn flush_partial_legacy_hsv_override(
+    results: &mut Vec<PartialLegacyHsvOverride>,
+    current_table: &mut Option<String>,
+    current_fields: &mut Vec<(&'static str, usize)>,
+) {
+    if (current_fields.len() == 1 || current_fields.len() == 2)
+        && let Some(table) = current_table.take()
+    {
+        results.push(PartialLegacyHsvOverride {
+            table,
+            fields: std::mem::take(current_fields),
+        });
+        return;
+    }
+
+    *current_table = None;
+    current_fields.clear();
+}
+
+fn partial_legacy_hsv_message(overrides: &[PartialLegacyHsvOverride]) -> String {
+    let mut message = String::from(
+        "Some light overrides use partial legacy HSV color fields. They still work, but cannot be automatically converted to RGB because conversion depends on each source light's original color. Please convert them manually when convenient:\n",
+    );
+
+    for override_info in overrides {
+        let fields = override_info
+            .fields
+            .iter()
+            .map(|(field, line)| format!("{field} on line {line}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let _ = writeln!(message, "- [{}]: {fields}", override_info.table);
+    }
+
+    message
 }
 
 impl Default for LightConfig {
@@ -463,13 +646,41 @@ impl Default for LightConfig {
             light_overrides: OrderedHashMap::new(),
             ambient_overrides: OrderedHashMap::new(),
             ambient_regexes: Vec::new(),
+            migrated_color_config: false,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
+
     use super::*;
+
+    struct TempDir {
+        path: PathBuf,
+    }
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let path = std::env::temp_dir()
+                .join(format!("s3lightfixes-config-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir(&path).unwrap();
+
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
 
     #[test]
     fn toml_light_overrides_preserve_declaration_order() {
@@ -491,5 +702,168 @@ mod tests {
             config.light_overrides.keys().collect::<Vec<_>>(),
             vec!["first", "second", "third"]
         );
+    }
+
+    #[test]
+    fn legacy_hsv_colors_are_marked_for_reserialization_as_rgb() {
+        let mut config = toml::from_str::<LightConfig>(
+            r"
+            [light_overrides.torch]
+            hue = 180
+            saturation = 1.0
+            value = 1.0
+
+            [ambient_overrides.cell.ambient]
+            hue = 120
+            saturation = 1.0
+            value = 1.0
+            ",
+        )
+        .unwrap();
+
+        config.update_migrated_color_config();
+
+        assert!(config.migrated_color_config);
+
+        let serialized = toml::to_string(&config).unwrap();
+        assert!(serialized.contains("red = 0"));
+        assert!(serialized.contains("green = 255"));
+        assert!(serialized.contains("blue = 255"));
+        assert!(!serialized.contains("hue = 180"));
+        assert!(!serialized.contains("hue = 120"));
+        assert!(!serialized.contains("saturation = 1.0"));
+        assert!(!serialized.contains("value = 1.0"));
+    }
+
+    #[test]
+    fn partial_legacy_hsv_light_overrides_are_reported_with_lines() {
+        let partial = find_partial_legacy_hsv_overrides(
+            r"
+            [light_overrides.complete]
+            hue = 180
+            saturation = 1.0
+            value = 1.0
+
+            [light_overrides.partial]
+            hue = 90
+            value = 0.5
+
+            [ambient_overrides.cell.ambient]
+            hue = 120
+            saturation = 1.0
+            ",
+        );
+
+        assert_eq!(
+            partial,
+            vec![PartialLegacyHsvOverride {
+                table: "light_overrides.partial".to_owned(),
+                fields: vec![("hue", 8), ("value", 9)],
+            }]
+        );
+
+        let message = partial_legacy_hsv_message(&partial);
+        assert!(message.contains("[light_overrides.partial]"));
+        assert!(message.contains("hue on line 8"));
+        assert!(message.contains("value on line 9"));
+    }
+
+    #[test]
+    fn partial_legacy_hsv_scanner_handles_hash_inside_quoted_table_name() {
+        let partial = find_partial_legacy_hsv_overrides(
+            r#"
+            [light_overrides."torch#01"]
+            hue = 90 # real comment
+            "#,
+        );
+
+        assert_eq!(
+            partial,
+            vec![PartialLegacyHsvOverride {
+                table: "light_overrides.\"torch#01\"".to_owned(),
+                fields: vec![("hue", 3)],
+            }]
+        );
+    }
+
+    #[test]
+    fn migration_save_happens_before_transient_cli_overrides_are_merged() {
+        let temp_dir = TempDir::new("migration-save-before-cli");
+        let mut config = toml::from_str::<LightConfig>(
+            r"
+            [light_overrides.legacy]
+            hue = 180
+            saturation = 1.0
+            value = 1.0
+            ",
+        )
+        .unwrap();
+        config.update_migrated_color_config();
+
+        config
+            .save_migration_before_cli_args(temp_dir.path(), false, false)
+            .unwrap();
+        config.light_overrides.insert(
+            "cli_only".to_owned(),
+            CustomLightData {
+                radius: Some(999),
+                ..CustomLightData::default()
+            },
+        );
+
+        let saved = std::fs::read_to_string(temp_dir.path().join(DEFAULT_CONFIG_NAME)).unwrap();
+
+        assert!(saved.contains("[light_overrides.legacy]"));
+        assert!(saved.contains("red = 0"));
+        assert!(!saved.contains("cli_only"));
+        assert!(!saved.contains("radius = 999"));
+    }
+
+    #[test]
+    fn migration_save_does_not_persist_transient_notification_or_debug_state() {
+        let temp_dir = TempDir::new("migration-save-before-effective-state");
+        let mut config = toml::from_str::<LightConfig>(
+            r"
+            [light_overrides.legacy]
+            hue = 180
+            saturation = 1.0
+            value = 1.0
+            ",
+        )
+        .unwrap();
+        config.update_migrated_color_config();
+
+        config
+            .save_migration_before_cli_args(temp_dir.path(), false, false)
+            .unwrap();
+        config.no_notifications = true;
+        config.debug = true;
+
+        let saved = std::fs::read_to_string(temp_dir.path().join(DEFAULT_CONFIG_NAME)).unwrap();
+
+        assert!(saved.contains("red = 0"));
+        assert!(!saved.contains("no_notifications = true"));
+        assert!(!saved.contains("debug = true"));
+    }
+
+    #[test]
+    fn final_save_strips_env_only_notification_and_debug_state() {
+        let temp_dir = TempDir::new("final-save-strips-runtime-state");
+        let mut config = LightConfig {
+            no_notifications: true,
+            debug: true,
+            ..LightConfig::default()
+        };
+
+        config
+            .save_to_user_config_without_runtime_flags(temp_dir.path(), false, false)
+            .unwrap();
+
+        assert!(config.no_notifications);
+        assert!(config.debug);
+
+        let saved = std::fs::read_to_string(temp_dir.path().join(DEFAULT_CONFIG_NAME)).unwrap();
+        assert!(!saved.contains("no_notifications = true"));
+        assert!(!saved.contains("debug = true"));
     }
 }
