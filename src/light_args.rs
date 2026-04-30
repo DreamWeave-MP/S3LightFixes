@@ -59,11 +59,6 @@ pub struct LightArgs {
     #[arg(short = 'd', long = "debug")]
     pub debug: bool,
 
-    /// Outputs version info
-    // Might be more later?
-    #[arg(short = 'i', long = "info")]
-    pub info: bool,
-
     /// Generate shell completion script to stdout
     #[arg(long, value_name = "SHELL", conflicts_with = "generate_manpage")]
     pub generate_completion: Option<Shell>,

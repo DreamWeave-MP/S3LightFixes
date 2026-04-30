@@ -158,8 +158,6 @@ Additionally, S3LightFixes will perform the following:
           If used, print to stdout instead of using native GUI dialogs. Not available on android
   -d, --debug
           Output debugging information during lightfixes generation Primarily displays output related to the openmw.cfg being used for generation
-  -i, --info
-          Outputs version info
       --generate-completion <SHELL>
           Generate shell completion script to stdout [possible values: bash, elvish, fish, powershell, zsh]
       --generate-manpage

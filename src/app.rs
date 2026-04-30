@@ -392,11 +392,6 @@ pub fn run() -> io::Result<()> {
         return Ok(());
     }
 
-    if args.info {
-        println!("S3LightFixes Version: {}", env!("CARGO_PKG_VERSION"));
-        exit(0);
-    }
-
     let no_notifications = var("S3L_NO_NOTIFICATIONS").is_ok() || args.no_notifications;
     let mut config = load_openmw_config(&mut args, no_notifications);
     let output_dir = output_dir_from_args_or_config(&args, &mut config, no_notifications);
