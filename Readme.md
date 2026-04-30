@@ -160,6 +160,10 @@ Additionally, S3LightFixes will perform the following:
           Output debugging information during lightfixes generation Primarily displays output related to the openmw.cfg being used for generation
   -i, --info
           Outputs version info
+      --generate-completion <SHELL>
+          Generate shell completion script to stdout [possible values: bash, elvish, fish, powershell, zsh]
+      --generate-manpage
+          Generate roff manpage to stdout
   -f, --no-flicker <DISABLE_FLICKERING>
           Whether to disable flickering lights during lightfixes generation [possible values: true, false]
   -p, --no-pulse <DISABLE_PULSE>
@@ -183,7 +187,7 @@ Additionally, S3LightFixes will perform the following:
   -S, --colored-saturation <COLORED_SATURATION>
           For lights that are red, purple, blue, green, or yellow, multiply their HSV saturation by this amount.
           If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 0.9.
-  -V, --colored-value <COLORED_VALUE>
+      --colored-value <COLORED_VALUE>
           For lights that are red, purple, blue, green, or yellow, multiply their HSV value by this amount.
           If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 0.7.
   -R, --colored-radius <COLORED_RADIUS>
@@ -222,4 +226,13 @@ Additionally, S3LightFixes will perform the following:
           Force-saves the light config on this run. Note that this parameter does not merge into lightConfig.toml like others, and must be manually set there.
   -h, --help
           Print help
+  -V, --version
+          Print version
+```
+
+Shell completions and the roff man page are generated to stdout, so redirect them wherever your package or shell setup expects:
+
+```sh
+./s3lightfixes --generate-completion bash > s3lightfixes.bash
+./s3lightfixes --generate-manpage > s3lightfixes.1
 ```
