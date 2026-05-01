@@ -28,6 +28,22 @@ type LoadedPlugin<'a> = (Plugin, &'a Path);
 struct GenerationResult {
     plugin: Plugin,
     header: Header,
+    logs: Vec<RecordLog>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct RecordLog {
+    kind: &'static str,
+    plugin: String,
+    id: String,
+    changes: Vec<String>,
+}
+
+fn plugin_log_name(plugin_path: &Path) -> String {
+    plugin_path.file_name().map_or_else(
+        || plugin_path.display().to_string(),
+        |name| name.to_string_lossy().to_string(),
+    )
 }
 
 fn load_openmw_config(
@@ -172,11 +188,47 @@ fn apply_cell_ambient_overrides(
     replaced
 }
 
+fn cell_changes(original: &AtmosphereData, modified: &AtmosphereData) -> Vec<String> {
+    let mut changes = Vec::new();
+
+    if original.ambient_color != modified.ambient_color {
+        changes.push(format!(
+            "ambient {:?} -> {:?}",
+            original.ambient_color, modified.ambient_color
+        ));
+    }
+
+    if original.sunlight_color != modified.sunlight_color {
+        changes.push(format!(
+            "sunlight {:?} -> {:?}",
+            original.sunlight_color, modified.sunlight_color
+        ));
+    }
+
+    if original.fog_color != modified.fog_color {
+        changes.push(format!(
+            "fog {:?} -> {:?}",
+            original.fog_color, modified.fog_color
+        ));
+    }
+
+    if (original.fog_density - modified.fog_density).abs() > f32::EPSILON {
+        changes.push(format!(
+            "fog_density {} -> {}",
+            original.fog_density, modified.fog_density
+        ));
+    }
+
+    changes
+}
+
 fn process_cells(
     plugin: &mut Plugin,
+    plugin_name: &str,
     generated_plugin: &mut Plugin,
     light_config: &LightConfig,
     used_ids: &mut HashSet<String>,
+    logs: &mut Vec<RecordLog>,
 ) -> u32 {
     let mut used_objects = 0;
 
@@ -189,6 +241,7 @@ fn process_cells(
             continue;
         }
 
+        let original_atmo = cell.atmosphere_data.clone();
         if let Some(ref mut atmo) = cell.atmosphere_data {
             // Need additional handling here for instance replacements!
             // Filter out any instances which are not either in the `deletions` or `replacements` lists.
@@ -208,6 +261,19 @@ fn process_cells(
             replaced |= apply_cell_ambient_overrides(light_config, &cell_id, atmo);
 
             if replaced {
+                if let Some(original_atmo) = &original_atmo {
+                    let changes = cell_changes(original_atmo, atmo);
+
+                    if !changes.is_empty() {
+                        logs.push(RecordLog {
+                            kind: "CELL",
+                            plugin: plugin_name.to_owned(),
+                            id: cell_id.clone(),
+                            changes,
+                        });
+                    }
+                }
+
                 generated_plugin.objects.push(take(cell).into());
                 used_ids.insert(cell_id);
                 used_objects += 1;
@@ -220,9 +286,11 @@ fn process_cells(
 
 fn process_lights(
     plugin: Plugin,
+    plugin_name: &str,
     generated_plugin: &mut Plugin,
     light_config: &LightConfig,
     used_ids: &mut HashSet<String>,
+    logs: &mut Vec<RecordLog>,
 ) -> u32 {
     let mut used_objects = 0;
 
@@ -239,7 +307,16 @@ fn process_lights(
             }
         })
         .for_each(|mut light| {
-            process_light(light_config, &mut light);
+            let changes = process_light(light_config, &mut light);
+
+            if !changes.is_empty() {
+                logs.push(RecordLog {
+                    kind: "LIGH",
+                    plugin: plugin_name.to_owned(),
+                    id: light.id.clone(),
+                    changes,
+                });
+            }
 
             generated_plugin.objects.push(light.into());
             used_objects += 1;
@@ -281,12 +358,26 @@ fn generate_plugin(
     let mut plugin = Plugin::new();
     let mut header = header_for_generated_plugin();
     let mut used_ids = HashSet::new();
+    let mut logs = Vec::new();
 
     for (mut source_plugin, plugin_path) in plugins {
-        let used_cell_objects =
-            process_cells(&mut source_plugin, &mut plugin, light_config, &mut used_ids);
-        let used_light_objects =
-            process_lights(source_plugin, &mut plugin, light_config, &mut used_ids);
+        let plugin_name = plugin_log_name(plugin_path);
+        let used_cell_objects = process_cells(
+            &mut source_plugin,
+            &plugin_name,
+            &mut plugin,
+            light_config,
+            &mut used_ids,
+            &mut logs,
+        );
+        let used_light_objects = process_lights(
+            source_plugin,
+            &plugin_name,
+            &mut plugin,
+            light_config,
+            &mut used_ids,
+            &mut logs,
+        );
         let used_objects = used_cell_objects + used_light_objects;
 
         if used_objects > 0 {
@@ -298,7 +389,11 @@ fn generate_plugin(
         }
     }
 
-    Ok(GenerationResult { plugin, header })
+    Ok(GenerationResult {
+        plugin,
+        header,
+        logs,
+    })
 }
 
 fn remove_old_plugin_from_data_local(config: &mut openmw_config::OpenMWConfiguration) {
@@ -342,24 +437,36 @@ fn auto_enable_plugin(config: &mut openmw_config::OpenMWConfiguration, light_con
     }
 }
 
-fn save_log_if_requested(
+fn write_log_outputs(
     config: &openmw_config::OpenMWConfiguration,
-    light_config: &LightConfig,
-    generated_plugin: &Plugin,
+    logs: &[RecordLog],
 ) -> io::Result<()> {
-    if !light_config.save_log {
-        return Ok(());
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+    match write_log_to(&mut stdout, logs) {
+        Ok(()) => {}
+        Err(err) if err.kind() == io::ErrorKind::BrokenPipe => {}
+        Err(err) => return Err(err),
     }
 
     let path = config.user_config_path().join(LOG_NAME);
     let mut file = File::create(path)?;
-    write_log_to(&mut file, generated_plugin);
-
-    Ok(())
+    write_log_to(&mut file, logs)
 }
 
-fn write_log_to(mut writer: impl Write, generated_plugin: &Plugin) {
-    let _ = write!(writer, "{generated_plugin:#?}");
+fn write_log_to(mut writer: impl Write, logs: &[RecordLog]) -> io::Result<()> {
+    for log in logs {
+        writeln!(
+            writer,
+            "{} {:?} from {:?}: {}",
+            log.kind,
+            log.id,
+            log.plugin,
+            log.changes.join(", ")
+        )?;
+    }
+
+    Ok(())
 }
 
 fn handle_generated_output(args: &LightArgs, stdout: &mut dyn Write) -> io::Result<bool> {
@@ -408,7 +515,11 @@ pub fn run() -> io::Result<()> {
         .collect::<Vec<_>>();
     let vfs = VFS::from_directories(directories, None);
     let plugins = load_plugins(&content_files, &light_config, &vfs);
-    let GenerationResult { mut plugin, header } = generate_plugin(plugins, &light_config)?;
+    let GenerationResult {
+        mut plugin,
+        header,
+        logs,
+    } = generate_plugin(plugins, &light_config)?;
 
     if light_config.debug {
         dbg!(&header);
@@ -439,7 +550,7 @@ pub fn run() -> io::Result<()> {
     }
 
     auto_enable_plugin(&mut config, &light_config);
-    save_log_if_requested(&config, &light_config, &plugin)?;
+    write_log_outputs(&config, &logs)?;
 
     let lights_fixed = format!(
         "S3LightFixes.omwaddon generated, enabled, and saved in {}",
@@ -695,12 +806,15 @@ mod tests {
         let source_plugin = plugin_with_lights([light("excluded_light", 100), light("kept", 200)]);
         let mut generated_plugin = Plugin::new();
         let mut used_ids = HashSet::new();
+        let mut logs = Vec::new();
 
         let used_objects = process_lights(
             source_plugin,
+            "TestPlugin.esp",
             &mut generated_plugin,
             &light_config,
             &mut used_ids,
+            &mut logs,
         );
 
         let lights = generated_lights(&generated_plugin);
@@ -709,6 +823,33 @@ mod tests {
         assert_eq!(lights[0].id, "kept");
         assert!(!used_ids.contains("excluded_light"));
         assert!(used_ids.contains("kept"));
+        assert!(logs.is_empty());
+    }
+
+    #[test]
+    fn process_lights_logs_actual_deltas_for_modified_lights() {
+        let mut light_config = config();
+        light_config.standard_radius = 2.0;
+        let source_plugin = plugin_with_lights([light("modified_light", 100)]);
+        let mut generated_plugin = Plugin::new();
+        let mut used_ids = HashSet::new();
+        let mut logs = Vec::new();
+
+        let used_objects = process_lights(
+            source_plugin,
+            "ModifiedPlugin.esp",
+            &mut generated_plugin,
+            &light_config,
+            &mut used_ids,
+            &mut logs,
+        );
+
+        assert_eq!(used_objects, 1);
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].kind, "LIGH");
+        assert_eq!(logs[0].plugin, "ModifiedPlugin.esp");
+        assert_eq!(logs[0].id, "modified_light");
+        assert!(logs[0].changes.contains(&"radius 100 -> 200".to_owned()));
     }
 
     #[test]
@@ -762,12 +903,15 @@ mod tests {
         };
         let mut generated_plugin = Plugin::new();
         let mut used_ids = HashSet::new();
+        let mut logs = Vec::new();
 
         let used_objects = process_cells(
             &mut source_plugin,
+            "AmbientPlugin.esp",
             &mut generated_plugin,
             &light_config,
             &mut used_ids,
+            &mut logs,
         );
 
         let cells = generated_cells(&generated_plugin);
@@ -782,6 +926,20 @@ mod tests {
         assert_eq!(atmo.sunlight_color, [0, 0, 255, 0]);
         assert_eq!(atmo.fog_color, [0, 255, 0, 0]);
         assert!((atmo.fog_density - 0.75).abs() < f32::EPSILON);
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].kind, "CELL");
+        assert_eq!(logs[0].plugin, "AmbientPlugin.esp");
+        assert_eq!(logs[0].id, "ambient_cell");
+        assert!(
+            logs[0]
+                .changes
+                .contains(&"ambient [1, 2, 3, 0] -> [0, 255, 255, 0]".to_owned())
+        );
+        assert!(
+            logs[0]
+                .changes
+                .contains(&"sunlight [4, 5, 6, 0] -> [0, 0, 255, 0]".to_owned())
+        );
     }
 
     #[test]
@@ -793,12 +951,15 @@ mod tests {
         };
         let mut generated_plugin = Plugin::new();
         let mut used_ids = HashSet::new();
+        let mut logs = Vec::new();
 
         let used_objects = process_cells(
             &mut source_plugin,
+            "SunPlugin.esp",
             &mut generated_plugin,
             &light_config,
             &mut used_ids,
+            &mut logs,
         );
 
         let cells = generated_cells(&generated_plugin);
@@ -811,6 +972,54 @@ mod tests {
         assert!(cells[0].references.is_empty());
         assert!(cells[0].water_height.is_none());
         assert!(used_ids.contains("sun_cell"));
+        assert_eq!(logs.len(), 1);
+        assert!(
+            logs[0]
+                .changes
+                .contains(&"sunlight [4, 5, 6, 0] -> [0, 0, 0, 0]".to_owned())
+        );
+    }
+
+    #[test]
+    fn process_cells_does_not_log_stripped_patch_only_state() {
+        let mut light_config = config();
+        light_config.disable_interior_sun = true;
+        let mut source_plugin = Plugin {
+            objects: vec![
+                Cell {
+                    name: "already_dark_cell".to_owned(),
+                    data: CellData {
+                        flags: CellFlags::IS_INTERIOR,
+                        ..CellData::default()
+                    },
+                    atmosphere_data: Some(AtmosphereData {
+                        sunlight_color: [0, 0, 0, 0],
+                        ..AtmosphereData::default()
+                    }),
+                    references: [((0, 1), Reference::default())].into(),
+                    water_height: Some(42.0),
+                    ..Cell::default()
+                }
+                .into(),
+            ],
+        };
+        let mut generated_plugin = Plugin::new();
+        let mut used_ids = HashSet::new();
+        let mut logs = Vec::new();
+
+        let used_objects = process_cells(
+            &mut source_plugin,
+            "AlreadyDark.esp",
+            &mut generated_plugin,
+            &light_config,
+            &mut used_ids,
+            &mut logs,
+        );
+
+        assert_eq!(used_objects, 1);
+        assert!(logs.is_empty());
+        assert!(generated_cells(&generated_plugin)[0].references.is_empty());
+        assert!(generated_cells(&generated_plugin)[0].water_height.is_none());
     }
 
     #[test]
@@ -839,22 +1048,26 @@ mod tests {
             ],
         };
         let mut generated_plugin = Plugin::new();
+        let mut logs = Vec::new();
 
         let used_objects = process_cells(
             &mut source_plugin,
+            "SkippedPlugin.esp",
             &mut generated_plugin,
             &light_config,
             &mut used_ids,
+            &mut logs,
         );
 
         assert_eq!(used_objects, 0);
         assert!(generated_cells(&generated_plugin).is_empty());
         assert!(used_ids.contains("duplicate_cell"));
         assert!(!used_ids.contains("excluded_cell"));
+        assert!(logs.is_empty());
     }
 
     #[test]
-    fn write_errors_after_log_file_creation_are_ignored() {
+    fn write_log_reports_writer_errors() {
         struct BrokenWriter {
             attempted_write: bool,
         }
@@ -873,10 +1086,49 @@ mod tests {
         let mut writer = BrokenWriter {
             attempted_write: false,
         };
-        let generated_plugin = Plugin::new();
+        let logs = [RecordLog {
+            kind: "LIGH",
+            plugin: "BrokenPlugin.esp".to_owned(),
+            id: "broken_writer".to_owned(),
+            changes: vec!["radius 1 -> 2".to_owned()],
+        }];
 
-        write_log_to(&mut writer, &generated_plugin);
+        let err = write_log_to(&mut writer, &logs).unwrap_err();
 
         assert!(writer.attempted_write);
+        assert_eq!(err.kind(), io::ErrorKind::Other);
+    }
+
+    #[test]
+    fn write_log_emits_one_line_per_modified_record() {
+        let logs = [
+            RecordLog {
+                kind: "CELL",
+                plugin: "Morrowind.esm".to_owned(),
+                id: "cell_id".to_owned(),
+                changes: vec![
+                    "sunlight [1, 2, 3, 0] -> [0, 0, 0, 0]".to_owned(),
+                    "fog_density 0.5 -> 0.75".to_owned(),
+                ],
+            },
+            RecordLog {
+                kind: "LIGH",
+                plugin: "Tribunal.esm".to_owned(),
+                id: "light_id".to_owned(),
+                changes: vec![
+                    "color [1, 2, 3, 0] -> [4, 5, 6, 0]".to_owned(),
+                    "radius 128 -> 256".to_owned(),
+                ],
+            },
+        ];
+        let mut output = Vec::new();
+
+        write_log_to(&mut output, &logs).unwrap();
+
+        let output = String::from_utf8(output).unwrap();
+        assert_eq!(
+            output,
+            "CELL \"cell_id\" from \"Morrowind.esm\": sunlight [1, 2, 3, 0] -> [0, 0, 0, 0], fog_density 0.5 -> 0.75\nLIGH \"light_id\" from \"Tribunal.esm\": color [1, 2, 3, 0] -> [4, 5, 6, 0], radius 128 -> 256\n"
+        );
     }
 }

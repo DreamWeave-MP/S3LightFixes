@@ -106,9 +106,6 @@ pub struct LightConfig {
     #[serde(default = "default::disable_pulse")]
     pub disable_pulse: bool,
 
-    #[serde(default = "default::save_log")]
-    pub save_log: bool,
-
     #[serde(default = "default::auto_enable")]
     pub auto_enable: bool,
 
@@ -245,10 +242,6 @@ impl LightConfig {
             (
                 &mut self.disable_flickering,
                 &mut light_args.disable_flickering.clone(),
-            ),
-            (
-                &mut self.save_log,
-                &mut light_args.write_log.then_some(true),
             ),
             (
                 &mut self.auto_enable,
@@ -627,7 +620,6 @@ impl Default for LightConfig {
             disable_interior_sun: false,
             disable_flickering: default::disable_flicker(),
             disable_pulse: default::disable_pulse(),
-            save_log: default::save_log(),
             auto_enable: default::auto_enable(),
             standard_hue: default::standard_hue(),
             standard_saturation: default::standard_saturation(),
