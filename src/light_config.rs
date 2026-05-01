@@ -106,6 +106,9 @@ pub struct LightConfig {
     #[serde(default = "default::disable_pulse")]
     pub disable_pulse: bool,
 
+    #[serde(default = "default::disable_negative_lights")]
+    pub disable_negative_lights: bool,
+
     #[serde(default = "default::auto_enable")]
     pub auto_enable: bool,
 
@@ -242,6 +245,10 @@ impl LightConfig {
             (
                 &mut self.disable_flickering,
                 &mut light_args.disable_flickering.clone(),
+            ),
+            (
+                &mut self.disable_negative_lights,
+                &mut light_args.disable_negative_lights.clone(),
             ),
             (
                 &mut self.auto_enable,
@@ -620,6 +627,7 @@ impl Default for LightConfig {
             disable_interior_sun: false,
             disable_flickering: default::disable_flicker(),
             disable_pulse: default::disable_pulse(),
+            disable_negative_lights: default::disable_negative_lights(),
             auto_enable: default::auto_enable(),
             standard_hue: default::standard_hue(),
             standard_saturation: default::standard_saturation(),
@@ -646,6 +654,8 @@ impl Default for LightConfig {
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
+
+    use clap::Parser;
 
     use super::*;
 
@@ -694,6 +704,35 @@ mod tests {
             config.light_overrides.keys().collect::<Vec<_>>(),
             vec!["first", "second", "third"]
         );
+    }
+
+    #[test]
+    fn disable_negative_lights_defaults_true_and_can_be_loaded_false() {
+        let defaulted = toml::from_str::<LightConfig>("").unwrap();
+        assert!(defaulted.disable_negative_lights);
+
+        let configured = toml::from_str::<LightConfig>("disable_negative_lights = false").unwrap();
+        assert!(!configured.disable_negative_lights);
+    }
+
+    #[test]
+    fn cli_disable_negative_lights_overrides_config_without_short_form() {
+        let mut config = LightConfig {
+            disable_negative_lights: true,
+            ..LightConfig::default()
+        };
+        let args = LightArgs::parse_from([
+            "s3lightfixes",
+            "--disable-negative-lights",
+            "false",
+            "--no-flicker",
+            "false",
+        ]);
+
+        config.apply_bool_args(&args);
+
+        assert!(!config.disable_negative_lights);
+        assert!(!config.disable_flickering);
     }
 
     #[test]

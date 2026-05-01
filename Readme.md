@@ -40,6 +40,8 @@ Or, make your own lightconfig.toml and place it next to the S3LightFixes executa
 disable_pulse = true
 # Disable flickering lights
 disable_flickering = true
+# Nullify negative lights
+disable_negative_lights = true
 # Hue multiplier for non-colored lights
 standard_hue = 0.6000000238418579
 # Saturation multiplier for non-colored lights
@@ -138,7 +140,7 @@ Additionally, S3LightFixes will perform the following:
 - Write one-line light and cell change logs to stdout and `lightconfig.log` next to your OpenMW user config
 - Disable sunlight color in interiors for compatibility with vtastek's custom shader stack for openmw 0.47
 - Optionally remove the Flicker and FlickerSlow flags from all lights
-- Nullify all negative lights (Not optional, as negative lights look bad in OpenMW)
+- Nullify all negative lights by default; disable with `disable_negative_lights = false` or `--disable-negative-lights false` if a setup really needs them preserved
 
 ## Command Line Arguments
 
@@ -163,6 +165,8 @@ Additionally, S3LightFixes will perform the following:
           Whether to disable flickering lights during lightfixes generation [possible values: true, false]
   -p, --no-pulse <DISABLE_PULSE>
           Whether to disable pulsing lights during lightfixes generation [possible values: true, false]
+      --disable-negative-lights <DISABLE_NEGATIVE_LIGHTS>
+          Whether to null negative lights during lightfixes generation [possible values: true, false]
       --standard-hue <STANDARD_HUE>
           For lights in the orange range, multiply their HSV hue by this value.
           If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 0.62.

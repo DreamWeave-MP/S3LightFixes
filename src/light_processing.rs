@@ -115,7 +115,7 @@ fn apply_plain_hsv_adjustment(
 pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) -> Vec<String> {
     let original_data = light.data.clone();
 
-    if light.data.flags.contains(LightFlags::NEGATIVE) {
+    if light_config.disable_negative_lights && light.data.flags.contains(LightFlags::NEGATIVE) {
         light.data.flags.remove(LightFlags::NEGATIVE);
         light.data.radius = 0;
         light.data.color = [0, 0, 0, 0];
@@ -268,6 +268,7 @@ mod tests {
         LightConfig {
             disable_flickering: false,
             disable_pulse: false,
+            disable_negative_lights: true,
             standard_hue: 1.0,
             standard_saturation: 1.0,
             standard_value: 1.0,
@@ -313,6 +314,22 @@ mod tests {
         assert_eq!(light.data.radius, 0);
         assert_eq!(light.data.time, 13);
         assert_eq!(light.data.color, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn negative_lights_are_processed_normally_when_not_disabled() {
+        let mut light_config = config();
+        light_config.disable_negative_lights = false;
+        light_config.standard_radius = 2.0;
+        light_config.duration_mult = 3.0;
+
+        let mut light = light("negative_light", 30.0, 42, 13, LightFlags::NEGATIVE);
+
+        process_light(&light_config, &mut light);
+
+        assert!(light.data.flags.contains(LightFlags::NEGATIVE));
+        assert_eq!(light.data.radius, 84);
+        assert_eq!(light.data.time, 39);
     }
 
     #[test]
