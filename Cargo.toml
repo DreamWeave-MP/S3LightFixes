@@ -19,7 +19,7 @@ toml = "1.1.2"
 native-dialog = "0.9.6"
 
 [dependencies.openmw-config]
-version = "1.0.2"
+version = "1.0.3"
 # git = "https://github.com/magicaldave/Openmw_Config.git"
 # path = "../openmw-cfg"
 
