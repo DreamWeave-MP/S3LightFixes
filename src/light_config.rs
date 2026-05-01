@@ -350,49 +350,68 @@ impl LightConfig {
         result
     }
 
-    fn compile_regexes(&mut self) {
+    fn compile_regexes(&mut self) -> io::Result<()> {
+        let mut errors = Vec::new();
+
         for id in std::mem::take(&mut self.excluded_ids) {
             match regex::Regex::new(&id) {
                 Ok(pattern) => self.excluded_id_regexes.push(pattern),
-                Err(error) => notification_box(
-                    "Invalid excluded id regex!",
-                    &format!("Couldn't compile excluded id regex: {id}: {error}"),
-                    self.no_notifications,
-                ),
+                Err(error) => {
+                    let message = format!("Couldn't compile excluded id regex: {id}: {error}");
+                    notification_box(
+                        "Invalid excluded id regex!",
+                        &message,
+                        self.no_notifications,
+                    );
+                    errors.push(message);
+                }
             }
         }
 
         for id in std::mem::take(&mut self.excluded_plugins) {
             match regex::Regex::new(&id) {
                 Ok(pattern) => self.excluded_plugin_regexes.push(pattern),
-                Err(error) => notification_box(
-                    "Invalid excluded plugin regex!",
-                    &format!("Couldn't compile excluded plugin regex: {id}: {error}"),
-                    self.no_notifications,
-                ),
+                Err(error) => {
+                    let message = format!("Couldn't compile excluded plugin regex: {id}: {error}");
+                    notification_box(
+                        "Invalid excluded plugin regex!",
+                        &message,
+                        self.no_notifications,
+                    );
+                    errors.push(message);
+                }
             }
         }
 
         for (id, light_data) in std::mem::take(&mut self.light_overrides) {
             match regex::Regex::new(&id) {
                 Ok(pattern) => self.light_regexes.push((pattern, light_data)),
-                Err(error) => notification_box(
-                    "Invalid light override!",
-                    &format!("Couldn't compile light override regex: {id}: {error}"),
-                    self.no_notifications,
-                ),
+                Err(error) => {
+                    let message = format!("Couldn't compile light override regex: {id}: {error}");
+                    notification_box("Invalid light override!", &message, self.no_notifications);
+                    errors.push(message);
+                }
             }
         }
 
         for (id, light_data) in std::mem::take(&mut self.ambient_overrides) {
             match regex::Regex::new(&id) {
                 Ok(pattern) => self.ambient_regexes.push((pattern, light_data)),
-                Err(error) => notification_box(
-                    "Invalid ambient override!",
-                    &format!("Couldn't compile ambient override regex: {id}: {error}"),
-                    self.no_notifications,
-                ),
+                Err(error) => {
+                    let message = format!("Couldn't compile ambient override regex: {id}: {error}");
+                    notification_box("Invalid ambient override!", &message, self.no_notifications);
+                    errors.push(message);
+                }
             }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                errors.join("\n"),
+            ))
         }
     }
 
@@ -460,7 +479,9 @@ impl LightConfig {
         light_config.no_notifications |= std::env::var("S3L_NO_NOTIFICATIONS").is_ok();
         light_config.debug |= debug_from_env;
 
-        light_config.configure_output_dir(light_args.output.take(), openmw_config)?;
+        if !light_args.validate_config {
+            light_config.configure_output_dir(light_args.output.take(), openmw_config)?;
+        }
         light_config.apply_collection_args(&mut light_args);
         light_config.update_migrated_color_config();
 
@@ -484,7 +505,7 @@ impl LightConfig {
         }
 
         // Consume the original values *after* reserializing the config
-        light_config.compile_regexes();
+        light_config.compile_regexes()?;
 
         Ok(light_config)
     }
@@ -749,6 +770,23 @@ mod tests {
 
         assert!(!config.disable_negative_lights);
         assert!(!config.disable_flickering);
+    }
+
+    #[test]
+    fn invalid_regexes_are_validation_errors_instead_of_silent_drops() {
+        let mut config = LightConfig {
+            excluded_ids: vec!["[".to_owned()],
+            no_notifications: true,
+            ..LightConfig::default()
+        };
+
+        let err = config.compile_regexes().unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(
+            err.to_string()
+                .contains("Couldn't compile excluded id regex")
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    env::{current_dir, var},
+    env::var,
     fs::{File, copy, metadata, remove_file},
     io::{self, Write},
     mem::take,
@@ -52,7 +52,7 @@ struct RunMetadata {
 
 impl RunMetadata {
     fn new(
-        config: &openmw_config::OpenMWConfiguration,
+        selected_config_file: &Path,
         output_dir: &Path,
         content_files: usize,
         loaded_plugins: usize,
@@ -61,7 +61,7 @@ impl RunMetadata {
     ) -> Self {
         Self {
             version: env!("CARGO_PKG_VERSION"),
-            config_path: config.user_config_path().join("openmw.cfg"),
+            config_path: selected_config_file.to_owned(),
             output_path: output_dir.join(PLUGIN_NAME),
             content_files,
             loaded_plugins,
@@ -69,6 +69,16 @@ impl RunMetadata {
             changed_cells: logs.iter().filter(|log| log.kind == "CELL").count(),
             changed_lights: logs.iter().filter(|log| log.kind == "LIGH").count(),
         }
+    }
+}
+
+fn selected_config_file_path(args: &mut LightArgs) -> PathBuf {
+    let config_path = get_config_path(args);
+
+    if config_path.is_dir() {
+        config_path.join("openmw.cfg")
+    } else {
+        config_path
     }
 }
 
@@ -96,40 +106,6 @@ fn load_openmw_config(
 
             exit(127);
         }
-    }
-}
-
-fn output_dir_from_args_or_config(
-    args: &LightArgs,
-    config: &mut openmw_config::OpenMWConfiguration,
-    no_notifications: bool,
-) -> PathBuf {
-    if let Some(ref dir) = args.output {
-        if dir.is_dir() {
-            return dir.to_owned();
-        }
-
-        notification_box(
-            "Can't find output location!",
-            &format!(
-                "WARNING: The requested output path {} does not exist! Terminating.",
-                dir.display()
-            ),
-            no_notifications,
-        );
-        exit(1);
-    }
-
-    match &mut config.data_local() {
-        Some(dir) => dir.parsed().to_owned(),
-        None => current_dir().unwrap_or_else(|_| {
-            notification_box(
-                "Can't get workdir!",
-                "[ CRITICAL FAILURE ]: FAILED TO READ CURRENT WORKING DIRECTORY!",
-                no_notifications,
-            );
-            exit(256);
-        }),
     }
 }
 
@@ -438,21 +414,35 @@ fn remove_old_plugin_from_data_local(config: &mut openmw_config::OpenMWConfigura
     }
 }
 
-fn backup_openmw_cfg(user_config_path: &Path) -> io::Result<PathBuf> {
-    let openmw_cfg = user_config_path.join("openmw.cfg");
-    let backup_path = user_config_path.join("openmw.cfg.s3lightfixes.bak");
+fn backup_openmw_cfg(selected_config_file: &Path) -> io::Result<PathBuf> {
+    let file_name = selected_config_file.file_name().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "selected OpenMW config path has no file name",
+        )
+    })?;
+    let backup_name = format!("{}.s3lightfixes.bak", file_name.to_string_lossy());
+    let backup_path = selected_config_file.with_file_name(backup_name);
 
-    copy(openmw_cfg, &backup_path)?;
+    copy(selected_config_file, &backup_path)?;
 
     Ok(backup_path)
 }
 
-fn auto_enable_plugin(config: &mut openmw_config::OpenMWConfiguration, light_config: &LightConfig) {
-    if !light_config.auto_enable || config.has_content_file(PLUGIN_NAME) {
-        return;
+fn auto_enable_plugin(
+    config: &mut openmw_config::OpenMWConfiguration,
+    light_config: &LightConfig,
+    selected_config_file: &Path,
+) -> bool {
+    if !light_config.auto_enable {
+        return false;
     }
 
-    let backup_path = match backup_openmw_cfg(&config.user_config_path()) {
+    if config.has_content_file(PLUGIN_NAME) {
+        return true;
+    }
+
+    let backup_path = match backup_openmw_cfg(selected_config_file) {
         Ok(path) => path,
         Err(err) => {
             notification_box(
@@ -462,7 +452,7 @@ fn auto_enable_plugin(config: &mut openmw_config::OpenMWConfiguration, light_con
                 ),
                 light_config.no_notifications,
             );
-            return;
+            return false;
         }
     };
 
@@ -474,6 +464,7 @@ fn auto_enable_plugin(config: &mut openmw_config::OpenMWConfiguration, light_con
                     &err.to_string(),
                     light_config.no_notifications,
                 );
+                false
             } else {
                 let lightfix_enabled_msg = format!(
                     "Wrote user openmw.cfg at {} successfully! Backup saved at {}.",
@@ -485,6 +476,7 @@ fn auto_enable_plugin(config: &mut openmw_config::OpenMWConfiguration, light_con
                     &lightfix_enabled_msg,
                     light_config.no_notifications,
                 );
+                true
             }
         }
         Err(err) => {
@@ -586,8 +578,8 @@ pub fn run() -> io::Result<()> {
     }
 
     let no_notifications = var("S3L_NO_NOTIFICATIONS").is_ok() || args.no_notifications;
+    let selected_config_file = selected_config_file_path(&mut args);
     let mut config = load_openmw_config(&mut args, no_notifications);
-    let output_dir = output_dir_from_args_or_config(&args, &mut config, no_notifications);
     let light_config = LightConfig::get(args, &config)?;
 
     if light_config.validate_config {
@@ -600,6 +592,15 @@ pub fn run() -> io::Result<()> {
         );
         return Ok(());
     }
+
+    let output_dir = light_config.output_dir.clone().unwrap_or_else(|| {
+        notification_box(
+            "Can't get output directory!",
+            "[ CRITICAL FAILURE ]: FAILED TO RESOLVE OUTPUT DIRECTORY!",
+            light_config.no_notifications,
+        );
+        exit(256);
+    });
 
     if light_config.debug {
         dbg!(&light_config, &config);
@@ -623,7 +624,21 @@ pub fn run() -> io::Result<()> {
         dbg!(&header);
     }
 
+    let metadata = RunMetadata::new(
+        &selected_config_file,
+        &output_dir,
+        content_files.len(),
+        loaded_plugins,
+        &header,
+        &logs,
+    );
+
     if header.masters.is_empty() {
+        if light_config.dry_run {
+            write_dry_run_outputs(&metadata, &logs)?;
+            return Ok(());
+        }
+
         notification_box(
             "No masters found!",
             "The generated plugin was not found to have any master files! It's empty! Try running lightfixes again using the S3L_DEBUG environment variable",
@@ -631,15 +646,6 @@ pub fn run() -> io::Result<()> {
         );
         exit(2);
     }
-
-    let metadata = RunMetadata::new(
-        &config,
-        &output_dir,
-        content_files.len(),
-        loaded_plugins,
-        &header,
-        &logs,
-    );
 
     if light_config.dry_run {
         write_dry_run_outputs(&metadata, &logs)?;
@@ -653,21 +659,28 @@ pub fn run() -> io::Result<()> {
     // dir may still be the old one.
     remove_old_plugin_from_data_local(&mut config);
 
-    if let Err(err) = save_plugin(&output_dir, &mut plugin) {
+    save_plugin(&output_dir, &mut plugin).inspect_err(|err| {
         notification_box(
             "Failed to save plugin!",
             &err.to_string(),
             light_config.no_notifications,
         );
-    }
+    })?;
 
-    auto_enable_plugin(&mut config, &light_config);
+    let enabled = auto_enable_plugin(&mut config, &light_config, &selected_config_file);
     write_log_outputs(&config, &metadata, &logs)?;
 
-    let lights_fixed = format!(
-        "S3LightFixes.omwaddon generated, enabled, and saved in {}",
-        output_dir.display()
-    );
+    let lights_fixed = if enabled {
+        format!(
+            "S3LightFixes.omwaddon generated, enabled, and saved in {}",
+            output_dir.display()
+        )
+    } else {
+        format!(
+            "S3LightFixes.omwaddon generated and saved in {}",
+            output_dir.display()
+        )
+    };
 
     notification_box(
         "Lightfixes successful!",
@@ -846,11 +859,15 @@ mod tests {
             NEXT_TEMP_FILE.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&temp_dir).unwrap();
-        std::fs::write(temp_dir.join("openmw.cfg"), "content=Morrowind.esm\n").unwrap();
+        let selected_config = temp_dir.join("custom-openmw.cfg");
+        std::fs::write(&selected_config, "content=Morrowind.esm\n").unwrap();
 
-        let backup_path = backup_openmw_cfg(&temp_dir).unwrap();
+        let backup_path = backup_openmw_cfg(&selected_config).unwrap();
 
-        assert_eq!(backup_path, temp_dir.join("openmw.cfg.s3lightfixes.bak"));
+        assert_eq!(
+            backup_path,
+            temp_dir.join("custom-openmw.cfg.s3lightfixes.bak")
+        );
         assert_eq!(
             std::fs::read_to_string(backup_path).unwrap(),
             "content=Morrowind.esm\n"
