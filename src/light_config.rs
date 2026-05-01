@@ -520,7 +520,7 @@ impl LightConfig {
         light_config.no_notifications |= std::env::var("S3L_NO_NOTIFICATIONS").is_ok();
         light_config.debug |= debug_from_env;
 
-        if !light_config.validate_config {
+        if !effective_validate_config {
             light_config.configure_output_dir(light_args.output.take(), openmw_config)?;
         }
         light_config.apply_collection_args(&mut light_args);
