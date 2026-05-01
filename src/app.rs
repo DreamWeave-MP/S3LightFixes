@@ -188,14 +188,7 @@ fn apply_cell_ambient_overrides(
     replaced
 }
 
-fn cell_changes(
-    original: &AtmosphereData,
-    modified: &AtmosphereData,
-    original_references: usize,
-    modified_references: usize,
-    original_water_height: Option<f32>,
-    modified_water_height: Option<f32>,
-) -> Vec<String> {
+fn cell_changes(original: &AtmosphereData, modified: &AtmosphereData) -> Vec<String> {
     let mut changes = Vec::new();
 
     if original.ambient_color != modified.ambient_color {
@@ -226,18 +219,6 @@ fn cell_changes(
         ));
     }
 
-    if original_references != modified_references {
-        changes.push(format!(
-            "references {original_references} -> {modified_references}"
-        ));
-    }
-
-    if original_water_height != modified_water_height {
-        changes.push(format!(
-            "water_height {original_water_height:?} -> {modified_water_height:?}"
-        ));
-    }
-
     changes
 }
 
@@ -261,9 +242,6 @@ fn process_cells(
         }
 
         let original_atmo = cell.atmosphere_data.clone();
-        let original_references = cell.references.len();
-        let original_water_height = cell.water_height;
-
         if let Some(ref mut atmo) = cell.atmosphere_data {
             // Need additional handling here for instance replacements!
             // Filter out any instances which are not either in the `deletions` or `replacements` lists.
@@ -284,19 +262,16 @@ fn process_cells(
 
             if replaced {
                 if let Some(original_atmo) = &original_atmo {
-                    logs.push(RecordLog {
-                        kind: "CELL",
-                        plugin: plugin_name.to_owned(),
-                        id: cell_id.clone(),
-                        changes: cell_changes(
-                            original_atmo,
-                            atmo,
-                            original_references,
-                            cell.references.len(),
-                            original_water_height,
-                            cell.water_height,
-                        ),
-                    });
+                    let changes = cell_changes(original_atmo, atmo);
+
+                    if !changes.is_empty() {
+                        logs.push(RecordLog {
+                            kind: "CELL",
+                            plugin: plugin_name.to_owned(),
+                            id: cell_id.clone(),
+                            changes,
+                        });
+                    }
                 }
 
                 generated_plugin.objects.push(take(cell).into());
@@ -466,25 +441,32 @@ fn write_log_outputs(
     config: &openmw_config::OpenMWConfiguration,
     logs: &[RecordLog],
 ) -> io::Result<()> {
-    write_log_to(&mut io::stdout(), logs);
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+    match write_log_to(&mut stdout, logs) {
+        Ok(()) => {}
+        Err(err) if err.kind() == io::ErrorKind::BrokenPipe => {}
+        Err(err) => return Err(err),
+    }
+
     let path = config.user_config_path().join(LOG_NAME);
     let mut file = File::create(path)?;
-    write_log_to(&mut file, logs);
-
-    Ok(())
+    write_log_to(&mut file, logs)
 }
 
-fn write_log_to(mut writer: impl Write, logs: &[RecordLog]) {
+fn write_log_to(mut writer: impl Write, logs: &[RecordLog]) -> io::Result<()> {
     for log in logs {
-        let _ = writeln!(
+        writeln!(
             writer,
             "{} {:?} from {:?}: {}",
             log.kind,
             log.id,
             log.plugin,
             log.changes.join(", ")
-        );
+        )?;
     }
+
+    Ok(())
 }
 
 fn handle_generated_output(args: &LightArgs, stdout: &mut dyn Write) -> io::Result<bool> {
@@ -999,6 +981,48 @@ mod tests {
     }
 
     #[test]
+    fn process_cells_does_not_log_stripped_patch_only_state() {
+        let mut light_config = config();
+        light_config.disable_interior_sun = true;
+        let mut source_plugin = Plugin {
+            objects: vec![
+                Cell {
+                    name: "already_dark_cell".to_owned(),
+                    data: CellData {
+                        flags: CellFlags::IS_INTERIOR,
+                        ..CellData::default()
+                    },
+                    atmosphere_data: Some(AtmosphereData {
+                        sunlight_color: [0, 0, 0, 0],
+                        ..AtmosphereData::default()
+                    }),
+                    references: [((0, 1), Reference::default())].into(),
+                    water_height: Some(42.0),
+                    ..Cell::default()
+                }
+                .into(),
+            ],
+        };
+        let mut generated_plugin = Plugin::new();
+        let mut used_ids = HashSet::new();
+        let mut logs = Vec::new();
+
+        let used_objects = process_cells(
+            &mut source_plugin,
+            "AlreadyDark.esp",
+            &mut generated_plugin,
+            &light_config,
+            &mut used_ids,
+            &mut logs,
+        );
+
+        assert_eq!(used_objects, 1);
+        assert!(logs.is_empty());
+        assert!(generated_cells(&generated_plugin)[0].references.is_empty());
+        assert!(generated_cells(&generated_plugin)[0].water_height.is_none());
+    }
+
+    #[test]
     fn process_cells_leaves_skipped_cells_out_of_generated_plugin() {
         let mut light_config = config();
         light_config.disable_interior_sun = true;
@@ -1043,7 +1067,7 @@ mod tests {
     }
 
     #[test]
-    fn write_errors_after_log_file_creation_are_ignored() {
+    fn write_log_reports_writer_errors() {
         struct BrokenWriter {
             attempted_write: bool,
         }
@@ -1069,9 +1093,10 @@ mod tests {
             changes: vec!["radius 1 -> 2".to_owned()],
         }];
 
-        write_log_to(&mut writer, &logs);
+        let err = write_log_to(&mut writer, &logs).unwrap_err();
 
         assert!(writer.attempted_write);
+        assert_eq!(err.kind(), io::ErrorKind::Other);
     }
 
     #[test]
@@ -1098,7 +1123,7 @@ mod tests {
         ];
         let mut output = Vec::new();
 
-        write_log_to(&mut output, &logs);
+        write_log_to(&mut output, &logs).unwrap();
 
         let output = String::from_utf8(output).unwrap();
         assert_eq!(
