@@ -972,6 +972,74 @@ mod tests {
     }
 
     #[test]
+    fn compatibility_fixture_preserves_core_generation_contracts() {
+        let early = temp_plugin_file("early.esp", 11);
+        let late = temp_plugin_file("late.esp", 13);
+        let mut light_config = config();
+        light_config
+            .excluded_id_regexes
+            .push(Regex::new("excluded").unwrap());
+        let plugins = vec![
+            (
+                plugin_with_lights([
+                    light("duplicate_light", 10),
+                    Light {
+                        id: "negative_light".to_owned(),
+                        data: LightData {
+                            radius: 20,
+                            color: [255, 128, 0, 0],
+                            flags: LightFlags::NEGATIVE,
+                            ..LightData::default()
+                        },
+                        ..Light::default()
+                    },
+                    light("excluded_light", 30),
+                ]),
+                early.as_path(),
+            ),
+            (
+                plugin_with_lights([light("duplicate_light", 99), light("late_unique_light", 40)]),
+                late.as_path(),
+            ),
+        ];
+
+        let mut result = generate_plugin(plugins, &light_config).unwrap();
+        result
+            .plugin
+            .objects
+            .push(TES3Object::Header(result.header));
+        result.plugin.sort_objects();
+
+        let generated = generated_lights(&result.plugin);
+        assert_eq!(generated.len(), 3);
+        assert!(
+            generated
+                .iter()
+                .any(|light| light.id == "duplicate_light" && light.data.radius == 10)
+        );
+        assert!(generated.iter().all(|light| light.id != "excluded_light"));
+        assert!(
+            generated
+                .iter()
+                .any(|light| light.id == "late_unique_light" && light.data.radius == 40)
+        );
+        let negative = generated
+            .iter()
+            .find(|light| light.id == "negative_light")
+            .unwrap();
+        assert_eq!(negative.data.radius, 0);
+        assert!(!negative.data.flags.contains(LightFlags::NEGATIVE));
+
+        let TES3Object::Header(header) = &result.plugin.objects[0] else {
+            panic!("generated plugin header was not sorted first");
+        };
+        assert_eq!(header.num_objects, 3);
+        assert_eq!(header.masters.len(), 2);
+        assert_eq!(result.logs.len(), 1);
+        assert_eq!(result.logs[0].id, "negative_light");
+    }
+
+    #[test]
     fn process_lights_skips_excluded_ids_that_would_otherwise_emit() {
         let mut light_config = config();
         light_config
