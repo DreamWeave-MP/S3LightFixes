@@ -467,8 +467,8 @@ fn auto_enable_plugin(
                 false
             } else {
                 let lightfix_enabled_msg = format!(
-                    "Wrote user openmw.cfg at {} successfully! Backup saved at {}.",
-                    config.user_config_path().display(),
+                    "Wrote selected OpenMW config at {} successfully! Backup saved at {}.",
+                    selected_config_file.display(),
                     backup_path.display()
                 );
                 notification_box(
@@ -990,8 +990,8 @@ mod tests {
 
     #[test]
     fn compatibility_fixture_preserves_core_generation_contracts() {
-        let early = temp_plugin_file("early.esp", 11);
-        let late = temp_plugin_file("late.esp", 13);
+        let first_processed = temp_plugin_file("first_processed.esp", 11);
+        let second_processed = temp_plugin_file("second_processed.esp", 13);
         let mut light_config = config();
         light_config
             .excluded_id_regexes
@@ -1012,11 +1012,14 @@ mod tests {
                     },
                     light("excluded_light", 30),
                 ]),
-                early.as_path(),
+                first_processed.as_path(),
             ),
             (
-                plugin_with_lights([light("duplicate_light", 99), light("late_unique_light", 40)]),
-                late.as_path(),
+                plugin_with_lights([
+                    light("duplicate_light", 99),
+                    light("second_unique_light", 40),
+                ]),
+                second_processed.as_path(),
             ),
         ];
 
@@ -1038,7 +1041,7 @@ mod tests {
         assert!(
             generated
                 .iter()
-                .any(|light| light.id == "late_unique_light" && light.data.radius == 40)
+                .any(|light| light.id == "second_unique_light" && light.data.radius == 40)
         );
         let negative = generated
             .iter()
