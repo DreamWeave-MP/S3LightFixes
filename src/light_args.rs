@@ -69,6 +69,10 @@ pub struct LightArgs {
     #[arg(short = 'p', long = "no-pulse")]
     pub disable_pulse: Option<bool>,
 
+    /// Whether to null negative lights during lightfixes generation
+    #[arg(long = "disable-negative-lights")]
+    pub disable_negative_lights: Option<bool>,
+
     #[arg(
         long = "standard-hue",
         help = &format!("For lights in the orange range, multiply their HSV hue by this value.\nIf this argument is not used, the value will be derived from lightConfig.toml or use the default value of {}.\nThis argument has no short form due to a conflict with -h.", default::standard_hue())

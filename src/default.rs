@@ -58,6 +58,11 @@ pub fn disable_pulse() -> bool {
 }
 
 #[must_use]
+pub fn disable_negative_lights() -> bool {
+    true
+}
+
+#[must_use]
 pub fn auto_enable() -> bool {
     false
 }
