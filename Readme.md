@@ -42,6 +42,10 @@ disable_pulse = true
 disable_flickering = true
 # Nullify negative lights
 disable_negative_lights = true
+# Validate config and source plugins, print planned changes, but do not write files
+dry_run = false
+# Validate lightconfig.toml, CLI overrides, and regexes without generating a plugin
+validate_config = false
 # Hue multiplier for non-colored lights
 standard_hue = 0.6000000238418579
 # Saturation multiplier for non-colored lights
@@ -158,9 +162,9 @@ Additionally, S3LightFixes will perform the following:
           If used, print to stdout instead of using native GUI dialogs. Not available on android
   -d, --debug
           Output debugging information during lightfixes generation Primarily displays output related to the openmw.cfg being used for generation
-      --dry-run
+      --dry-run [<BOOL>]
           Validate config and source plugins, print planned changes, but do not write files
-      --validate-config
+      --validate-config [<BOOL>]
           Validate lightconfig.toml, CLI overrides, and regexes without generating a plugin
       --generate-completion <SHELL>
           Generate shell completion script to stdout [possible values: bash, elvish, fish, powershell, zsh]

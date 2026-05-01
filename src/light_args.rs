@@ -54,12 +54,24 @@ pub struct LightArgs {
     pub debug: bool,
 
     /// Validate config and source plugins, print planned changes, but do not write files.
-    #[arg(long = "dry-run", conflicts_with = "validate_config")]
-    pub dry_run: bool,
+    #[arg(
+        long = "dry-run",
+        conflicts_with = "validate_config",
+        num_args = 0..=1,
+        default_missing_value = "true",
+        value_name = "BOOL"
+    )]
+    pub dry_run: Option<bool>,
 
     /// Validate lightconfig.toml, CLI overrides, and regexes without generating a plugin.
-    #[arg(long = "validate-config", conflicts_with = "dry_run")]
-    pub validate_config: bool,
+    #[arg(
+        long = "validate-config",
+        conflicts_with = "dry_run",
+        num_args = 0..=1,
+        default_missing_value = "true",
+        value_name = "BOOL"
+    )]
+    pub validate_config: Option<bool>,
 
     /// Generate shell completion script to stdout
     #[arg(long, value_name = "SHELL", conflicts_with = "generate_manpage")]

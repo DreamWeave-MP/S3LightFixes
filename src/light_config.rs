@@ -118,10 +118,10 @@ pub struct LightConfig {
     #[serde(default)]
     pub debug: bool,
 
-    #[serde(skip)]
+    #[serde(default)]
     pub dry_run: bool,
 
-    #[serde(skip)]
+    #[serde(default)]
     pub validate_config: bool,
 
     #[serde(default = "default::standard_hue")]
@@ -267,8 +267,47 @@ impl LightConfig {
             (&mut self.debug, &mut light_args.debug.then_some(true)),
         ]);
 
-        self.dry_run = light_args.dry_run;
-        self.validate_config = light_args.validate_config;
+        if let Some(dry_run) = light_args.dry_run {
+            self.dry_run = dry_run;
+            if dry_run {
+                self.validate_config = false;
+            }
+        }
+
+        if let Some(validate_config) = light_args.validate_config {
+            self.validate_config = validate_config;
+            if validate_config {
+                self.dry_run = false;
+            }
+        }
+    }
+
+    fn effective_non_writing_modes(&self, light_args: &LightArgs) -> io::Result<(bool, bool)> {
+        let mut dry_run = self.dry_run;
+        let mut validate_config = self.validate_config;
+
+        if let Some(cli_dry_run) = light_args.dry_run {
+            dry_run = cli_dry_run;
+            if cli_dry_run {
+                validate_config = false;
+            }
+        }
+
+        if let Some(cli_validate_config) = light_args.validate_config {
+            validate_config = cli_validate_config;
+            if cli_validate_config {
+                dry_run = false;
+            }
+        }
+
+        if dry_run && validate_config {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "dry_run and validate_config cannot both be true",
+            ));
+        }
+
+        Ok((dry_run, validate_config))
     }
 
     fn apply_collection_args(&mut self, light_args: &mut LightArgs) {
@@ -461,7 +500,9 @@ impl LightConfig {
             );
         }
 
-        let allow_config_writes = !light_args.dry_run && !light_args.validate_config;
+        let (effective_dry_run, effective_validate_config) =
+            light_config.effective_non_writing_modes(&light_args)?;
+        let allow_config_writes = !effective_dry_run && !effective_validate_config;
         // Migration-only saves must happen before applying transient CLI arguments. Otherwise a
         // harmless one-shot run with --light or --classic would be fossilized in lightconfig.toml.
         if allow_config_writes {
@@ -479,7 +520,7 @@ impl LightConfig {
         light_config.no_notifications |= std::env::var("S3L_NO_NOTIFICATIONS").is_ok();
         light_config.debug |= debug_from_env;
 
-        if !light_args.validate_config {
+        if !light_config.validate_config {
             light_config.configure_output_dir(light_args.output.take(), openmw_config)?;
         }
         light_config.apply_collection_args(&mut light_args);
@@ -770,6 +811,50 @@ mod tests {
 
         assert!(!config.disable_negative_lights);
         assert!(!config.disable_flickering);
+    }
+
+    #[test]
+    fn non_writing_modes_are_toml_configurable_and_cli_overridable() {
+        let mut config = toml::from_str::<LightConfig>(
+            r"
+            dry_run = true
+            validate_config = false
+            ",
+        )
+        .unwrap();
+        let args = LightArgs::parse_from(["s3lightfixes", "--validate-config"]);
+
+        config.apply_bool_args(&args);
+
+        assert!(!config.dry_run);
+        assert!(config.validate_config);
+    }
+
+    #[test]
+    fn cli_false_can_disable_configured_non_writing_mode() {
+        let mut config = LightConfig {
+            dry_run: true,
+            ..LightConfig::default()
+        };
+        let args = LightArgs::parse_from(["s3lightfixes", "--dry-run", "false"]);
+
+        config.apply_bool_args(&args);
+
+        assert!(!config.dry_run);
+    }
+
+    #[test]
+    fn configured_dry_run_and_validate_config_conflict_without_cli_override() {
+        let config = LightConfig {
+            dry_run: true,
+            validate_config: true,
+            ..LightConfig::default()
+        };
+        let args = LightArgs::parse_from(["s3lightfixes"]);
+
+        let err = config.effective_non_writing_modes(&args).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     }
 
     #[test]
