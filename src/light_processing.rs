@@ -112,12 +112,14 @@ fn apply_plain_hsv_adjustment(
     light_as_hsv.value *= global_value;
 }
 
-pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) {
+pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) -> Vec<String> {
+    let original_data = light.data.clone();
+
     if light.data.flags.contains(LightFlags::NEGATIVE) {
         light.data.flags.remove(LightFlags::NEGATIVE);
         light.data.radius = 0;
         light.data.color = [0, 0, 0, 0];
-        return;
+        return light_changes(&original_data, &light.data);
     }
 
     if light_config.disable_flickering {
@@ -200,6 +202,36 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) {
         let rgb8_color: Srgb<u8> = <Hsv as IntoColor<Srgb>>::into_color(light_as_hsv).into_format();
         light.data.color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
     }
+
+    light_changes(&original_data, &light.data)
+}
+
+fn light_changes(original: &tes3::esp::LightData, modified: &tes3::esp::LightData) -> Vec<String> {
+    let mut changes = Vec::new();
+
+    if original.color != modified.color {
+        changes.push(format!(
+            "color {:?} -> {:?}",
+            original.color, modified.color
+        ));
+    }
+
+    if original.radius != modified.radius {
+        changes.push(format!("radius {} -> {}", original.radius, modified.radius));
+    }
+
+    if original.time != modified.time {
+        changes.push(format!("duration {} -> {}", original.time, modified.time));
+    }
+
+    if original.flags != modified.flags {
+        changes.push(format!(
+            "flags {:?} -> {:?}",
+            original.flags, modified.flags
+        ));
+    }
+
+    changes
 }
 
 #[cfg(test)]

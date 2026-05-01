@@ -36,12 +36,6 @@ pub struct LightArgs {
     #[arg(short = 'o', long = "output")]
     pub output: Option<PathBuf>,
 
-    /// Whether to save a text form of the generated plugin.
-    /// Extremely verbose!
-    /// You probably don't want to enable this unless asked specifically to do so.
-    #[arg(short = 'l', long = "write-log")]
-    pub write_log: bool,
-
     /// Whether to automatically enable the output plugin in openmw.cfg.
     /// Disabled by default.
     /// Typically lightfixes is ran under momw-configurator, making this param

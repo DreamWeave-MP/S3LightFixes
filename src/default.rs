@@ -58,11 +58,6 @@ pub fn disable_pulse() -> bool {
 }
 
 #[must_use]
-pub fn save_log() -> bool {
-    false
-}
-
-#[must_use]
 pub fn auto_enable() -> bool {
     false
 }

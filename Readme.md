@@ -40,8 +40,6 @@ Or, make your own lightconfig.toml and place it next to the S3LightFixes executa
 disable_pulse = true
 # Disable flickering lights
 disable_flickering = true
-# Serialize S3LightFixes plugin to a text file. Don't do this unless you're asked to (or just curious)
-save_log = false
 # Hue multiplier for non-colored lights
 standard_hue = 0.6000000238418579
 # Saturation multiplier for non-colored lights
@@ -137,6 +135,7 @@ Additionally, S3LightFixes will perform the following:
 
 - Automatically install itself into your `data-local` directory of openmw (if using the `-e` or `--auto-enable` argument)
 - Create a config file adjacent to your openmw.cfg if one doesn't already exist
+- Write one-line light and cell change logs to stdout and `lightconfig.log` next to your OpenMW user config
 - Disable sunlight color in interiors for compatibility with vtastek's custom shader stack for openmw 0.47
 - Optionally remove the Flicker and FlickerSlow flags from all lights
 - Nullify all negative lights (Not optional, as negative lights look bad in OpenMW)
@@ -150,8 +149,6 @@ Additionally, S3LightFixes will perform the following:
           Enables classic mode using vtastek shaders. ONLY for openmw 0.47. Relevant shaders can be found in the OpenMW discord: https://discord.com/channels/260439894298460160/718892786157617163/966468825321177148
   -o, --output <OUTPUT>
           Output directory. The plugin may be saved to any location, but its name will always be `S3Lightfixes.omwaddon`. Accepts relative and absolute terms
-  -l, --write-log
-          Whether to save a text form of the generated plugin. Extremely verbose! You probably don't want to enable this unless asked specifically to do so
   -e, --auto-enable
           Whether to automatically enable the output plugin in openmw.cfg. Disabled by default, and only available via CLI. Typically lightfixes is ran under momw-configurator, making this param unnecessary for many users
   -n, --no-notifications
