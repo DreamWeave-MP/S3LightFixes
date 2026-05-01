@@ -9,6 +9,7 @@
 - Full local verification: `cargo fmt --check && cargo test && cargo clippy --all-targets -- -D warnings`.
 - Focused test: `cargo test <test_name>` (there is only one package, so no `-p` needed).
 - Run without GUI dialogs during manual checks: `S3L_NO_NOTIFICATIONS=1 cargo run -- ...` or pass `--no-notifications`.
+- Non-writing checks: `cargo run -- --validate-config` validates config/regexes only; `cargo run -- --dry-run` also loads plugins and prints planned record changes without writing plugin/log/config files.
 - Generate shell completions/manpage without needing an OpenMW install: `cargo run -- --generate-completion bash` or `cargo run -- --generate-manpage`.
 
 ## Runtime/config gotchas

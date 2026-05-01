@@ -454,6 +454,31 @@ fn write_log_outputs(
     write_log_to(&mut file, logs)
 }
 
+fn write_dry_run_outputs(logs: &[RecordLog], header: &Header, output_dir: &Path) -> io::Result<()> {
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+    write_dry_run_to(&mut stdout, logs, header, output_dir)
+}
+
+fn write_dry_run_to(
+    mut writer: impl Write,
+    logs: &[RecordLog],
+    header: &Header,
+    output_dir: &Path,
+) -> io::Result<()> {
+    writeln!(
+        writer,
+        "Dry run: would write {}",
+        output_dir.join(PLUGIN_NAME).display()
+    )?;
+    writeln!(
+        writer,
+        "Dry run: would include {} master(s)",
+        header.masters.len()
+    )?;
+    write_log_to(&mut writer, logs)
+}
+
 fn write_log_to(mut writer: impl Write, logs: &[RecordLog]) -> io::Result<()> {
     for log in logs {
         writeln!(
@@ -504,6 +529,17 @@ pub fn run() -> io::Result<()> {
     let output_dir = output_dir_from_args_or_config(&args, &mut config, no_notifications);
     let light_config = LightConfig::get(args, &config)?;
 
+    if light_config.validate_config {
+        println!(
+            "Validated {} successfully",
+            config
+                .user_config_path()
+                .join(crate::DEFAULT_CONFIG_NAME)
+                .display()
+        );
+        return Ok(());
+    }
+
     if light_config.debug {
         dbg!(&light_config, &config);
     }
@@ -532,6 +568,11 @@ pub fn run() -> io::Result<()> {
             light_config.no_notifications,
         );
         exit(2);
+    }
+
+    if light_config.dry_run {
+        write_dry_run_outputs(&logs, &header, &output_dir)?;
+        return Ok(());
     }
 
     plugin.objects.push(TES3Object::Header(header));
@@ -683,6 +724,34 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn dry_run_and_validate_config_conflict_with_each_other() {
+        let err = LightArgs::try_parse_from(["s3lightfixes", "--dry-run", "--validate-config"])
+            .unwrap_err();
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn dry_run_output_reports_target_and_planned_record_changes() {
+        let mut stdout = Vec::new();
+        let mut header = header_for_generated_plugin();
+        header.masters.push(("source.esp".to_owned(), 42));
+        let logs = [RecordLog {
+            kind: "LIGH",
+            plugin: "source.esp".to_owned(),
+            id: "torch_01".to_owned(),
+            changes: vec!["radius 10 -> 20".to_owned()],
+        }];
+
+        write_dry_run_to(&mut stdout, &logs, &header, Path::new("/tmp/out")).unwrap();
+
+        let output = String::from_utf8(stdout).unwrap();
+        assert!(output.contains("Dry run: would write /tmp/out/S3LightFixes.omwaddon"));
+        assert!(output.contains("Dry run: would include 1 master(s)"));
+        assert!(output.contains("LIGH \"torch_01\" from \"source.esp\": radius 10 -> 20"));
     }
 
     fn interior_cell(id: &str) -> Cell {

@@ -118,6 +118,12 @@ pub struct LightConfig {
     #[serde(default)]
     pub debug: bool,
 
+    #[serde(skip)]
+    pub dry_run: bool,
+
+    #[serde(skip)]
+    pub validate_config: bool,
+
     #[serde(default = "default::standard_hue")]
     pub standard_hue: f32,
 
@@ -260,6 +266,9 @@ impl LightConfig {
             ),
             (&mut self.debug, &mut light_args.debug.then_some(true)),
         ]);
+
+        self.dry_run = light_args.dry_run;
+        self.validate_config = light_args.validate_config;
     }
 
     fn apply_collection_args(&mut self, light_args: &mut LightArgs) {
@@ -433,13 +442,16 @@ impl LightConfig {
             );
         }
 
+        let allow_config_writes = !light_args.dry_run && !light_args.validate_config;
         // Migration-only saves must happen before applying transient CLI arguments. Otherwise a
         // harmless one-shot run with --light or --classic would be fossilized in lightconfig.toml.
-        light_config.save_migration_before_cli_args(
-            &user_config_path,
-            write_config,
-            light_args.update_light_config,
-        )?;
+        if allow_config_writes {
+            light_config.save_migration_before_cli_args(
+                &user_config_path,
+                write_config,
+                light_args.update_light_config,
+            )?;
+        }
 
         light_config.apply_scalar_args(&mut light_args);
         light_config.apply_bool_args(&light_args);
@@ -461,7 +473,9 @@ impl LightConfig {
             light_config.disable_interior_sun = true;
         }
 
-        if write_config || light_config.save_config || light_args.update_light_config {
+        if allow_config_writes
+            && (write_config || light_config.save_config || light_args.update_light_config)
+        {
             light_config.save_to_user_config_without_runtime_flags(
                 &user_config_path,
                 persisted_no_notifications,
@@ -622,6 +636,8 @@ impl Default for LightConfig {
         LightConfig {
             save_config: false,
             debug: false,
+            dry_run: false,
+            validate_config: false,
             no_notifications: false,
             output_dir: None,
             disable_interior_sun: false,
