@@ -21,7 +21,7 @@
 - `.cargo/config.toml` forces `git-fetch-with-cli = true`; dependency resolution for the git `tes3` dependency expects the `git` executable.
 
 ## Behavior worth preserving
-- Only `CELL` and `LIGH` records are loaded from source plugins; generated output sorts objects and writes `lightconfig.log` next to the OpenMW config.
+- Only `CELL` and `LIGH` records are loaded from source plugins; generated output sorts objects and writes metadata plus record deltas to `lightconfig.log` next to the OpenMW config.
 - Negative-light nulling defaults on but is user-configurable; flicker/pulse disabling, HSV/RGB overrides, and ambient/fog/sunlight overrides are user-facing compatibility behavior, not cosmetic refactors.
 - `default::excluded_plugins()` contains specific known-bad plugin names with comments explaining parser failures; do not “clean up” those exclusions without reproducing the affected mods.
 - CI delegates to `DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v27` and builds binary name `s3lightfixes`; keep release assumptions aligned with that workflow.

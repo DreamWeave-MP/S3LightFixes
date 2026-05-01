@@ -138,7 +138,7 @@ Additionally, S3LightFixes will perform the following:
 - Automatically install itself into your `data-local` directory of openmw (if using the `-e` or `--auto-enable` argument)
 - Back up `openmw.cfg` to `openmw.cfg.s3lightfixes.bak` before `--auto-enable` edits it
 - Create a config file adjacent to your openmw.cfg if one doesn't already exist
-- Write one-line light and cell change logs to stdout and `lightconfig.log` next to your OpenMW user config
+- Write run metadata plus one-line light and cell change logs to stdout and `lightconfig.log` next to your OpenMW user config
 - Disable sunlight color in interiors for compatibility with vtastek's custom shader stack for openmw 0.47
 - Optionally remove the Flicker and FlickerSlow flags from all lights
 - Nullify all negative lights by default; disable with `disable_negative_lights = false` or `--disable-negative-lights false` if a setup really needs them preserved

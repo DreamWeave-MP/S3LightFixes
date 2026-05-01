@@ -39,6 +39,39 @@ struct RecordLog {
     changes: Vec<String>,
 }
 
+struct RunMetadata {
+    version: &'static str,
+    config_path: PathBuf,
+    output_path: PathBuf,
+    content_files: usize,
+    loaded_plugins: usize,
+    masters: usize,
+    changed_cells: usize,
+    changed_lights: usize,
+}
+
+impl RunMetadata {
+    fn new(
+        config: &openmw_config::OpenMWConfiguration,
+        output_dir: &Path,
+        content_files: usize,
+        loaded_plugins: usize,
+        header: &Header,
+        logs: &[RecordLog],
+    ) -> Self {
+        Self {
+            version: env!("CARGO_PKG_VERSION"),
+            config_path: config.user_config_path().join("openmw.cfg"),
+            output_path: output_dir.join(PLUGIN_NAME),
+            content_files,
+            loaded_plugins,
+            masters: header.masters.len(),
+            changed_cells: logs.iter().filter(|log| log.kind == "CELL").count(),
+            changed_lights: logs.iter().filter(|log| log.kind == "LIGH").count(),
+        }
+    }
+}
+
 fn plugin_log_name(plugin_path: &Path) -> String {
     plugin_path.file_name().map_or_else(
         || plugin_path.display().to_string(),
@@ -463,11 +496,12 @@ fn auto_enable_plugin(config: &mut openmw_config::OpenMWConfiguration, light_con
 
 fn write_log_outputs(
     config: &openmw_config::OpenMWConfiguration,
+    metadata: &RunMetadata,
     logs: &[RecordLog],
 ) -> io::Result<()> {
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
-    match write_log_to(&mut stdout, logs) {
+    match write_log_to(&mut stdout, metadata, logs) {
         Ok(()) => {}
         Err(err) if err.kind() == io::ErrorKind::BrokenPipe => {}
         Err(err) => return Err(err),
@@ -475,35 +509,38 @@ fn write_log_outputs(
 
     let path = config.user_config_path().join(LOG_NAME);
     let mut file = File::create(path)?;
-    write_log_to(&mut file, logs)
+    write_log_to(&mut file, metadata, logs)
 }
 
-fn write_dry_run_outputs(logs: &[RecordLog], header: &Header, output_dir: &Path) -> io::Result<()> {
+fn write_dry_run_outputs(metadata: &RunMetadata, logs: &[RecordLog]) -> io::Result<()> {
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
-    write_dry_run_to(&mut stdout, logs, header, output_dir)
+    write_dry_run_to(&mut stdout, metadata, logs)
 }
 
 fn write_dry_run_to(
     mut writer: impl Write,
+    metadata: &RunMetadata,
     logs: &[RecordLog],
-    header: &Header,
-    output_dir: &Path,
 ) -> io::Result<()> {
-    writeln!(
-        writer,
-        "Dry run: would write {}",
-        output_dir.join(PLUGIN_NAME).display()
-    )?;
-    writeln!(
-        writer,
-        "Dry run: would include {} master(s)",
-        header.masters.len()
-    )?;
-    write_log_to(&mut writer, logs)
+    writeln!(writer, "Dry run: no files written")?;
+    write_log_to(&mut writer, metadata, logs)
 }
 
-fn write_log_to(mut writer: impl Write, logs: &[RecordLog]) -> io::Result<()> {
+fn write_log_to(
+    mut writer: impl Write,
+    metadata: &RunMetadata,
+    logs: &[RecordLog],
+) -> io::Result<()> {
+    writeln!(writer, "# S3LightFixes {}", metadata.version)?;
+    writeln!(writer, "# config: {}", metadata.config_path.display())?;
+    writeln!(writer, "# output: {}", metadata.output_path.display())?;
+    writeln!(writer, "# content files: {}", metadata.content_files)?;
+    writeln!(writer, "# loaded plugins: {}", metadata.loaded_plugins)?;
+    writeln!(writer, "# masters: {}", metadata.masters)?;
+    writeln!(writer, "# changed cells: {}", metadata.changed_cells)?;
+    writeln!(writer, "# changed lights: {}", metadata.changed_lights)?;
+
     for log in logs {
         writeln!(
             writer,
@@ -575,6 +612,7 @@ pub fn run() -> io::Result<()> {
         .collect::<Vec<_>>();
     let vfs = VFS::from_directories(directories, None);
     let plugins = load_plugins(&content_files, &light_config, &vfs);
+    let loaded_plugins = plugins.len();
     let GenerationResult {
         mut plugin,
         header,
@@ -594,8 +632,17 @@ pub fn run() -> io::Result<()> {
         exit(2);
     }
 
+    let metadata = RunMetadata::new(
+        &config,
+        &output_dir,
+        content_files.len(),
+        loaded_plugins,
+        &header,
+        &logs,
+    );
+
     if light_config.dry_run {
-        write_dry_run_outputs(&logs, &header, &output_dir)?;
+        write_dry_run_outputs(&metadata, &logs)?;
         return Ok(());
     }
 
@@ -615,7 +662,7 @@ pub fn run() -> io::Result<()> {
     }
 
     auto_enable_plugin(&mut config, &light_config);
-    write_log_outputs(&config, &logs)?;
+    write_log_outputs(&config, &metadata, &logs)?;
 
     let lights_fixed = format!(
         "S3LightFixes.omwaddon generated, enabled, and saved in {}",
@@ -713,6 +760,19 @@ mod tests {
         }
     }
 
+    fn test_metadata(changed_cells: usize, changed_lights: usize) -> RunMetadata {
+        RunMetadata {
+            version: "test-version",
+            config_path: PathBuf::from("/tmp/openmw.cfg"),
+            output_path: PathBuf::from("/tmp/out/S3LightFixes.omwaddon"),
+            content_files: 3,
+            loaded_plugins: 2,
+            masters: 1,
+            changed_cells,
+            changed_lights,
+        }
+    }
+
     #[test]
     fn generated_completion_goes_to_stdout_without_running_lightfixes() {
         let args = LightArgs::parse_from(["s3lightfixes", "--generate-completion", "bash"]);
@@ -761,20 +821,20 @@ mod tests {
     #[test]
     fn dry_run_output_reports_target_and_planned_record_changes() {
         let mut stdout = Vec::new();
-        let mut header = header_for_generated_plugin();
-        header.masters.push(("source.esp".to_owned(), 42));
         let logs = [RecordLog {
             kind: "LIGH",
             plugin: "source.esp".to_owned(),
             id: "torch_01".to_owned(),
             changes: vec!["radius 10 -> 20".to_owned()],
         }];
+        let metadata = test_metadata(0, 1);
 
-        write_dry_run_to(&mut stdout, &logs, &header, Path::new("/tmp/out")).unwrap();
+        write_dry_run_to(&mut stdout, &metadata, &logs).unwrap();
 
         let output = String::from_utf8(stdout).unwrap();
-        assert!(output.contains("Dry run: would write /tmp/out/S3LightFixes.omwaddon"));
-        assert!(output.contains("Dry run: would include 1 master(s)"));
+        assert!(output.contains("Dry run: no files written"));
+        assert!(output.contains("# output: /tmp/out/S3LightFixes.omwaddon"));
+        assert!(output.contains("# changed lights: 1"));
         assert!(output.contains("LIGH \"torch_01\" from \"source.esp\": radius 10 -> 20"));
     }
 
@@ -1207,7 +1267,9 @@ mod tests {
             changes: vec!["radius 1 -> 2".to_owned()],
         }];
 
-        let err = write_log_to(&mut writer, &logs).unwrap_err();
+        let metadata = test_metadata(0, 1);
+
+        let err = write_log_to(&mut writer, &metadata, &logs).unwrap_err();
 
         assert!(writer.attempted_write);
         assert_eq!(err.kind(), io::ErrorKind::Other);
@@ -1236,13 +1298,17 @@ mod tests {
             },
         ];
         let mut output = Vec::new();
+        let metadata = test_metadata(1, 1);
 
-        write_log_to(&mut output, &logs).unwrap();
+        write_log_to(&mut output, &metadata, &logs).unwrap();
 
         let output = String::from_utf8(output).unwrap();
-        assert_eq!(
-            output,
-            "CELL \"cell_id\" from \"Morrowind.esm\": sunlight [1, 2, 3, 0] -> [0, 0, 0, 0], fog_density 0.5 -> 0.75\nLIGH \"light_id\" from \"Tribunal.esm\": color [1, 2, 3, 0] -> [4, 5, 6, 0], radius 128 -> 256\n"
-        );
+        assert!(output.contains("# S3LightFixes test-version"));
+        assert!(output.contains("# content files: 3"));
+        assert!(output.contains("# loaded plugins: 2"));
+        assert!(output.contains("# changed cells: 1"));
+        assert!(output.contains("# changed lights: 1"));
+        assert!(output.contains("CELL \"cell_id\" from \"Morrowind.esm\": sunlight [1, 2, 3, 0] -> [0, 0, 0, 0], fog_density 0.5 -> 0.75"));
+        assert!(output.contains("LIGH \"light_id\" from \"Tribunal.esm\": color [1, 2, 3, 0] -> [4, 5, 6, 0], radius 128 -> 256"));
     }
 }
