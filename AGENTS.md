@@ -17,6 +17,7 @@
 - `lightconfig.toml` is read/written next to the selected OpenMW user config unless a local config is supplied next to the executable; CLI values override TOML values, and list-style exclusions are merged rather than replaced.
 - Output selection is not “any file path”: `--output/-o` must be an existing directory; without it, output goes to OpenMW `data-local`, falling back to cwd.
 - `--auto-enable/-e` edits the selected OpenMW config to enable the generated plugin; avoid using it in tests unless that is exactly what you mean.
+- Auto-enable backs up `openmw.cfg` to `openmw.cfg.s3lightfixes.bak` before editing; if the backup fails, it refuses to edit.
 - `.cargo/config.toml` forces `git-fetch-with-cli = true`; dependency resolution for the git `tes3` dependency expects the `git` executable.
 
 ## Behavior worth preserving

@@ -1,7 +1,7 @@
 use std::{
     collections::HashSet,
     env::{current_dir, var},
-    fs::{File, metadata, remove_file},
+    fs::{File, copy, metadata, remove_file},
     io::{self, Write},
     mem::take,
     path::{Path, PathBuf},
@@ -405,10 +405,33 @@ fn remove_old_plugin_from_data_local(config: &mut openmw_config::OpenMWConfigura
     }
 }
 
+fn backup_openmw_cfg(user_config_path: &Path) -> io::Result<PathBuf> {
+    let openmw_cfg = user_config_path.join("openmw.cfg");
+    let backup_path = user_config_path.join("openmw.cfg.s3lightfixes.bak");
+
+    copy(openmw_cfg, &backup_path)?;
+
+    Ok(backup_path)
+}
+
 fn auto_enable_plugin(config: &mut openmw_config::OpenMWConfiguration, light_config: &LightConfig) {
     if !light_config.auto_enable || config.has_content_file(PLUGIN_NAME) {
         return;
     }
+
+    let backup_path = match backup_openmw_cfg(&config.user_config_path()) {
+        Ok(path) => path,
+        Err(err) => {
+            notification_box(
+                "Failed to back up openmw.cfg!",
+                &format!(
+                    "Refusing to auto-enable {PLUGIN_NAME} because openmw.cfg could not be backed up: {err}"
+                ),
+                light_config.no_notifications,
+            );
+            return;
+        }
+    };
 
     match config.add_content_file(PLUGIN_NAME) {
         Ok(()) => {
@@ -420,8 +443,9 @@ fn auto_enable_plugin(config: &mut openmw_config::OpenMWConfiguration, light_con
                 );
             } else {
                 let lightfix_enabled_msg = format!(
-                    "Wrote user openmw.cfg at {} successfully!",
-                    config.user_config_path().display()
+                    "Wrote user openmw.cfg at {} successfully! Backup saved at {}.",
+                    config.user_config_path().display(),
+                    backup_path.display()
                 );
                 notification_box(
                     "Lightfixes enabled!",
@@ -752,6 +776,27 @@ mod tests {
         assert!(output.contains("Dry run: would write /tmp/out/S3LightFixes.omwaddon"));
         assert!(output.contains("Dry run: would include 1 master(s)"));
         assert!(output.contains("LIGH \"torch_01\" from \"source.esp\": radius 10 -> 20"));
+    }
+
+    #[test]
+    fn backup_openmw_cfg_copies_existing_user_config_before_auto_enable() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "s3lightfixes-openmw-backup-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_FILE.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("openmw.cfg"), "content=Morrowind.esm\n").unwrap();
+
+        let backup_path = backup_openmw_cfg(&temp_dir).unwrap();
+
+        assert_eq!(backup_path, temp_dir.join("openmw.cfg.s3lightfixes.bak"));
+        assert_eq!(
+            std::fs::read_to_string(backup_path).unwrap(),
+            "content=Morrowind.esm\n"
+        );
+
+        let _ = std::fs::remove_dir_all(temp_dir);
     }
 
     fn interior_cell(id: &str) -> Cell {
