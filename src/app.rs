@@ -17,8 +17,7 @@ use tes3::esp::{
 use vfstool_lib::VFS;
 
 use crate::{
-    LOG_NAME, LightArgs, LightConfig, PLUGIN_NAME, get_config_path, is_fixable_plugin,
-    notification_box, save_plugin,
+    LOG_NAME, LightArgs, LightConfig, PLUGIN_NAME, is_fixable_plugin, notification_box, save_plugin,
 };
 
 use crate::light_processing::process_light;
@@ -83,13 +82,28 @@ fn plugin_log_name(plugin_path: &Path) -> String {
     )
 }
 
+fn explicit_config_path(args: &LightArgs) -> Option<PathBuf> {
+    let path = args.openmw_cfg.as_ref()?;
+    let absolute_path = if path.is_relative() {
+        path.canonicalize().unwrap_or_else(|_| path.to_owned())
+    } else {
+        path.to_owned()
+    };
+
+    if absolute_path.is_file()
+        || (absolute_path.is_dir() && absolute_path.join("openmw.cfg").is_file())
+    {
+        Some(absolute_path)
+    } else {
+        panic!("Explicit --openmw-cfg must be an openmw.cfg file or a directory containing one");
+    }
+}
+
 fn load_openmw_config(
     args: &LightArgs,
     no_notifications: bool,
 ) -> openmw_config::OpenMWConfiguration {
-    let loaded_config = if args.openmw_cfg.is_some() {
-        let mut args = args.clone();
-        let config_path = get_config_path(&mut args);
+    let loaded_config = if let Some(config_path) = explicit_config_path(args) {
         openmw_config::OpenMWConfiguration::new(Some(config_path))
     } else {
         openmw_config::OpenMWConfiguration::from_env()

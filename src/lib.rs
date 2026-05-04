@@ -29,41 +29,6 @@ pub const DEFAULT_CONFIG_NAME: &str = "lightconfig.toml";
 pub const LOG_NAME: &str = "lightconfig.log";
 pub const PLUGIN_NAME: &str = "S3LightFixes.omwaddon";
 
-/// Returns the `openmw.cfg` path selected by CLI arguments, the current directory, or platform defaults.
-///
-/// # Panics
-///
-/// Panics if the user explicitly supplied an `openmw.cfg` path that resolves to neither a file nor
-/// a directory containing `openmw.cfg`. That is a caller contract violation; continuing would make
-/// the rest of the run operate on a different config than requested.
-pub fn get_config_path(args: &mut LightArgs) -> PathBuf {
-    if let Some(path) = &args.openmw_cfg {
-        let absolute_path = if path.is_relative() {
-            path.canonicalize().unwrap_or_else(|_| path.to_owned())
-        } else {
-            path.to_owned()
-        };
-
-        if absolute_path.is_file()
-            || (absolute_path.is_dir() && absolute_path.join("openmw.cfg").is_file())
-        {
-            return absolute_path;
-        }
-
-        panic!("This shit should never ever happen!");
-    } else {
-        let cwd_cfg = current_dir()
-            .expect("Failed to get current directory")
-            .join("openmw.cfg");
-
-        if cwd_cfg.is_file() {
-            return cwd_cfg;
-        }
-    }
-
-    openmw_config::default_config_path()
-}
-
 #[must_use]
 pub fn is_fixable_plugin(plug_path: &Path) -> bool {
     metadata(plug_path).is_ok()
