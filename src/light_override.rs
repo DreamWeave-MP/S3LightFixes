@@ -60,7 +60,6 @@ impl FromStr for CustomLightData {
         let mut color = RgbBuilder::default();
         parse_pairs(s, |key, value| data.set_pair(key, value, &mut color))?;
         data.color = color.finish()?;
-        data.validate_color_contracts()?;
 
         Ok(data)
     }
@@ -156,26 +155,8 @@ impl<'de> serde::Deserialize<'de> for CustomLightData {
             hue_mult,
             saturation_mult,
             value_mult,
+            rgb_color.is_none(),
         );
-
-        if rgb_color.is_some()
-            && (legacy_hsv_color.is_some()
-                || hue.is_some()
-                || saturation.is_some()
-                || value.is_some())
-        {
-            return Err(serde::de::Error::custom(
-                "RGB color fields are mutually exclusive with legacy HSV color fields",
-            ));
-        }
-
-        if rgb_color.is_some()
-            && (hue_mult.is_some() || saturation_mult.is_some() || value_mult.is_some())
-        {
-            return Err(serde::de::Error::custom(
-                "RGB color fields are mutually exclusive with HSV color adjustment fields",
-            ));
-        }
 
         if hue.is_some() && hue_mult.is_some() {
             return Err(serde::de::Error::custom(
@@ -378,10 +359,14 @@ fn migrate_or_keep_legacy_hsv(
     hue_mult: Option<f32>,
     saturation_mult: Option<f32>,
     value_mult: Option<f32>,
+    migrate_complete: bool,
 ) -> (Option<[u8; 4]>, Option<u32>, Option<f32>, Option<f32>) {
     match (hue, saturation, value) {
         (Some(hue), Some(saturation), Some(value))
-            if hue_mult.is_none() && saturation_mult.is_none() && value_mult.is_none() =>
+            if migrate_complete
+                && hue_mult.is_none()
+                && saturation_mult.is_none()
+                && value_mult.is_none() =>
         {
             (Some(hsv_to_rgb8(hue, saturation, value)), None, None, None)
         }
@@ -502,24 +487,6 @@ impl CustomLightData {
             }
             _ => Err(ParseLightError::UnknownField(key.to_owned())),
         }
-    }
-
-    fn validate_color_contracts(&self) -> Result<(), ParseLightError> {
-        if self.color.is_some()
-            && (self.hue.is_some()
-                || self.saturation.is_some()
-                || self.value.is_some()
-                || self.hue_mult.is_some()
-                || self.saturation_mult.is_some()
-                || self.value_mult.is_some())
-        {
-            return Err(ParseLightError::ExclusiveFields(
-                "RGB color",
-                "HSV color adjustment",
-            ));
-        }
-
-        Ok(())
     }
 
     fn set_duration(&mut self, value: &str) -> Result<(), ParseLightError> {
@@ -943,14 +910,14 @@ mod tests {
     }
 
     #[test]
-    fn cli_light_override_rejects_fixed_rgb_with_hsv_multiplier() {
-        let err = parse_light_override("Torch=red=255,green=128,blue=64,hue_mult=2.0,red_mult=0.5")
-            .unwrap_err();
+    fn cli_light_override_allows_fixed_rgb_with_hsv_multiplier() {
+        let (_, data) =
+            parse_light_override("Torch=red=255,green=128,blue=64,hue_mult=2.0,red_mult=0.5")
+                .unwrap();
 
-        assert!(matches!(
-            err,
-            ParseLightError::ExclusiveFields("RGB color", "HSV color adjustment")
-        ));
+        assert_eq!(data.color, Some([255, 128, 64, 0]));
+        assert_eq!(data.hue_mult, Some(2.0));
+        assert_eq!(data.red_mult, Some(0.5));
     }
 
     #[test]
@@ -1111,13 +1078,15 @@ mod tests {
     }
 
     #[test]
-    fn toml_light_data_rejects_rgb_and_hsv_multipliers_together() {
-        let err = toml::from_str::<CustomLightData>(
+    fn toml_light_data_allows_rgb_and_hsv_multipliers_together() {
+        let data = toml::from_str::<CustomLightData>(
             "red = 10\ngreen = 20\nblue = 30\nhue_mult = 2.0\nred_mult = 0.5",
         )
-        .unwrap_err();
+        .unwrap();
 
-        assert!(err.to_string().contains("mutually exclusive"));
+        assert_eq!(data.color, Some([10, 20, 30, 0]));
+        assert_eq!(data.hue_mult, Some(2.0));
+        assert_eq!(data.red_mult, Some(0.5));
     }
 
     #[test]

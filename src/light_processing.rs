@@ -42,17 +42,15 @@ fn fixed_duration_to_i32(duration: f32) -> i32 {
 /// returns the HSV version and whether it is colored or not (for the global modifier).
 #[must_use]
 pub fn light_to_hsv(light_data: &tes3::esp::LightData) -> (Hsv, bool) {
-    let rgb: palette::rgb::Rgb = Srgb::new(
-        light_data.color[0],
-        light_data.color[1],
-        light_data.color[2],
-    )
-    .into_format();
-
-    let hsv: Hsv = Hsv::from_color(rgb);
+    let hsv = color_to_hsv(light_data.color);
     let hue_degrees = hsv.get_hue().into_positive_degrees();
 
     (hsv, !(14. ..=64.).contains(&hue_degrees))
+}
+
+fn color_to_hsv(color: [u8; 4]) -> Hsv {
+    let rgb: palette::rgb::Rgb = Srgb::new(color[0], color[1], color[2]).into_format();
+    Hsv::from_color(rgb)
 }
 
 fn replacement_for_light<'a>(
@@ -71,18 +69,15 @@ fn apply_hsv_replacement(
     global_hue: f32,
     global_saturation: f32,
     global_value: f32,
+    use_global_fallbacks: bool,
 ) {
-    if replacement.color.is_some() {
-        return;
-    }
-
     if let Some(hue_mult) = replacement.hue_mult {
         let new_hue = palette::RgbHue::from_degrees(light_as_hsv.hue.into_raw_degrees() * hue_mult);
         light_as_hsv.set_hue(new_hue);
     } else if let Some(fixed_hue) = replacement.hue {
         let new_hue = palette::RgbHue::from_degrees(hue_degrees(fixed_hue));
         light_as_hsv.set_hue(new_hue);
-    } else {
+    } else if use_global_fallbacks {
         let new_hue =
             palette::RgbHue::from_degrees(light_as_hsv.hue.into_raw_degrees() * global_hue);
         light_as_hsv.set_hue(new_hue);
@@ -92,7 +87,7 @@ fn apply_hsv_replacement(
         light_as_hsv.saturation *= saturation_mult;
     } else if let Some(fixed_saturation) = replacement.saturation {
         light_as_hsv.saturation = fixed_saturation;
-    } else {
+    } else if use_global_fallbacks {
         light_as_hsv.saturation *= global_saturation;
     }
 
@@ -100,7 +95,7 @@ fn apply_hsv_replacement(
         light_as_hsv.value *= value_mult;
     } else if let Some(fixed_value) = replacement.value {
         light_as_hsv.value = fixed_value;
-    } else {
+    } else if use_global_fallbacks {
         light_as_hsv.value *= global_value;
     }
 }
@@ -180,12 +175,18 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) -
     };
 
     if let Some(replacement) = replacement_light_data {
+        let use_global_fallbacks = replacement.color.is_none();
+        if let Some(fixed_color) = replacement.color {
+            light_as_hsv = color_to_hsv(fixed_color);
+        }
+
         apply_hsv_replacement(
             &mut light_as_hsv,
             replacement,
             global_hue,
             global_saturation,
             global_value,
+            use_global_fallbacks,
         );
 
         if let Some(duration_mult) = replacement.duration_mult {
@@ -220,13 +221,8 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) -
     }
 
     if let Some(replacement) = replacement_light_data {
-        if let Some(fixed_color) = replacement.color {
-            light.data.color = fixed_color;
-        } else {
-            let rgb8_color: Srgb<u8> =
-                <Hsv as IntoColor<Srgb>>::into_color(light_as_hsv).into_format();
-            light.data.color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
-        }
+        let rgb8_color: Srgb<u8> = <Hsv as IntoColor<Srgb>>::into_color(light_as_hsv).into_format();
+        light.data.color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
         apply_rgb_multipliers(&mut light.data.color, replacement);
     } else {
         let rgb8_color: Srgb<u8> = <Hsv as IntoColor<Srgb>>::into_color(light_as_hsv).into_format();
@@ -588,6 +584,28 @@ mod tests {
         process_light(&light_config, &mut light);
 
         assert_eq!(light.data.color, [255, 40, 60, 0]);
+    }
+
+    #[test]
+    fn fixed_rgb_is_base_color_for_hsv_adjustments() {
+        let mut light_config = config();
+        light_config.standard_hue = 10.0;
+        light_config.standard_saturation = 0.0;
+        light_config.standard_value = 0.0;
+        light_config.light_regexes.push((
+            Regex::new("fixed_rgb_hsv").unwrap(),
+            CustomLightData {
+                color: Some([255, 0, 0, 0]),
+                hue: Some(120),
+                green_mult: Some(0.5),
+                ..CustomLightData::default()
+            },
+        ));
+        let mut light = light("fixed_rgb_hsv_light", 30.0, 10, 10, LightFlags::default());
+
+        process_light(&light_config, &mut light);
+
+        assert_eq!(light.data.color, [0, 127, 0, 0]);
     }
 
     #[test]

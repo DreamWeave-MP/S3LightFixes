@@ -90,7 +90,7 @@ save_config = false
 # You may also set custom values for light configurations for each light *or* cell record in lightConfig.toml.
 # This allows complete control and customization over all light colors, durations, radii, and even types(pulse, flicker, etc) in your lightConfig.toml
 # Fixed colors use RGB components matching the TES3 Construction Set values: red, green, and blue from 0 to 255. RGB multipliers use red_mult, green_mult, and blue_mult.
-# Color precedence for light overrides: fixed RGB replaces the source color and is mutually exclusive with HSV color fields; HSV fixed fields/multipliers override global HSV adjustment per component; fixed and multiplier forms for the same HSV component are mutually exclusive; RGB multipliers are always applied last.
+# Color precedence for light overrides: fixed RGB, when present, replaces the source RGB as the base color; HSV fixed fields/multipliers then adjust that base color per component; fixed and multiplier forms for the same HSV component are mutually exclusive; RGB multipliers are always applied last.
 # Complete legacy HSV color triples are automatically converted to RGB and rewritten. Partial legacy HSV light overrides still work when you intentionally want source-light-dependent HSV edits.
 # A few examples are shown below.
 # These customizations to lights may also be applied on the command line and saved to lightConfig.toml by using the `-u` argument, along with `--light` for each light record, or `--ambient` for each cell you wish to edit.
@@ -222,7 +222,7 @@ Additionally, S3LightFixes will perform the following:
                --light "Torch_001=radius=255,red=255,green=128,blue=64,blue_mult=0.5,duration=1200,flag=FLICKERSLOW:Torch_002=radius_mult=2.0,hue_mult=1.3,red_mult=1.1,duration_mult=5.0,flag=NONE"
                RGB color components are 0-255, matching TES3/Construction Set values. Radius and duration are u32 (can be very big).
                `flag` may be: NONE, FLICKER, FLICKERSLOW, PULSE, PULSESLOW
-               Color precedence: fixed RGB replaces the source color and is mutually exclusive with HSV color fields; HSV fixed fields/multipliers override global HSV adjustment per component; fixed and multiplier forms for the same HSV component are mutually exclusive; RGB multipliers are always applied last.
+               Color precedence: fixed RGB, when present, replaces the source RGB as the base color; HSV fixed fields/multipliers then adjust that base color per component; fixed and multiplier forms for the same HSV component are mutually exclusive; RGB multipliers are always applied last.
       --ambient <AMBIENT_OVERRIDES>
           
                       Colon-separated list of cell id regexes, to the corresponding ambient data.
