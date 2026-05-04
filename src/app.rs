@@ -72,14 +72,8 @@ impl RunMetadata {
     }
 }
 
-fn selected_config_file_path(args: &mut LightArgs) -> PathBuf {
-    let config_path = get_config_path(args);
-
-    if config_path.is_dir() {
-        config_path.join("openmw.cfg")
-    } else {
-        config_path
-    }
+fn selected_config_file_path(config: &openmw_config::OpenMWConfiguration) -> PathBuf {
+    config.user_config_path().join("openmw.cfg")
 }
 
 fn plugin_log_name(plugin_path: &Path) -> String {
@@ -90,12 +84,18 @@ fn plugin_log_name(plugin_path: &Path) -> String {
 }
 
 fn load_openmw_config(
-    args: &mut LightArgs,
+    args: &LightArgs,
     no_notifications: bool,
 ) -> openmw_config::OpenMWConfiguration {
-    let config_dir = get_config_path(args);
+    let loaded_config = if args.openmw_cfg.is_some() {
+        let mut args = args.clone();
+        let config_path = get_config_path(&mut args);
+        openmw_config::OpenMWConfiguration::new(Some(config_path))
+    } else {
+        openmw_config::OpenMWConfiguration::from_env()
+    };
 
-    match openmw_config::OpenMWConfiguration::new(Some(config_dir)) {
+    match loaded_config {
         Ok(config) => config,
         Err(error) => {
             notification_box(
@@ -571,15 +571,15 @@ fn handle_generated_output(args: &LightArgs, stdout: &mut dyn Write) -> io::Resu
 /// behavior of the binary.
 #[allow(clippy::too_many_lines)]
 pub fn run() -> io::Result<()> {
-    let mut args = LightArgs::parse();
+    let args = LightArgs::parse();
 
     if handle_generated_output(&args, &mut io::stdout())? {
         return Ok(());
     }
 
     let no_notifications = var("S3L_NO_NOTIFICATIONS").is_ok() || args.no_notifications;
-    let selected_config_file = selected_config_file_path(&mut args);
-    let mut config = load_openmw_config(&mut args, no_notifications);
+    let mut config = load_openmw_config(&args, no_notifications);
+    let selected_config_file = selected_config_file_path(&config);
     let light_config = LightConfig::get(args, &config)?;
 
     if light_config.validate_config {

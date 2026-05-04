@@ -5,7 +5,7 @@ use clap_complete::Shell;
 
 use crate::default;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(
     name = "s3lightfixes",
     author,
