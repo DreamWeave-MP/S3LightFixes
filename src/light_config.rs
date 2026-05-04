@@ -178,9 +178,6 @@ pub struct LightConfig {
     pub light_regexes: Vec<(regex::Regex, CustomLightData)>,
     #[serde(skip)]
     pub ambient_regexes: Vec<(regex::Regex, CustomCellAmbient)>,
-
-    #[serde(skip)]
-    pub migrated_color_config: bool,
 }
 
 /// Primarily exists to provide default implementations
@@ -353,19 +350,6 @@ impl LightConfig {
         write!(config_file, "{config_serialized}")
     }
 
-    fn save_migration_before_cli_args(
-        &self,
-        user_config_path: &std::path::Path,
-        write_config: bool,
-        update_light_config: bool,
-    ) -> io::Result<()> {
-        if !write_config && self.migrated_color_config && !update_light_config {
-            self.save_to_user_config(user_config_path)?;
-        }
-
-        Ok(())
-    }
-
     fn save_to_user_config_without_runtime_flags(
         &mut self,
         user_config_path: &std::path::Path,
@@ -482,20 +466,10 @@ impl LightConfig {
             Self::load(&user_config_path, early_no_notifications)?;
 
         let debug_from_env = std::env::var("S3L_DEBUG").is_ok();
-        light_config.update_migrated_color_config();
 
         let (effective_dry_run, effective_validate_config) =
             light_config.effective_non_writing_modes(&light_args)?;
         let allow_config_writes = !effective_dry_run && !effective_validate_config;
-        // Migration-only saves must happen before applying transient CLI arguments. Otherwise a
-        // harmless one-shot run with --light or --classic would be fossilized in lightconfig.toml.
-        if allow_config_writes {
-            light_config.save_migration_before_cli_args(
-                &user_config_path,
-                write_config,
-                light_args.update_light_config,
-            )?;
-        }
 
         light_config.apply_scalar_args(&mut light_args);
         light_config.apply_bool_args(&light_args);
@@ -508,7 +482,6 @@ impl LightConfig {
             light_config.configure_output_dir(light_args.output.take(), openmw_config)?;
         }
         light_config.apply_collection_args(&mut light_args);
-        light_config.update_migrated_color_config();
 
         // This parameter indicates whether the user requested
         // To use compatibility mode for vtastek's old 0.47 shaders
@@ -561,17 +534,6 @@ impl LightConfig {
 
         false
     }
-
-    fn update_migrated_color_config(&mut self) {
-        self.migrated_color_config = self
-            .light_overrides
-            .values()
-            .any(|light_data| light_data.migrated_from_hsv)
-            || self
-                .ambient_overrides
-                .values()
-                .any(CustomCellAmbient::migrated_from_hsv);
-    }
 }
 
 impl Default for LightConfig {
@@ -605,7 +567,6 @@ impl Default for LightConfig {
             light_overrides: OrderedHashMap::new(),
             ambient_overrides: OrderedHashMap::new(),
             ambient_regexes: Vec::new(),
-            migrated_color_config: false,
         }
     }
 }
@@ -756,94 +717,22 @@ mod tests {
     }
 
     #[test]
-    fn legacy_hsv_colors_are_marked_for_reserialization_as_rgb() {
-        let mut config = toml::from_str::<LightConfig>(
+    fn legacy_hsv_light_colors_are_preserved() {
+        let config = toml::from_str::<LightConfig>(
             r"
             [light_overrides.torch]
             hue = 180
             saturation = 1.0
             value = 1.0
-
-            [ambient_overrides.cell.ambient]
-            hue = 120
-            saturation = 1.0
-            value = 1.0
             ",
         )
         .unwrap();
-
-        config.update_migrated_color_config();
-
-        assert!(config.migrated_color_config);
 
         let serialized = toml::to_string(&config).unwrap();
-        assert!(serialized.contains("red = 0"));
-        assert!(serialized.contains("green = 255"));
-        assert!(serialized.contains("blue = 255"));
-        assert!(!serialized.contains("hue = 180"));
-        assert!(!serialized.contains("hue = 120"));
-        assert!(!serialized.contains("saturation = 1.0"));
-        assert!(!serialized.contains("value = 1.0"));
-    }
-
-    #[test]
-    fn migration_save_happens_before_transient_cli_overrides_are_merged() {
-        let temp_dir = TempDir::new("migration-save-before-cli");
-        let mut config = toml::from_str::<LightConfig>(
-            r"
-            [light_overrides.legacy]
-            hue = 180
-            saturation = 1.0
-            value = 1.0
-            ",
-        )
-        .unwrap();
-        config.update_migrated_color_config();
-
-        config
-            .save_migration_before_cli_args(temp_dir.path(), false, false)
-            .unwrap();
-        config.light_overrides.insert(
-            "cli_only".to_owned(),
-            CustomLightData {
-                radius: Some(999),
-                ..CustomLightData::default()
-            },
-        );
-
-        let saved = std::fs::read_to_string(temp_dir.path().join(DEFAULT_CONFIG_NAME)).unwrap();
-
-        assert!(saved.contains("[light_overrides.legacy]"));
-        assert!(saved.contains("red = 0"));
-        assert!(!saved.contains("cli_only"));
-        assert!(!saved.contains("radius = 999"));
-    }
-
-    #[test]
-    fn migration_save_does_not_persist_transient_notification_or_debug_state() {
-        let temp_dir = TempDir::new("migration-save-before-effective-state");
-        let mut config = toml::from_str::<LightConfig>(
-            r"
-            [light_overrides.legacy]
-            hue = 180
-            saturation = 1.0
-            value = 1.0
-            ",
-        )
-        .unwrap();
-        config.update_migrated_color_config();
-
-        config
-            .save_migration_before_cli_args(temp_dir.path(), false, false)
-            .unwrap();
-        config.no_notifications = true;
-        config.debug = true;
-
-        let saved = std::fs::read_to_string(temp_dir.path().join(DEFAULT_CONFIG_NAME)).unwrap();
-
-        assert!(saved.contains("red = 0"));
-        assert!(!saved.contains("no_notifications = true"));
-        assert!(!saved.contains("debug = true"));
+        assert!(serialized.contains("hue = 180"));
+        assert!(serialized.contains("saturation = 1.0"));
+        assert!(serialized.contains("value = 1.0"));
+        assert!(!serialized.contains("red ="));
     }
 
     #[test]

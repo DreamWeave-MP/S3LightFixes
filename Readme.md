@@ -91,7 +91,7 @@ save_config = false
 # This allows complete control and customization over all light colors, durations, radii, and even types(pulse, flicker, etc) in your lightConfig.toml
 # Fixed colors use RGB components matching the TES3 Construction Set values: red, green, and blue from 0 to 255. RGB multipliers use red_mult, green_mult, and blue_mult.
 # Color precedence for light overrides: fixed RGB, when present, replaces the source RGB as the base color; HSV fixed fields/multipliers then adjust that base color per component; fixed and multiplier forms for the same HSV component are mutually exclusive; RGB multipliers are always applied last.
-# Complete legacy HSV color triples are automatically converted to RGB and rewritten. Partial legacy HSV light overrides still work when you intentionally want source-light-dependent HSV edits.
+# HSV light overrides are preserved instead of being rewritten to RGB, so you can use full or partial HSV edits when you intentionally want source-light-dependent color behavior.
 # A few examples are shown below.
 # These customizations to lights may also be applied on the command line and saved to lightConfig.toml by using the `-u` argument, along with `--light` for each light record, or `--ambient` for each cell you wish to edit.
 # See further below for command-line examples.

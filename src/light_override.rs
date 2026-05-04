@@ -148,15 +148,7 @@ impl<'de> serde::Deserialize<'de> for CustomLightData {
 
         let rgb_color =
             rgb_from_parts(raw.red, raw.green, raw.blue).map_err(serde::de::Error::custom)?;
-        let (legacy_hsv_color, hue, saturation, value) = migrate_or_keep_legacy_hsv(
-            raw.hue,
-            saturation,
-            value,
-            hue_mult,
-            saturation_mult,
-            value_mult,
-            rgb_color.is_none(),
-        );
+        let (hue, saturation, value) = keep_legacy_hsv(raw.hue, saturation, value);
 
         if hue.is_some() && hue_mult.is_some() {
             return Err(serde::de::Error::custom(
@@ -174,11 +166,8 @@ impl<'de> serde::Deserialize<'de> for CustomLightData {
             ));
         }
 
-        let color = rgb_color.or(legacy_hsv_color);
-
         Ok(CustomLightData {
-            color,
-            migrated_from_hsv: legacy_hsv_color.is_some(),
+            color: rgb_color,
             red_mult,
             green_mult,
             blue_mult,
@@ -200,7 +189,6 @@ impl<'de> serde::Deserialize<'de> for CustomLightData {
 #[derive(Clone, Debug, Default)]
 pub struct CustomLightData {
     pub color: Option<[u8; 4]>,
-    pub migrated_from_hsv: bool,
     pub red_mult: Option<f32>,
     pub green_mult: Option<f32>,
     pub blue_mult: Option<f32>,
@@ -346,37 +334,20 @@ fn legacy_hsv_to_rgb(
     match (hue, saturation, value) {
         (None, None, None) => Ok(None),
         (Some(hue), Some(saturation), Some(value)) => Ok(Some(hsv_to_rgb8(hue, saturation, value))),
-        _ => Err(
-            "legacy HSV color overrides must specify hue, saturation, and value to migrate to RGB",
-        ),
+        _ => Err("HSV ambient colors must specify hue, saturation, and value"),
     }
 }
 
-fn migrate_or_keep_legacy_hsv(
+fn keep_legacy_hsv(
     hue: Option<u32>,
     saturation: Option<f32>,
     value: Option<f32>,
-    hue_mult: Option<f32>,
-    saturation_mult: Option<f32>,
-    value_mult: Option<f32>,
-    migrate_complete: bool,
-) -> (Option<[u8; 4]>, Option<u32>, Option<f32>, Option<f32>) {
-    match (hue, saturation, value) {
-        (Some(hue), Some(saturation), Some(value))
-            if migrate_complete
-                && hue_mult.is_none()
-                && saturation_mult.is_none()
-                && value_mult.is_none() =>
-        {
-            (Some(hsv_to_rgb8(hue, saturation, value)), None, None, None)
-        }
-        (hue, saturation, value) => (
-            None,
-            hue.map(|hue| hue.clamp(0, 360)),
-            saturation.map(|saturation| saturation.clamp(0.0, 1.0)),
-            value.map(|value| value.clamp(0.0, 1.0)),
-        ),
-    }
+) -> (Option<u32>, Option<f32>, Option<f32>) {
+    (
+        hue.map(|hue| hue.clamp(0, 360)),
+        saturation.map(|saturation| saturation.clamp(0.0, 1.0)),
+        value.map(|value| value.clamp(0.0, 1.0)),
+    )
 }
 
 #[allow(clippy::cast_precision_loss)]
@@ -585,8 +556,6 @@ pub struct TypedLightColor {
     pub red: u8,
     pub green: u8,
     pub blue: u8,
-    #[serde(skip)]
-    pub migrated_from_hsv: bool,
 }
 
 #[derive(Deserialize)]
@@ -622,12 +591,7 @@ impl<'de> Deserialize<'de> for TypedLightColor {
             ));
         };
 
-        Ok(Self {
-            red,
-            green,
-            blue,
-            migrated_from_hsv: legacy_hsv_color.is_some(),
-        })
+        Ok(Self { red, green, blue })
     }
 }
 
@@ -696,7 +660,6 @@ impl FromStr for TypedLightColor {
             red: red.ok_or(ParseTypedColorError::MissingField("red"))?,
             green: green.ok_or(ParseTypedColorError::MissingField("green"))?,
             blue: blue.ok_or(ParseTypedColorError::MissingField("blue"))?,
-            migrated_from_hsv: false,
         })
     }
 }
@@ -707,23 +670,6 @@ pub struct CustomCellAmbient {
     pub sunlight: Option<TypedLightColor>,
     pub fog: Option<TypedLightColor>,
     pub fog_density: Option<f32>,
-}
-
-impl CustomCellAmbient {
-    #[must_use]
-    pub fn migrated_from_hsv(&self) -> bool {
-        self.ambient
-            .as_ref()
-            .is_some_and(|color| color.migrated_from_hsv)
-            || self
-                .sunlight
-                .as_ref()
-                .is_some_and(|color| color.migrated_from_hsv)
-            || self
-                .fog
-                .as_ref()
-                .is_some_and(|color| color.migrated_from_hsv)
-    }
 }
 
 #[derive(Debug)]
@@ -1001,7 +947,6 @@ mod tests {
         let color = toml::from_str::<TypedLightColor>("red = 10\ngreen = 20\nblue = 30").unwrap();
 
         assert_eq!(color.to_esp_color(), [10, 20, 30, 0]);
-        assert!(!color.migrated_from_hsv);
     }
 
     #[test]
@@ -1013,14 +958,16 @@ mod tests {
     }
 
     #[test]
-    fn toml_legacy_hsv_light_color_migrates_to_rgb() {
+    fn toml_legacy_hsv_light_color_is_preserved() {
         let data = toml::from_str::<CustomLightData>(
             "hue = 180\nsaturation = 1.0\nvalue = 1.0\nradius = 100",
         )
         .unwrap();
 
-        assert_eq!(data.color, Some([0, 255, 255, 0]));
-        assert!(data.migrated_from_hsv);
+        assert_eq!(data.color, None);
+        assert_eq!(data.hue, Some(180));
+        assert_eq!(data.saturation, Some(1.0));
+        assert_eq!(data.value, Some(1.0));
     }
 
     #[test]
@@ -1031,11 +978,10 @@ mod tests {
         assert_eq!(data.hue, Some(360));
         assert_eq!(data.saturation, Some(1.0));
         assert_eq!(data.value, None);
-        assert!(!data.migrated_from_hsv);
     }
 
     #[test]
-    fn toml_complete_hsv_with_hsv_multiplier_is_not_silently_migrated() {
+    fn toml_complete_hsv_with_hsv_multiplier_rejects_same_component_conflict() {
         let err = toml::from_str::<CustomLightData>(
             "hue = 180\nsaturation = 1.0\nvalue = 1.0\nhue_mult = 2.0",
         )
@@ -1052,12 +998,11 @@ mod tests {
     }
 
     #[test]
-    fn toml_legacy_hsv_ambient_color_migrates_to_rgb() {
+    fn toml_legacy_hsv_ambient_color_is_still_accepted_as_rgb() {
         let color =
             toml::from_str::<TypedLightColor>("hue = 120\nsaturation = 1.0\nvalue = 1.0").unwrap();
 
         assert_eq!(color.to_esp_color(), [0, 255, 0, 0]);
-        assert!(color.migrated_from_hsv);
     }
 
     #[test]
