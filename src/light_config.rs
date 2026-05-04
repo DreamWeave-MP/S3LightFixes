@@ -1,5 +1,5 @@
 use std::{
-    fmt::{self, Write as FmtWrite},
+    fmt,
     fs::{File, read_dir, read_to_string},
     io::{self, Write},
     marker::PhantomData,
@@ -16,12 +16,6 @@ use crate::{
     CustomCellAmbient, CustomLightData, DEFAULT_CONFIG_NAME, LightArgs, default, notification_box,
     to_io_error,
 };
-
-#[derive(Debug, PartialEq, Eq)]
-struct PartialLegacyHsvOverride {
-    table: String,
-    fields: Vec<(&'static str, usize)>,
-}
 
 pub fn deserialize_ordered_hash_map<'de, D, K, V>(
     deserializer: D,
@@ -203,13 +197,12 @@ impl LightConfig {
     fn load(
         user_config_path: &std::path::Path,
         early_no_notifications: bool,
-    ) -> io::Result<(Self, bool, Vec<PartialLegacyHsvOverride>)> {
+    ) -> io::Result<(Self, bool)> {
         let Ok(config_path) = Self::find(&user_config_path.to_path_buf()) else {
-            return Ok((LightConfig::default(), true, Vec::new()));
+            return Ok((LightConfig::default(), true));
         };
 
         let config_contents = read_to_string(config_path)?;
-        let partial_legacy_hsv = find_partial_legacy_hsv_overrides(&config_contents);
         let config = toml::from_str(&config_contents).unwrap_or_else(|error| {
             notification_box(
                 "Failed to read light config!",
@@ -219,7 +212,7 @@ impl LightConfig {
             std::process::exit(256);
         });
 
-        Ok((config, false, partial_legacy_hsv))
+        Ok((config, false))
     }
 
     fn apply_scalar_args(&mut self, light_args: &mut LightArgs) {
@@ -485,20 +478,11 @@ impl LightConfig {
 
         let early_no_notifications =
             std::env::var("S3L_NO_NOTIFICATIONS").is_ok() || light_args.no_notifications;
-        let (mut light_config, write_config, partial_legacy_hsv) =
+        let (mut light_config, write_config) =
             Self::load(&user_config_path, early_no_notifications)?;
 
-        let effective_no_notifications = light_config.no_notifications || early_no_notifications;
         let debug_from_env = std::env::var("S3L_DEBUG").is_ok();
         light_config.update_migrated_color_config();
-
-        if !partial_legacy_hsv.is_empty() {
-            notification_box(
-                "Legacy HSV overrides need manual migration",
-                &partial_legacy_hsv_message(&partial_legacy_hsv),
-                effective_no_notifications,
-            );
-        }
 
         let (effective_dry_run, effective_validate_config) =
             light_config.effective_non_writing_modes(&light_args)?;
@@ -588,109 +572,6 @@ impl LightConfig {
                 .values()
                 .any(CustomCellAmbient::migrated_from_hsv);
     }
-}
-
-fn find_partial_legacy_hsv_overrides(config_contents: &str) -> Vec<PartialLegacyHsvOverride> {
-    let mut results = Vec::new();
-    let mut current_table: Option<String> = None;
-    let mut current_fields: Vec<(&'static str, usize)> = Vec::new();
-
-    for (index, raw_line) in config_contents.lines().enumerate() {
-        let line_number = index + 1;
-        let line = strip_toml_comment(raw_line).trim();
-
-        if line.starts_with('[') && line.ends_with(']') {
-            flush_partial_legacy_hsv_override(
-                &mut results,
-                &mut current_table,
-                &mut current_fields,
-            );
-            let table = line.trim_matches(['[', ']']);
-            if table.starts_with("light_overrides.") {
-                current_table = Some(table.to_owned());
-            }
-            continue;
-        }
-
-        let Some(table) = &current_table else {
-            continue;
-        };
-        if !table.starts_with("light_overrides.") {
-            continue;
-        }
-
-        let Some((key, _)) = line.split_once('=') else {
-            continue;
-        };
-        match key.trim() {
-            "hue" => current_fields.push(("hue", line_number)),
-            "saturation" => current_fields.push(("saturation", line_number)),
-            "value" => current_fields.push(("value", line_number)),
-            _ => {}
-        }
-    }
-
-    flush_partial_legacy_hsv_override(&mut results, &mut current_table, &mut current_fields);
-    results
-}
-
-fn strip_toml_comment(line: &str) -> &str {
-    let mut in_single_quote = false;
-    let mut in_double_quote = false;
-    let mut previous_was_escape = false;
-
-    for (index, ch) in line.char_indices() {
-        match ch {
-            '\'' if !in_double_quote => in_single_quote = !in_single_quote,
-            '"' if !in_single_quote && !previous_was_escape => in_double_quote = !in_double_quote,
-            '#' if !in_single_quote && !in_double_quote => return &line[..index],
-            _ => {}
-        }
-
-        previous_was_escape = ch == '\\' && !previous_was_escape;
-        if ch != '\\' {
-            previous_was_escape = false;
-        }
-    }
-
-    line
-}
-
-fn flush_partial_legacy_hsv_override(
-    results: &mut Vec<PartialLegacyHsvOverride>,
-    current_table: &mut Option<String>,
-    current_fields: &mut Vec<(&'static str, usize)>,
-) {
-    if (current_fields.len() == 1 || current_fields.len() == 2)
-        && let Some(table) = current_table.take()
-    {
-        results.push(PartialLegacyHsvOverride {
-            table,
-            fields: std::mem::take(current_fields),
-        });
-        return;
-    }
-
-    *current_table = None;
-    current_fields.clear();
-}
-
-fn partial_legacy_hsv_message(overrides: &[PartialLegacyHsvOverride]) -> String {
-    let mut message = String::from(
-        "Some light overrides use partial legacy HSV color fields. They still work, but cannot be automatically converted to RGB because conversion depends on each source light's original color. Please convert them manually when convenient:\n",
-    );
-
-    for override_info in overrides {
-        let fields = override_info
-            .fields
-            .iter()
-            .map(|(field, line)| format!("{field} on line {line}"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let _ = writeln!(message, "- [{}]: {fields}", override_info.table);
-    }
-
-    message
 }
 
 impl Default for LightConfig {
@@ -903,57 +784,6 @@ mod tests {
         assert!(!serialized.contains("hue = 120"));
         assert!(!serialized.contains("saturation = 1.0"));
         assert!(!serialized.contains("value = 1.0"));
-    }
-
-    #[test]
-    fn partial_legacy_hsv_light_overrides_are_reported_with_lines() {
-        let partial = find_partial_legacy_hsv_overrides(
-            r"
-            [light_overrides.complete]
-            hue = 180
-            saturation = 1.0
-            value = 1.0
-
-            [light_overrides.partial]
-            hue = 90
-            value = 0.5
-
-            [ambient_overrides.cell.ambient]
-            hue = 120
-            saturation = 1.0
-            ",
-        );
-
-        assert_eq!(
-            partial,
-            vec![PartialLegacyHsvOverride {
-                table: "light_overrides.partial".to_owned(),
-                fields: vec![("hue", 8), ("value", 9)],
-            }]
-        );
-
-        let message = partial_legacy_hsv_message(&partial);
-        assert!(message.contains("[light_overrides.partial]"));
-        assert!(message.contains("hue on line 8"));
-        assert!(message.contains("value on line 9"));
-    }
-
-    #[test]
-    fn partial_legacy_hsv_scanner_handles_hash_inside_quoted_table_name() {
-        let partial = find_partial_legacy_hsv_overrides(
-            r#"
-            [light_overrides."torch#01"]
-            hue = 90 # real comment
-            "#,
-        );
-
-        assert_eq!(
-            partial,
-            vec![PartialLegacyHsvOverride {
-                table: "light_overrides.\"torch#01\"".to_owned(),
-                fields: vec![("hue", 3)],
-            }]
-        );
     }
 
     #[test]
