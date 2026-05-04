@@ -218,12 +218,12 @@ Additionally, S3LightFixes will perform the following:
                May be specified multiple times instead of as a separated list.
                Light color values may use fixed RGB fields (`red`, `green`, `blue`), HSV fixed fields (`hue`, `saturation`, `value`), HSV multipliers (`hue_mult`, `saturation_mult`, `value_mult`), and RGB multipliers (`red_mult`, `green_mult`, `blue_mult`).
                EG:
-               --light "Torch_001=radius=255,red=255,green=128,blue=64,blue_mult=0.5,duration=1200,flag=FLICKERSLOW" --light "Torch_002=radius_mult=2.0,hue_mult=1.3,red_mult=1.1,duration_mult=5.0,flag=NONE"
+               --light "Torch_001=radius=255,red=255,green=128,blue=64,hue=220,blue_mult=0.5,duration=1200,flag=FLICKERSLOW" --light "Torch_002=radius_mult=2.0,hue_mult=1.3,red_mult=1.1,duration_mult=5.0,flag=NONE"
                OR
-               --light "Torch_001=radius=255,red=255,green=128,blue=64,blue_mult=0.5,duration=1200,flag=FLICKERSLOW:Torch_002=radius_mult=2.0,hue_mult=1.3,red_mult=1.1,duration_mult=5.0,flag=NONE"
+               --light "Torch_001=radius=255,red=255,green=128,blue=64,hue=220,blue_mult=0.5,duration=1200,flag=FLICKERSLOW:Torch_002=radius_mult=2.0,hue_mult=1.3,red_mult=1.1,duration_mult=5.0,flag=NONE"
                RGB color components are 0-255, matching TES3/Construction Set values. Radius and duration are u32 (can be very big).
                `flag` may be: NONE, FLICKER, FLICKERSLOW, PULSE, PULSESLOW
-               Color precedence: fixed RGB, when present, replaces the source RGB as the base color; HSV fixed fields/multipliers then adjust that base color per component; fixed and multiplier forms for the same HSV component are mutually exclusive; RGB multipliers are always applied last.
+               Color precedence: fixed RGB, when present, replaces the source RGB as the base color and disables global HSV fallback for missing HSV components; without fixed RGB, missing HSV components still use the standard/colored global HSV multipliers. HSV fixed fields/multipliers adjust the selected base color per component, fixed and multiplier forms for the same HSV component are mutually exclusive, and RGB multipliers are always applied last.
       --ambient <AMBIENT_OVERRIDES>
           
                       Colon-separated list of cell id regexes, to the corresponding ambient data.
