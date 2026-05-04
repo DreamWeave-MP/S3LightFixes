@@ -184,7 +184,7 @@ pub struct LightArgs {
      --light \"Torch_001=radius=255,red=255,green=128,blue=64,blue_mult=0.5,duration=1200,flag=FLICKERSLOW:Torch_002=radius_mult=2.0,hue_mult=1.3,red_mult=1.1,duration_mult=5.0,flag=NONE\"
      RGB color components are 0-255, matching TES3/Construction Set values. Radius and duration are u32 (can be very big).
      `flag` may be: NONE, FLICKER, FLICKERSLOW, PULSE, PULSESLOW
-     Color precedence is: fixed RGB replaces the source color and skips HSV/global color adjustment; otherwise HSV fixed fields/multipliers override global HSV adjustment per component; RGB multipliers are applied last to the resulting RGB color."),
+     Color precedence: fixed RGB replaces the source color and is mutually exclusive with HSV color fields; HSV fixed fields/multipliers override global HSV adjustment per component; fixed and multiplier forms for the same HSV component are mutually exclusive; RGB multipliers are always applied last."),
     )]
     pub light_overrides: Vec<(String, crate::CustomLightData)>,
 

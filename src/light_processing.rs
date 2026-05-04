@@ -568,7 +568,7 @@ mod tests {
     }
 
     #[test]
-    fn fixed_rgb_skips_hsv_and_still_gets_rgb_multipliers() {
+    fn fixed_rgb_gets_rgb_multipliers() {
         let mut light_config = config();
         light_config.standard_hue = 10.0;
         light_config.standard_saturation = 0.0;
@@ -577,7 +577,6 @@ mod tests {
             Regex::new("fixed_rgb").unwrap(),
             CustomLightData {
                 color: Some([100, 80, 60, 0]),
-                hue_mult: Some(5.0),
                 red_mult: Some(3.0),
                 green_mult: Some(0.5),
                 blue_mult: Some(1.0),

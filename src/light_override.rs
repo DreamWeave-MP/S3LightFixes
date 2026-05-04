@@ -60,6 +60,7 @@ impl FromStr for CustomLightData {
         let mut color = RgbBuilder::default();
         parse_pairs(s, |key, value| data.set_pair(key, value, &mut color))?;
         data.color = color.finish()?;
+        data.validate_color_contracts()?;
 
         Ok(data)
     }
@@ -165,6 +166,14 @@ impl<'de> serde::Deserialize<'de> for CustomLightData {
         {
             return Err(serde::de::Error::custom(
                 "RGB color fields are mutually exclusive with legacy HSV color fields",
+            ));
+        }
+
+        if rgb_color.is_some()
+            && (hue_mult.is_some() || saturation_mult.is_some() || value_mult.is_some())
+        {
+            return Err(serde::de::Error::custom(
+                "RGB color fields are mutually exclusive with HSV color adjustment fields",
             ));
         }
 
@@ -451,19 +460,27 @@ impl CustomLightData {
             "red_mult" => Self::set_plain_float(&mut self.red_mult, "red_mult", value),
             "green_mult" => Self::set_plain_float(&mut self.green_mult, "green_mult", value),
             "blue_mult" => Self::set_plain_float(&mut self.blue_mult, "blue_mult", value),
-            "hue_mult" => {
-                Self::set_float_mult(&mut self.hue_mult, false, "unused", "hue_mult", value)
-            }
+            "hue_mult" => Self::set_float_mult(
+                &mut self.hue_mult,
+                self.hue.is_some(),
+                "hue",
+                "hue_mult",
+                value,
+            ),
             "saturation_mult" => Self::set_float_mult(
                 &mut self.saturation_mult,
-                false,
-                "unused",
+                self.saturation.is_some(),
+                "saturation",
                 "saturation_mult",
                 value,
             ),
-            "value_mult" => {
-                Self::set_float_mult(&mut self.value_mult, false, "unused", "value_mult", value)
-            }
+            "value_mult" => Self::set_float_mult(
+                &mut self.value_mult,
+                self.value.is_some(),
+                "value",
+                "value_mult",
+                value,
+            ),
             "duration_mult" => Self::set_float_mult(
                 &mut self.duration_mult,
                 self.duration.is_some(),
@@ -485,6 +502,24 @@ impl CustomLightData {
             }
             _ => Err(ParseLightError::UnknownField(key.to_owned())),
         }
+    }
+
+    fn validate_color_contracts(&self) -> Result<(), ParseLightError> {
+        if self.color.is_some()
+            && (self.hue.is_some()
+                || self.saturation.is_some()
+                || self.value.is_some()
+                || self.hue_mult.is_some()
+                || self.saturation_mult.is_some()
+                || self.value_mult.is_some())
+        {
+            return Err(ParseLightError::ExclusiveFields(
+                "RGB color",
+                "HSV color adjustment",
+            ));
+        }
+
+        Ok(())
     }
 
     fn set_duration(&mut self, value: &str) -> Result<(), ParseLightError> {
@@ -908,14 +943,39 @@ mod tests {
     }
 
     #[test]
-    fn cli_light_override_allows_rgb_and_hsv_multipliers_together() {
-        let (_, data) =
-            parse_light_override("Torch=red=255,green=128,blue=64,hue_mult=2.0,red_mult=0.5")
-                .unwrap();
+    fn cli_light_override_rejects_fixed_rgb_with_hsv_multiplier() {
+        let err = parse_light_override("Torch=red=255,green=128,blue=64,hue_mult=2.0,red_mult=0.5")
+            .unwrap_err();
 
-        assert_eq!(data.color, Some([255, 128, 64, 0]));
-        assert_eq!(data.hue_mult, Some(2.0));
-        assert_eq!(data.red_mult, Some(0.5));
+        assert!(matches!(
+            err,
+            ParseLightError::ExclusiveFields("RGB color", "HSV color adjustment")
+        ));
+    }
+
+    #[test]
+    fn cli_light_override_rejects_hsv_fixed_and_multiplier_in_both_orders() {
+        for raw in [
+            "Torch=hue=10,hue_mult=2.0",
+            "Torch=hue_mult=2.0,hue=10",
+            "Torch=saturation=0.5,saturation_mult=2.0",
+            "Torch=saturation_mult=2.0,saturation=0.5",
+            "Torch=value=0.5,value_mult=2.0",
+            "Torch=value_mult=2.0,value=0.5",
+        ] {
+            assert!(parse_light_override(raw).is_err(), "{raw}");
+        }
+    }
+
+    #[test]
+    fn cli_light_override_rejects_complete_hsv_with_hsv_multiplier() {
+        let err = parse_light_override("Torch=hue=180,saturation=1.0,value=1.0,hue_mult=2.0")
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            ParseLightError::ExclusiveFields("hue", "hue_mult")
+        ));
     }
 
     #[test]
@@ -1051,15 +1111,13 @@ mod tests {
     }
 
     #[test]
-    fn toml_light_data_allows_rgb_and_hsv_multipliers_together() {
-        let data = toml::from_str::<CustomLightData>(
+    fn toml_light_data_rejects_rgb_and_hsv_multipliers_together() {
+        let err = toml::from_str::<CustomLightData>(
             "red = 10\ngreen = 20\nblue = 30\nhue_mult = 2.0\nred_mult = 0.5",
         )
-        .unwrap();
+        .unwrap_err();
 
-        assert_eq!(data.color, Some([10, 20, 30, 0]));
-        assert_eq!(data.hue_mult, Some(2.0));
-        assert_eq!(data.red_mult, Some(0.5));
+        assert!(err.to_string().contains("mutually exclusive"));
     }
 
     #[test]
