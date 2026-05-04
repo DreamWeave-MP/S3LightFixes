@@ -89,8 +89,9 @@ save_config = false
 
 # You may also set custom values for light configurations for each light *or* cell record in lightConfig.toml.
 # This allows complete control and customization over all light colors, durations, radii, and even types(pulse, flicker, etc) in your lightConfig.toml
-# Fixed colors use RGB components matching the TES3 Construction Set values: red, green, and blue from 0 to 255.
-# Complete legacy HSV color triples are automatically converted to RGB and rewritten. Partial legacy HSV light overrides still work, but S3LightFixes will warn because they cannot be automatically converted without the original light color.
+# Fixed colors use RGB components matching the TES3 Construction Set values: red, green, and blue from 0 to 255. RGB multipliers use red_mult, green_mult, and blue_mult.
+# Color precedence for light overrides is: fixed RGB replaces the source color and skips HSV/global color adjustment; otherwise HSV fixed fields/multipliers override global HSV adjustment per component; RGB multipliers are applied last to the resulting RGB color.
+# Complete legacy HSV color triples are automatically converted to RGB and rewritten. Partial legacy HSV light overrides still work when you intentionally want source-light-dependent HSV edits.
 # A few examples are shown below.
 # These customizations to lights may also be applied on the command line and saved to lightConfig.toml by using the `-u` argument, along with `--light` for each light record, or `--ambient` for each cell you wish to edit.
 # See further below for command-line examples.
@@ -109,6 +110,7 @@ duration = 1199.0
 
 [light_overrides.Torch_001]
 hue_mult = 0.2999999523162842
+red_mult = 1.1
 radius_mult = 1.0
 flag = "PULSESLOW"
 
@@ -213,14 +215,14 @@ Additionally, S3LightFixes will perform the following:
      --light <LIGHT_OVERRIDES>
           Colon-separated list of regexes to light values.
                May be specified multiple times instead of as a separated list.
-               Light values are specified as *either* fixed RGB values or as HSV multipliers of existing ones.
+               Light color values may use fixed RGB fields (`red`, `green`, `blue`), HSV fixed fields (`hue`, `saturation`, `value`), HSV multipliers (`hue_mult`, `saturation_mult`, `value_mult`), and RGB multipliers (`red_mult`, `green_mult`, `blue_mult`).
                EG:
-               --light "Torch_001=radius=255,red=255,green=128,blue=64,duration=1200,flag=FLICKERSLOW" --light "Torch_002=radius_mult=2.0,hue_mult=1.3,duration_mult=5.0,flag=NONE"
+               --light "Torch_001=radius=255,red=255,green=128,blue=64,blue_mult=0.5,duration=1200,flag=FLICKERSLOW" --light "Torch_002=radius_mult=2.0,hue_mult=1.3,red_mult=1.1,duration_mult=5.0,flag=NONE"
                OR
-               --light "Torch_001=radius=255,red=255,green=128,blue=64,duration=1200,flag=FLICKERSLOW:Torch_002=radius_mult=2.0,hue_mult=1.3,duration_mult=5.0,flag=NONE"
+               --light "Torch_001=radius=255,red=255,green=128,blue=64,blue_mult=0.5,duration=1200,flag=FLICKERSLOW:Torch_002=radius_mult=2.0,hue_mult=1.3,red_mult=1.1,duration_mult=5.0,flag=NONE"
                RGB color components are 0-255, matching TES3/Construction Set values. Radius and duration are u32 (can be very big).
                `flag` may be: NONE, FLICKER, FLICKERSLOW, PULSE, PULSESLOW
-               Fixed RGB values are mutually exclusive with HSV multipliers and setting both will cause an error.
+               Color precedence is: fixed RGB replaces the source color and skips HSV/global color adjustment; otherwise HSV fixed fields/multipliers override global HSV adjustment per component; RGB multipliers are applied last to the resulting RGB color.
       --ambient <AMBIENT_OVERRIDES>
           
                       Colon-separated list of cell id regexes, to the corresponding ambient data.

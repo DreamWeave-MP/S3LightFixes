@@ -88,6 +88,9 @@ struct RawCustomLightData {
     red: Option<u8>,
     green: Option<u8>,
     blue: Option<u8>,
+    red_mult: Option<f32>,
+    green_mult: Option<f32>,
+    blue_mult: Option<f32>,
     hue: Option<u32>,
     saturation: Option<f32>,
     value: Option<f32>,
@@ -158,17 +161,12 @@ impl<'de> serde::Deserialize<'de> for CustomLightData {
 
         let color = rgb_color.or(legacy_hsv_color);
 
-        if color.is_some()
-            && (raw.hue_mult.is_some() || raw.saturation_mult.is_some() || raw.value_mult.is_some())
-        {
-            return Err(serde::de::Error::custom(
-                "RGB color fields are mutually exclusive with HSV multiplier fields",
-            ));
-        }
-
         Ok(CustomLightData {
             color,
             migrated_from_hsv: legacy_hsv_color.is_some(),
+            red_mult: raw.red_mult,
+            green_mult: raw.green_mult,
+            blue_mult: raw.blue_mult,
             hue,
             saturation,
             value,
@@ -188,6 +186,9 @@ impl<'de> serde::Deserialize<'de> for CustomLightData {
 pub struct CustomLightData {
     pub color: Option<[u8; 4]>,
     pub migrated_from_hsv: bool,
+    pub red_mult: Option<f32>,
+    pub green_mult: Option<f32>,
+    pub blue_mult: Option<f32>,
     pub hue: Option<u32>,
     pub saturation: Option<f32>,
     pub value: Option<f32>,
@@ -208,6 +209,9 @@ impl Serialize for CustomLightData {
     {
         let mut fields = 0;
         fields += usize::from(self.color.is_some()) * 3;
+        fields += usize::from(self.red_mult.is_some());
+        fields += usize::from(self.green_mult.is_some());
+        fields += usize::from(self.blue_mult.is_some());
         fields += usize::from(self.hue.is_some());
         fields += usize::from(self.saturation.is_some());
         fields += usize::from(self.value.is_some());
@@ -225,6 +229,15 @@ impl Serialize for CustomLightData {
             state.serialize_field("red", &red)?;
             state.serialize_field("green", &green)?;
             state.serialize_field("blue", &blue)?;
+        }
+        if let Some(value) = self.red_mult {
+            state.serialize_field("red_mult", &value)?;
+        }
+        if let Some(value) = self.green_mult {
+            state.serialize_field("green_mult", &value)?;
+        }
+        if let Some(value) = self.blue_mult {
+            state.serialize_field("blue_mult", &value)?;
         }
         if let Some(value) = self.hue {
             state.serialize_field("hue", &value)?;
@@ -272,10 +285,6 @@ struct RgbBuilder {
 }
 
 impl RgbBuilder {
-    fn has_any(&self) -> bool {
-        self.red.is_some() || self.green.is_some() || self.blue.is_some()
-    }
-
     fn finish(self) -> Result<Option<[u8; 4]>, ParseLightError> {
         rgb_from_parts(self.red, self.green, self.blue).map_err(|_| ParseLightError::IncompleteRgb)
     }
@@ -369,27 +378,22 @@ impl CustomLightData {
                 "radius_mult",
                 value,
             ),
-            "hue_mult" => Self::set_float_mult(
-                &mut self.hue_mult,
-                color.has_any(),
-                "RGB color",
-                "hue_mult",
-                value,
-            ),
+            "red_mult" => Self::set_plain_float(&mut self.red_mult, "red_mult", value),
+            "green_mult" => Self::set_plain_float(&mut self.green_mult, "green_mult", value),
+            "blue_mult" => Self::set_plain_float(&mut self.blue_mult, "blue_mult", value),
+            "hue_mult" => {
+                Self::set_float_mult(&mut self.hue_mult, false, "unused", "hue_mult", value)
+            }
             "saturation_mult" => Self::set_float_mult(
                 &mut self.saturation_mult,
-                color.has_any(),
-                "RGB color",
+                false,
+                "unused",
                 "saturation_mult",
                 value,
             ),
-            "value_mult" => Self::set_float_mult(
-                &mut self.value_mult,
-                color.has_any(),
-                "RGB color",
-                "value_mult",
-                value,
-            ),
+            "value_mult" => {
+                Self::set_float_mult(&mut self.value_mult, false, "unused", "value_mult", value)
+            }
             "duration_mult" => Self::set_float_mult(
                 &mut self.duration_mult,
                 self.duration.is_some(),
@@ -399,9 +403,9 @@ impl CustomLightData {
             ),
             "duration" => self.set_duration(value),
             "radius" => self.set_radius(value),
-            "red" => self.set_color_component(&mut color.red, "red", value),
-            "green" => self.set_color_component(&mut color.green, "green", value),
-            "blue" => self.set_color_component(&mut color.blue, "blue", value),
+            "red" => Self::set_color_component(&mut color.red, "red", value),
+            "green" => Self::set_color_component(&mut color.green, "green", value),
+            "blue" => Self::set_color_component(&mut color.blue, "blue", value),
             "flag" => {
                 self.flag = Some(value.parse()?);
                 Ok(())
@@ -423,6 +427,17 @@ impl CustomLightData {
         Ok(())
     }
 
+    fn set_plain_float(
+        target: &mut Option<f32>,
+        field: &'static str,
+        value: &str,
+    ) -> Result<(), ParseLightError> {
+        *target = Some(value.parse().map_err(|e: std::num::ParseFloatError| {
+            ParseLightError::BadNumber(field, e.to_string())
+        })?);
+        Ok(())
+    }
+
     fn set_radius(&mut self, value: &str) -> Result<(), ParseLightError> {
         if self.radius_mult.is_some() {
             return Err(ParseLightError::ExclusiveFields("radius_mult", "radius"));
@@ -434,18 +449,10 @@ impl CustomLightData {
     }
 
     fn set_color_component(
-        &mut self,
         target: &mut Option<u8>,
         field: &'static str,
         value: &str,
     ) -> Result<(), ParseLightError> {
-        if self.hue_mult.is_some() || self.saturation_mult.is_some() || self.value_mult.is_some() {
-            return Err(ParseLightError::ExclusiveFields(
-                "HSV multiplier",
-                "RGB color",
-            ));
-        }
-
         *target = Some(value.parse().map_err(|e: std::num::ParseIntError| {
             ParseLightError::BadNumber(field, e.to_string())
         })?);
@@ -736,12 +743,15 @@ mod tests {
     #[test]
     fn parses_cli_light_override_multiplier_fields() {
         let (_, data) = parse_light_override(
-            "Torch_002=radius_mult=2.0,duration_mult=3.0,hue_mult=4.0,saturation_mult=0.5,value_mult=0.25",
+            "Torch_002=radius_mult=2.0,duration_mult=3.0,hue_mult=4.0,saturation_mult=0.5,value_mult=0.25,red_mult=1.1,green_mult=0.8,blue_mult=0.25",
         )
         .unwrap();
 
         assert_eq!(data.radius_mult, Some(2.0));
         assert_eq!(data.duration_mult, Some(3.0));
+        assert_eq!(data.red_mult, Some(1.1));
+        assert_eq!(data.green_mult, Some(0.8));
+        assert_eq!(data.blue_mult, Some(0.25));
         assert_eq!(data.hue_mult, Some(4.0));
         assert_eq!(data.saturation_mult, Some(0.5));
         assert_eq!(data.value_mult, Some(0.25));
@@ -772,13 +782,14 @@ mod tests {
     }
 
     #[test]
-    fn cli_light_override_rejects_rgb_color_with_hsv_multiplier() {
-        let err = parse_light_override("Torch=red=255,green=128,blue=64,hue_mult=2.0").unwrap_err();
+    fn cli_light_override_allows_rgb_and_hsv_multipliers_together() {
+        let (_, data) =
+            parse_light_override("Torch=red=255,green=128,blue=64,hue_mult=2.0,red_mult=0.5")
+                .unwrap();
 
-        assert!(matches!(
-            err,
-            ParseLightError::ExclusiveFields("RGB color", "hue_mult")
-        ));
+        assert_eq!(data.color, Some([255, 128, 64, 0]));
+        assert_eq!(data.hue_mult, Some(2.0));
+        assert_eq!(data.red_mult, Some(0.5));
     }
 
     #[test]
@@ -876,6 +887,7 @@ mod tests {
     fn toml_light_data_serializes_rgb_as_named_components() {
         let serialized = toml::to_string(&CustomLightData {
             color: Some([10, 20, 30, 0]),
+            red_mult: Some(1.5),
             radius: Some(100),
             ..CustomLightData::default()
         })
@@ -884,7 +896,20 @@ mod tests {
         assert!(serialized.contains("red = 10"));
         assert!(serialized.contains("green = 20"));
         assert!(serialized.contains("blue = 30"));
+        assert!(serialized.contains("red_mult = 1.5"));
         assert!(!serialized.contains("color"));
+    }
+
+    #[test]
+    fn toml_light_data_allows_rgb_and_hsv_multipliers_together() {
+        let data = toml::from_str::<CustomLightData>(
+            "red = 10\ngreen = 20\nblue = 30\nhue_mult = 2.0\nred_mult = 0.5",
+        )
+        .unwrap();
+
+        assert_eq!(data.color, Some([10, 20, 30, 0]));
+        assert_eq!(data.hue_mult, Some(2.0));
+        assert_eq!(data.red_mult, Some(0.5));
     }
 
     #[test]

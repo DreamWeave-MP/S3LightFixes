@@ -177,14 +177,14 @@ pub struct LightArgs {
         help = &format!(
      "Colon-separated list of regexes to light values.
      May be specified multiple times instead of as a separated list.
-     Light values are specified as *either* fixed RGB values or as HSV multipliers of existing ones.
+     Light color values may use fixed RGB fields (`red`, `green`, `blue`), HSV fixed fields (`hue`, `saturation`, `value`), HSV multipliers (`hue_mult`, `saturation_mult`, `value_mult`), and RGB multipliers (`red_mult`, `green_mult`, `blue_mult`).
      EG:
-     --light \"Torch_001=radius=255,red=255,green=128,blue=64,duration=1200,flag=FLICKERSLOW\" --light \"Torch_002=radius_mult=2.0,hue_mult=1.3,duration_mult=5.0,flag=NONE\"
+     --light \"Torch_001=radius=255,red=255,green=128,blue=64,blue_mult=0.5,duration=1200,flag=FLICKERSLOW\" --light \"Torch_002=radius_mult=2.0,hue_mult=1.3,red_mult=1.1,duration_mult=5.0,flag=NONE\"
      OR
-     --light \"Torch_001=radius=255,red=255,green=128,blue=64,duration=1200,flag=FLICKERSLOW:Torch_002=radius_mult=2.0,hue_mult=1.3,duration_mult=5.0,flag=NONE\"
+     --light \"Torch_001=radius=255,red=255,green=128,blue=64,blue_mult=0.5,duration=1200,flag=FLICKERSLOW:Torch_002=radius_mult=2.0,hue_mult=1.3,red_mult=1.1,duration_mult=5.0,flag=NONE\"
      RGB color components are 0-255, matching TES3/Construction Set values. Radius and duration are u32 (can be very big).
      `flag` may be: NONE, FLICKER, FLICKERSLOW, PULSE, PULSESLOW
-     Fixed RGB values are mutually exclusive with HSV multipliers and setting both will cause an error."),
+     Color precedence is: fixed RGB replaces the source color and skips HSV/global color adjustment; otherwise HSV fixed fields/multipliers override global HSV adjustment per component; RGB multipliers are applied last to the resulting RGB color."),
     )]
     pub light_overrides: Vec<(String, crate::CustomLightData)>,
 

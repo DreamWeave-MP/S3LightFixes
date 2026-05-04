@@ -20,6 +20,17 @@ fn scaled_i32(value: i32, multiplier: f32) -> i32 {
     (value as f32 * multiplier) as i32
 }
 
+// RGB channels are TES3 u8 values. Multipliers are user math; clamp so exciting configs do not wrap
+// bright red into suspiciously dark red. Rendering bugs are bad enough without integer cosplay.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
+fn scaled_u8(value: u8, multiplier: f32) -> u8 {
+    (f32::from(value) * multiplier).clamp(0.0, 255.0) as u8
+}
+
 // User-provided fixed durations are floats to share parser machinery with multipliers, but TES3
 // stores the result as an integer duration.
 #[allow(clippy::cast_possible_truncation)]
@@ -112,6 +123,18 @@ fn apply_plain_hsv_adjustment(
     light_as_hsv.value *= global_value;
 }
 
+fn apply_rgb_multipliers(color: &mut [u8; 4], replacement: &CustomLightData) {
+    if let Some(red_mult) = replacement.red_mult {
+        color[0] = scaled_u8(color[0], red_mult);
+    }
+    if let Some(green_mult) = replacement.green_mult {
+        color[1] = scaled_u8(color[1], green_mult);
+    }
+    if let Some(blue_mult) = replacement.blue_mult {
+        color[2] = scaled_u8(color[2], blue_mult);
+    }
+}
+
 pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) -> Vec<String> {
     let original_data = light.data.clone();
 
@@ -196,8 +219,15 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) -
         light.data.time = scaled_i32(light.data.time, light_config.duration_mult);
     }
 
-    if let Some(replacement) = replacement_light_data.and_then(|replacement| replacement.color) {
-        light.data.color = replacement;
+    if let Some(replacement) = replacement_light_data {
+        if let Some(fixed_color) = replacement.color {
+            light.data.color = fixed_color;
+        } else {
+            let rgb8_color: Srgb<u8> =
+                <Hsv as IntoColor<Srgb>>::into_color(light_as_hsv).into_format();
+            light.data.color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
+        }
+        apply_rgb_multipliers(&mut light.data.color, replacement);
     } else {
         let rgb8_color: Srgb<u8> = <Hsv as IntoColor<Srgb>>::into_color(light_as_hsv).into_format();
         light.data.color = [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0];
@@ -509,6 +539,56 @@ mod tests {
         process_light(&light_config, &mut light);
 
         assert_eq!(light.data.color, rgb_from_hsv(60.0, 0.5, 0.25));
+    }
+
+    #[test]
+    fn rgb_multipliers_apply_after_hsv_adjustments() {
+        let mut light_config = config();
+        light_config.light_regexes.push((
+            Regex::new("rgb_after_hsv").unwrap(),
+            CustomLightData {
+                hue_mult: Some(2.0),
+                saturation_mult: Some(0.5),
+                value_mult: Some(0.25),
+                red_mult: Some(0.5),
+                green_mult: Some(2.0),
+                blue_mult: Some(-1.0),
+                ..CustomLightData::default()
+            },
+        ));
+        let mut light = light("rgb_after_hsv_light", 30.0, 10, 10, LightFlags::default());
+
+        process_light(&light_config, &mut light);
+
+        let mut expected = rgb_from_hsv(60.0, 0.5, 0.25);
+        expected[0] = scaled_u8(expected[0], 0.5);
+        expected[1] = scaled_u8(expected[1], 2.0);
+        expected[2] = 0;
+        assert_eq!(light.data.color, expected);
+    }
+
+    #[test]
+    fn fixed_rgb_skips_hsv_and_still_gets_rgb_multipliers() {
+        let mut light_config = config();
+        light_config.standard_hue = 10.0;
+        light_config.standard_saturation = 0.0;
+        light_config.standard_value = 0.0;
+        light_config.light_regexes.push((
+            Regex::new("fixed_rgb").unwrap(),
+            CustomLightData {
+                color: Some([100, 80, 60, 0]),
+                hue_mult: Some(5.0),
+                red_mult: Some(3.0),
+                green_mult: Some(0.5),
+                blue_mult: Some(1.0),
+                ..CustomLightData::default()
+            },
+        ));
+        let mut light = light("fixed_rgb_light", 30.0, 10, 10, LightFlags::default());
+
+        process_light(&light_config, &mut light);
+
+        assert_eq!(light.data.color, [255, 40, 60, 0]);
     }
 
     #[test]
