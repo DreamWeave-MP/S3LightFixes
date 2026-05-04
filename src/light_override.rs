@@ -127,10 +127,35 @@ impl<'de> serde::Deserialize<'de> for CustomLightData {
         check_exclusive!(radius, radius_mult);
         check_exclusive!(duration, duration_mult);
 
+        let red_mult = finite_float(raw.red_mult, "red_mult").map_err(serde::de::Error::custom)?;
+        let green_mult =
+            finite_float(raw.green_mult, "green_mult").map_err(serde::de::Error::custom)?;
+        let blue_mult =
+            finite_float(raw.blue_mult, "blue_mult").map_err(serde::de::Error::custom)?;
+        let hue_mult = finite_float(raw.hue_mult, "hue_mult").map_err(serde::de::Error::custom)?;
+        let saturation_mult = finite_float(raw.saturation_mult, "saturation_mult")
+            .map_err(serde::de::Error::custom)?;
+        let value_mult =
+            finite_float(raw.value_mult, "value_mult").map_err(serde::de::Error::custom)?;
+        let radius_mult =
+            finite_float(raw.radius_mult, "radius_mult").map_err(serde::de::Error::custom)?;
+        let duration = finite_float(raw.duration, "duration").map_err(serde::de::Error::custom)?;
+        let duration_mult =
+            finite_float(raw.duration_mult, "duration_mult").map_err(serde::de::Error::custom)?;
+        let saturation =
+            finite_float(raw.saturation, "saturation").map_err(serde::de::Error::custom)?;
+        let value = finite_float(raw.value, "value").map_err(serde::de::Error::custom)?;
+
         let rgb_color =
             rgb_from_parts(raw.red, raw.green, raw.blue).map_err(serde::de::Error::custom)?;
-        let (legacy_hsv_color, hue, saturation, value) =
-            migrate_or_keep_legacy_hsv(raw.hue, raw.saturation, raw.value);
+        let (legacy_hsv_color, hue, saturation, value) = migrate_or_keep_legacy_hsv(
+            raw.hue,
+            saturation,
+            value,
+            hue_mult,
+            saturation_mult,
+            value_mult,
+        );
 
         if rgb_color.is_some()
             && (legacy_hsv_color.is_some()
@@ -143,17 +168,17 @@ impl<'de> serde::Deserialize<'de> for CustomLightData {
             ));
         }
 
-        if hue.is_some() && raw.hue_mult.is_some() {
+        if hue.is_some() && hue_mult.is_some() {
             return Err(serde::de::Error::custom(
                 "Fields `hue` and `hue_mult` are mutually exclusive",
             ));
         }
-        if saturation.is_some() && raw.saturation_mult.is_some() {
+        if saturation.is_some() && saturation_mult.is_some() {
             return Err(serde::de::Error::custom(
                 "Fields `saturation` and `saturation_mult` are mutually exclusive",
             ));
         }
-        if value.is_some() && raw.value_mult.is_some() {
+        if value.is_some() && value_mult.is_some() {
             return Err(serde::de::Error::custom(
                 "Fields `value` and `value_mult` are mutually exclusive",
             ));
@@ -164,19 +189,19 @@ impl<'de> serde::Deserialize<'de> for CustomLightData {
         Ok(CustomLightData {
             color,
             migrated_from_hsv: legacy_hsv_color.is_some(),
-            red_mult: raw.red_mult,
-            green_mult: raw.green_mult,
-            blue_mult: raw.blue_mult,
+            red_mult,
+            green_mult,
+            blue_mult,
             hue,
             saturation,
             value,
-            hue_mult: raw.hue_mult,
-            saturation_mult: raw.saturation_mult,
-            value_mult: raw.value_mult,
+            hue_mult,
+            saturation_mult,
+            value_mult,
             radius: raw.radius,
-            radius_mult: raw.radius_mult,
-            duration: raw.duration,
-            duration_mult: raw.duration_mult,
+            radius_mult,
+            duration,
+            duration_mult,
             flag: raw.flag,
         })
     }
@@ -302,6 +327,27 @@ fn rgb_from_parts(
     }
 }
 
+fn finite_float(value: Option<f32>, field: &'static str) -> Result<Option<f32>, &'static str> {
+    match value {
+        Some(value) if value.is_finite() => Ok(Some(value)),
+        Some(_) => Err(match field {
+            "red_mult" => "red_mult must be finite",
+            "green_mult" => "green_mult must be finite",
+            "blue_mult" => "blue_mult must be finite",
+            "hue_mult" => "hue_mult must be finite",
+            "saturation_mult" => "saturation_mult must be finite",
+            "value_mult" => "value_mult must be finite",
+            "radius_mult" => "radius_mult must be finite",
+            "duration" => "duration must be finite",
+            "duration_mult" => "duration_mult must be finite",
+            "saturation" => "saturation must be finite",
+            "value" => "value must be finite",
+            _ => "float value must be finite",
+        }),
+        None => Ok(None),
+    }
+}
+
 fn legacy_hsv_to_rgb(
     hue: Option<u32>,
     saturation: Option<f32>,
@@ -320,9 +366,14 @@ fn migrate_or_keep_legacy_hsv(
     hue: Option<u32>,
     saturation: Option<f32>,
     value: Option<f32>,
+    hue_mult: Option<f32>,
+    saturation_mult: Option<f32>,
+    value_mult: Option<f32>,
 ) -> (Option<[u8; 4]>, Option<u32>, Option<f32>, Option<f32>) {
     match (hue, saturation, value) {
-        (Some(hue), Some(saturation), Some(value)) => {
+        (Some(hue), Some(saturation), Some(value))
+            if hue_mult.is_none() && saturation_mult.is_none() && value_mult.is_none() =>
+        {
             (Some(hsv_to_rgb8(hue, saturation, value)), None, None, None)
         }
         (hue, saturation, value) => (
@@ -346,6 +397,19 @@ fn hsv_to_rgb8(hue: u32, saturation: f32, value: f32) -> [u8; 4] {
     [rgb8_color.red, rgb8_color.green, rgb8_color.blue, 0]
 }
 
+fn parse_clamped_unit_float(field: &'static str, value: &str) -> Result<f32, ParseLightError> {
+    let value = value
+        .parse::<f32>()
+        .map_err(|e| ParseLightError::BadNumber(field, e.to_string()))?;
+    if !value.is_finite() {
+        return Err(ParseLightError::BadNumber(
+            field,
+            "value must be finite".to_owned(),
+        ));
+    }
+    Ok(value.clamp(0.0, 1.0))
+}
+
 impl CustomLightData {
     fn set_float_mult(
         target: &mut Option<f32>,
@@ -361,6 +425,12 @@ impl CustomLightData {
         *target = Some(value.parse().map_err(|e: std::num::ParseFloatError| {
             ParseLightError::BadNumber(mult_name, e.to_string())
         })?);
+        if target.as_ref().is_some_and(|value| !value.is_finite()) {
+            return Err(ParseLightError::BadNumber(
+                mult_name,
+                "value must be finite".to_owned(),
+            ));
+        }
         Ok(())
     }
 
@@ -403,6 +473,9 @@ impl CustomLightData {
             ),
             "duration" => self.set_duration(value),
             "radius" => self.set_radius(value),
+            "hue" => self.set_hue(value),
+            "saturation" => self.set_saturation(value),
+            "value" => self.set_value(value),
             "red" => Self::set_color_component(&mut color.red, "red", value),
             "green" => Self::set_color_component(&mut color.green, "green", value),
             "blue" => Self::set_color_component(&mut color.blue, "blue", value),
@@ -424,6 +497,12 @@ impl CustomLightData {
         self.duration = Some(value.parse().map_err(|e: std::num::ParseFloatError| {
             ParseLightError::BadNumber("duration", e.to_string())
         })?);
+        if self.duration.is_some_and(|value| !value.is_finite()) {
+            return Err(ParseLightError::BadNumber(
+                "duration",
+                "value must be finite".to_owned(),
+            ));
+        }
         Ok(())
     }
 
@@ -435,6 +514,44 @@ impl CustomLightData {
         *target = Some(value.parse().map_err(|e: std::num::ParseFloatError| {
             ParseLightError::BadNumber(field, e.to_string())
         })?);
+        if target.as_ref().is_some_and(|value| !value.is_finite()) {
+            return Err(ParseLightError::BadNumber(
+                field,
+                "value must be finite".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn set_hue(&mut self, value: &str) -> Result<(), ParseLightError> {
+        if self.hue_mult.is_some() {
+            return Err(ParseLightError::ExclusiveFields("hue_mult", "hue"));
+        }
+        self.hue = Some(
+            value
+                .parse::<u32>()
+                .map_err(|e| ParseLightError::BadNumber("hue", e.to_string()))?
+                .clamp(0, 360),
+        );
+        Ok(())
+    }
+
+    fn set_saturation(&mut self, value: &str) -> Result<(), ParseLightError> {
+        if self.saturation_mult.is_some() {
+            return Err(ParseLightError::ExclusiveFields(
+                "saturation_mult",
+                "saturation",
+            ));
+        }
+        self.saturation = Some(parse_clamped_unit_float("saturation", value)?);
+        Ok(())
+    }
+
+    fn set_value(&mut self, value: &str) -> Result<(), ParseLightError> {
+        if self.value_mult.is_some() {
+            return Err(ParseLightError::ExclusiveFields("value_mult", "value"));
+        }
+        self.value = Some(parse_clamped_unit_float("value", value)?);
         Ok(())
     }
 
@@ -758,6 +875,15 @@ mod tests {
     }
 
     #[test]
+    fn parses_cli_light_override_fixed_hsv_fields() {
+        let (_, data) = parse_light_override("Torch=hue=999,saturation=2.0,value=0.25").unwrap();
+
+        assert_eq!(data.hue, Some(360));
+        assert_eq!(data.saturation, Some(1.0));
+        assert_eq!(data.value, Some(0.25));
+    }
+
+    #[test]
     fn cli_light_override_rejects_fixed_and_multiplier_for_same_field() {
         let err = parse_light_override("Torch=radius=10,radius_mult=2.0").unwrap_err();
 
@@ -790,6 +916,13 @@ mod tests {
         assert_eq!(data.color, Some([255, 128, 64, 0]));
         assert_eq!(data.hue_mult, Some(2.0));
         assert_eq!(data.red_mult, Some(0.5));
+    }
+
+    #[test]
+    fn cli_light_override_rejects_non_finite_rgb_multiplier() {
+        let err = parse_light_override("Torch=red_mult=NaN").unwrap_err();
+
+        assert!(matches!(err, ParseLightError::BadNumber("red_mult", _)));
     }
 
     #[test]
@@ -872,6 +1005,23 @@ mod tests {
         assert_eq!(data.saturation, Some(1.0));
         assert_eq!(data.value, None);
         assert!(!data.migrated_from_hsv);
+    }
+
+    #[test]
+    fn toml_complete_hsv_with_hsv_multiplier_is_not_silently_migrated() {
+        let err = toml::from_str::<CustomLightData>(
+            "hue = 180\nsaturation = 1.0\nvalue = 1.0\nhue_mult = 2.0",
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("mutually exclusive"));
+    }
+
+    #[test]
+    fn toml_light_data_rejects_non_finite_rgb_multiplier() {
+        let err = toml::from_str::<CustomLightData>("red_mult = nan").unwrap_err();
+
+        assert!(err.to_string().contains("red_mult must be finite"));
     }
 
     #[test]
