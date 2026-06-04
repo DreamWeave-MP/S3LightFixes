@@ -324,12 +324,7 @@ fn process_lights(
 
             if !used_ids.contains(&light_id) && !light_config.is_excluded_id(&light_id) {
                 used_ids.insert(light_id);
-
-                if light.mesh.is_empty() {
-                    None
-                } else {
-                    Some(light)
-                }
+                Some(light)
             } else {
                 None
             }
@@ -752,7 +747,6 @@ mod tests {
     fn light(id: &str, radius: u32) -> Light {
         Light {
             id: id.to_owned(),
-            mesh: "meshes/light.nif".to_owned(),
             data: LightData {
                 radius,
                 time: 10,
@@ -1022,7 +1016,6 @@ mod tests {
                     light("duplicate_light", 10),
                     Light {
                         id: "negative_light".to_owned(),
-                        mesh: "meshes/light.nif".to_owned(),
                         data: LightData {
                             radius: 20,
                             color: [255, 128, 0, 0],
@@ -1106,64 +1099,6 @@ mod tests {
         assert_eq!(lights[0].id, "kept");
         assert!(!used_ids.contains("excluded_light"));
         assert!(used_ids.contains("kept"));
-        assert!(logs.is_empty());
-    }
-
-    #[test]
-    fn process_lights_skips_empty_model_lights_without_patching_or_logging() {
-        let mut light_config = config();
-        light_config.standard_radius = 2.0;
-        let mut empty_model = light("empty_model", 100);
-        empty_model.mesh.clear();
-        let source_plugin = plugin_with_lights([empty_model, light("normal_model", 100)]);
-        let mut generated_plugin = Plugin::new();
-        let mut used_ids = HashSet::new();
-        let mut logs = Vec::new();
-
-        let used_objects = process_lights(
-            source_plugin,
-            "ModelPlugin.esp",
-            &mut generated_plugin,
-            &light_config,
-            &mut used_ids,
-            &mut logs,
-        );
-
-        let lights = generated_lights(&generated_plugin);
-        assert_eq!(used_objects, 1);
-        assert_eq!(lights.len(), 1);
-        assert_eq!(lights[0].id, "normal_model");
-        assert_eq!(lights[0].data.radius, 200);
-        assert!(used_ids.contains("empty_model"));
-        assert!(used_ids.contains("normal_model"));
-        assert_eq!(logs.len(), 1);
-        assert_eq!(logs[0].id, "normal_model");
-        assert!(logs[0].changes.contains(&"radius 100 -> 200".to_owned()));
-    }
-
-    #[test]
-    fn process_lights_newest_empty_model_duplicate_claims_id_without_emitting() {
-        let mut light_config = config();
-        light_config.standard_radius = 2.0;
-        let mut newest_empty = light("shared", 100);
-        newest_empty.mesh.clear();
-        let source_plugin = plugin_with_lights([newest_empty, light("shared", 100)]);
-        let mut generated_plugin = Plugin::new();
-        let mut used_ids = HashSet::new();
-        let mut logs = Vec::new();
-
-        let used_objects = process_lights(
-            source_plugin,
-            "DuplicatePlugin.esp",
-            &mut generated_plugin,
-            &light_config,
-            &mut used_ids,
-            &mut logs,
-        );
-
-        assert_eq!(used_objects, 0);
-        assert!(generated_lights(&generated_plugin).is_empty());
-        assert!(used_ids.contains("shared"));
         assert!(logs.is_empty());
     }
 
