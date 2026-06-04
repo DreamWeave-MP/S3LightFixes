@@ -91,7 +91,12 @@ fn explicit_config_path(args: &LightArgs) -> Option<PathBuf> {
                 .parent()
                 .filter(|parent| !parent.as_os_str().is_empty())
                 .unwrap_or_else(|| Path::new("."));
-            return Some(parent.canonicalize().unwrap_or_else(|_| parent.to_owned()));
+            let config_dir = if parent.is_relative() {
+                parent.canonicalize().unwrap_or_else(|_| parent.to_owned())
+            } else {
+                parent.to_owned()
+            };
+            return Some(config_dir);
         }
 
         panic!("Explicit --openmw-cfg file must be named openmw.cfg");
