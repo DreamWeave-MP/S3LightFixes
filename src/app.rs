@@ -72,6 +72,10 @@ impl RunMetadata {
 }
 
 fn selected_config_file_path(config: &openmw_config::OpenMWConfiguration) -> PathBuf {
+    if config.is_user_config() {
+        return config.root_config_file().to_owned();
+    }
+
     config.user_config_path().join("openmw.cfg")
 }
 
@@ -443,6 +447,19 @@ fn backup_openmw_cfg(selected_config_file: &Path) -> io::Result<PathBuf> {
     Ok(backup_path)
 }
 
+fn save_auto_enabled_config(
+    config: &openmw_config::OpenMWConfiguration,
+    selected_config_file: &Path,
+) -> Result<(), openmw_config::ConfigError> {
+    if config.is_user_config()
+        && selected_config_file != config.user_config_path().join("openmw.cfg")
+    {
+        config.save_to_path(selected_config_file)
+    } else {
+        config.save_user()
+    }
+}
+
 fn auto_enable_plugin(
     config: &mut openmw_config::OpenMWConfiguration,
     light_config: &LightConfig,
@@ -472,7 +489,7 @@ fn auto_enable_plugin(
 
     match config.add_content_file(PLUGIN_NAME) {
         Ok(()) => {
-            if let Err(err) = config.save_user() {
+            if let Err(err) = save_auto_enabled_config(config, selected_config_file) {
                 notification_box(
                     "Failed to resave openmw.cfg!",
                     &err.to_string(),
@@ -886,6 +903,49 @@ mod tests {
             std::fs::read_to_string(backup_path).unwrap(),
             "content=Morrowind.esm\n"
         );
+
+        let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn auto_enable_preserves_explicit_custom_config_filename() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "s3lightfixes-custom-openmw-backup-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_FILE.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&temp_dir).unwrap();
+        let selected_config = temp_dir.join("friend-requested.cfg");
+        std::fs::write(&selected_config, "content=Morrowind.esm\n").unwrap();
+        let mut openmw_config =
+            openmw_config::OpenMWConfiguration::new(Some(selected_config.clone())).unwrap();
+        let light_config = LightConfig {
+            auto_enable: true,
+            no_notifications: true,
+            ..config()
+        };
+
+        let selected_config_file = selected_config_file_path(&openmw_config);
+        assert_eq!(selected_config_file, selected_config);
+
+        assert!(auto_enable_plugin(
+            &mut openmw_config,
+            &light_config,
+            &selected_config_file,
+        ));
+
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("friend-requested.cfg.s3lightfixes.bak"))
+                .unwrap(),
+            "content=Morrowind.esm\n"
+        );
+        assert!(
+            std::fs::read_to_string(&selected_config)
+                .unwrap()
+                .contains("content=S3LightFixes.omwaddon")
+        );
+        assert!(!temp_dir.join("openmw.cfg").exists());
+        assert!(!temp_dir.join("openmw.cfg.s3lightfixes.bak").exists());
 
         let _ = std::fs::remove_dir_all(temp_dir);
     }
