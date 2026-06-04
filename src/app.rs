@@ -82,8 +82,10 @@ fn plugin_log_name(plugin_path: &Path) -> String {
     )
 }
 
-fn explicit_config_path(args: &LightArgs) -> Option<PathBuf> {
-    let path = args.openmw_cfg.as_ref()?;
+fn explicit_config_path(args: &LightArgs) -> Result<Option<PathBuf>, String> {
+    let Some(path) = args.openmw_cfg.as_ref() else {
+        return Ok(None);
+    };
 
     if path.is_file() {
         if path.file_name().is_some_and(|name| name == "openmw.cfg") {
@@ -92,34 +94,52 @@ fn explicit_config_path(args: &LightArgs) -> Option<PathBuf> {
                 .filter(|parent| !parent.as_os_str().is_empty())
                 .unwrap_or_else(|| Path::new("."));
             let config_dir = if parent.is_relative() {
-                parent.canonicalize().unwrap_or_else(|_| parent.to_owned())
+                parent.canonicalize().map_err(|error| {
+                    format!(
+                        "Explicit --openmw-cfg path {} could not be resolved: {error}",
+                        parent.display()
+                    )
+                })?
             } else {
                 parent.to_owned()
             };
-            return Some(config_dir);
+            return Ok(Some(config_dir));
         }
 
-        panic!("Explicit --openmw-cfg file must be named openmw.cfg");
+        return Err(format!(
+            "Explicit --openmw-cfg file {} must be named openmw.cfg",
+            path.display()
+        ));
     }
 
-    let absolute_path = if path.is_relative() {
-        path.canonicalize().unwrap_or_else(|_| path.to_owned())
-    } else {
-        path.to_owned()
-    };
+    let absolute_path = path.canonicalize().map_err(|error| {
+        format!(
+            "Explicit --openmw-cfg path {} could not be resolved: {error}",
+            path.display()
+        )
+    })?;
 
     if absolute_path.is_dir() && absolute_path.join("openmw.cfg").is_file() {
-        return Some(absolute_path);
+        return Ok(Some(absolute_path));
     }
 
-    panic!("Explicit --openmw-cfg must be a directory containing openmw.cfg");
+    Err(format!(
+        "Explicit --openmw-cfg path {} must be a directory containing openmw.cfg",
+        path.display()
+    ))
 }
 
 fn load_openmw_config(
     args: &LightArgs,
     no_notifications: bool,
 ) -> openmw_config::OpenMWConfiguration {
-    let loaded_config = if let Some(config_path) = explicit_config_path(args) {
+    let loaded_config = if let Some(config_path) = match explicit_config_path(args) {
+        Ok(config_path) => config_path,
+        Err(error) => {
+            notification_box("Invalid --openmw-cfg path!", &error, no_notifications);
+            exit(127);
+        }
+    } {
         openmw_config::OpenMWConfiguration::new(Some(config_path))
     } else {
         openmw_config::OpenMWConfiguration::from_env_or_user_config()
@@ -919,7 +939,14 @@ mod tests {
             &temp_dir.display().to_string(),
         ]);
 
-        assert_eq!(explicit_config_path(&args).unwrap(), temp_dir);
+        assert_eq!(
+            explicit_config_path(&args)
+                .unwrap()
+                .unwrap()
+                .canonicalize()
+                .unwrap(),
+            temp_dir.canonicalize().unwrap()
+        );
 
         let _ = std::fs::remove_dir_all(temp_dir);
     }
@@ -940,7 +967,7 @@ mod tests {
             &selected_config.display().to_string(),
         ]);
 
-        assert_eq!(explicit_config_path(&args).unwrap(), temp_dir);
+        assert_eq!(explicit_config_path(&args).unwrap().unwrap(), temp_dir);
 
         let _ = std::fs::remove_dir_all(temp_dir);
     }
@@ -961,15 +988,12 @@ mod tests {
             &selected_config.display().to_string(),
         ]);
 
-        let panic = std::panic::catch_unwind(|| explicit_config_path(&args)).unwrap_err();
-        let message = panic
-            .downcast_ref::<&str>()
-            .copied()
-            .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
-            .unwrap();
         assert_eq!(
-            message,
-            "Explicit --openmw-cfg file must be named openmw.cfg"
+            explicit_config_path(&args).unwrap_err(),
+            format!(
+                "Explicit --openmw-cfg file {} must be named openmw.cfg",
+                selected_config.display()
+            )
         );
 
         let _ = std::fs::remove_dir_all(temp_dir);
@@ -994,15 +1018,12 @@ mod tests {
             &symlink_config.display().to_string(),
         ]);
 
-        let panic = std::panic::catch_unwind(|| explicit_config_path(&args)).unwrap_err();
-        let message = panic
-            .downcast_ref::<&str>()
-            .copied()
-            .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
-            .unwrap();
         assert_eq!(
-            message,
-            "Explicit --openmw-cfg file must be named openmw.cfg"
+            explicit_config_path(&args).unwrap_err(),
+            format!(
+                "Explicit --openmw-cfg file {} must be named openmw.cfg",
+                symlink_config.display()
+            )
         );
 
         let _ = std::fs::remove_dir_all(temp_dir);
