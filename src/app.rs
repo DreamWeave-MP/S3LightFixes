@@ -72,10 +72,6 @@ impl RunMetadata {
 }
 
 fn selected_config_file_path(config: &openmw_config::OpenMWConfiguration) -> PathBuf {
-    if config.is_user_config() {
-        return config.root_config_file().to_owned();
-    }
-
     config.user_config_path().join("openmw.cfg")
 }
 
@@ -94,13 +90,22 @@ fn explicit_config_path(args: &LightArgs) -> Option<PathBuf> {
         path.to_owned()
     };
 
-    if absolute_path.is_file()
-        || (absolute_path.is_dir() && absolute_path.join("openmw.cfg").is_file())
-    {
-        Some(absolute_path)
-    } else {
-        panic!("Explicit --openmw-cfg must be an openmw.cfg file or a directory containing one");
+    if absolute_path.is_file() {
+        if absolute_path
+            .file_name()
+            .is_some_and(|name| name == "openmw.cfg")
+        {
+            return absolute_path.parent().map(Path::to_owned);
+        }
+
+        panic!("Explicit --openmw-cfg file must be named openmw.cfg");
     }
+
+    if absolute_path.is_dir() && absolute_path.join("openmw.cfg").is_file() {
+        return Some(absolute_path);
+    }
+
+    panic!("Explicit --openmw-cfg must be a directory containing openmw.cfg");
 }
 
 fn load_openmw_config(
@@ -447,19 +452,6 @@ fn backup_openmw_cfg(selected_config_file: &Path) -> io::Result<PathBuf> {
     Ok(backup_path)
 }
 
-fn save_auto_enabled_config(
-    config: &openmw_config::OpenMWConfiguration,
-    selected_config_file: &Path,
-) -> Result<(), openmw_config::ConfigError> {
-    if config.is_user_config()
-        && selected_config_file != config.user_config_path().join("openmw.cfg")
-    {
-        config.save_to_path(selected_config_file)
-    } else {
-        config.save_user()
-    }
-}
-
 fn auto_enable_plugin(
     config: &mut openmw_config::OpenMWConfiguration,
     light_config: &LightConfig,
@@ -489,7 +481,7 @@ fn auto_enable_plugin(
 
     match config.add_content_file(PLUGIN_NAME) {
         Ok(()) => {
-            if let Err(err) = save_auto_enabled_config(config, selected_config_file) {
+            if let Err(err) = config.save_user() {
                 notification_box(
                     "Failed to resave openmw.cfg!",
                     &err.to_string(),
@@ -890,15 +882,12 @@ mod tests {
             NEXT_TEMP_FILE.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&temp_dir).unwrap();
-        let selected_config = temp_dir.join("custom-openmw.cfg");
+        let selected_config = temp_dir.join("openmw.cfg");
         std::fs::write(&selected_config, "content=Morrowind.esm\n").unwrap();
 
         let backup_path = backup_openmw_cfg(&selected_config).unwrap();
 
-        assert_eq!(
-            backup_path,
-            temp_dir.join("custom-openmw.cfg.s3lightfixes.bak")
-        );
+        assert_eq!(backup_path, temp_dir.join("openmw.cfg.s3lightfixes.bak"));
         assert_eq!(
             std::fs::read_to_string(backup_path).unwrap(),
             "content=Morrowind.esm\n"
@@ -908,44 +897,73 @@ mod tests {
     }
 
     #[test]
-    fn auto_enable_preserves_explicit_custom_config_filename() {
+    fn explicit_openmw_cfg_directory_is_used_as_config_context() {
         let temp_dir = std::env::temp_dir().join(format!(
-            "s3lightfixes-custom-openmw-backup-{}-{}",
+            "s3lightfixes-openmw-dir-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_FILE.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&temp_dir).unwrap();
+        let selected_config = temp_dir.join("openmw.cfg");
+        std::fs::write(&selected_config, "content=Morrowind.esm\n").unwrap();
+        let args = LightArgs::parse_from([
+            "s3lightfixes",
+            "--openmw-cfg",
+            &temp_dir.display().to_string(),
+        ]);
+
+        assert_eq!(explicit_config_path(&args).unwrap(), temp_dir);
+
+        let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn explicit_openmw_cfg_file_is_normalized_to_its_directory() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "s3lightfixes-openmw-file-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_FILE.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&temp_dir).unwrap();
+        let selected_config = temp_dir.join("openmw.cfg");
+        std::fs::write(&selected_config, "content=Morrowind.esm\n").unwrap();
+        let args = LightArgs::parse_from([
+            "s3lightfixes",
+            "--openmw-cfg",
+            &selected_config.display().to_string(),
+        ]);
+
+        assert_eq!(explicit_config_path(&args).unwrap(), temp_dir);
+
+        let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn explicit_openmw_cfg_rejects_custom_config_filename() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "s3lightfixes-openmw-custom-file-{}-{}",
             std::process::id(),
             NEXT_TEMP_FILE.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&temp_dir).unwrap();
         let selected_config = temp_dir.join("friend-requested.cfg");
         std::fs::write(&selected_config, "content=Morrowind.esm\n").unwrap();
-        let mut openmw_config =
-            openmw_config::OpenMWConfiguration::new(Some(selected_config.clone())).unwrap();
-        let light_config = LightConfig {
-            auto_enable: true,
-            no_notifications: true,
-            ..config()
-        };
+        let args = LightArgs::parse_from([
+            "s3lightfixes",
+            "--openmw-cfg",
+            &selected_config.display().to_string(),
+        ]);
 
-        let selected_config_file = selected_config_file_path(&openmw_config);
-        assert_eq!(selected_config_file, selected_config);
-
-        assert!(auto_enable_plugin(
-            &mut openmw_config,
-            &light_config,
-            &selected_config_file,
-        ));
-
+        let panic = std::panic::catch_unwind(|| explicit_config_path(&args)).unwrap_err();
+        let message = panic
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
+            .unwrap();
         assert_eq!(
-            std::fs::read_to_string(temp_dir.join("friend-requested.cfg.s3lightfixes.bak"))
-                .unwrap(),
-            "content=Morrowind.esm\n"
+            message,
+            "Explicit --openmw-cfg file must be named openmw.cfg"
         );
-        assert!(
-            std::fs::read_to_string(&selected_config)
-                .unwrap()
-                .contains("content=S3LightFixes.omwaddon")
-        );
-        assert!(!temp_dir.join("openmw.cfg").exists());
-        assert!(!temp_dir.join("openmw.cfg.s3lightfixes.bak").exists());
 
         let _ = std::fs::remove_dir_all(temp_dir);
     }
