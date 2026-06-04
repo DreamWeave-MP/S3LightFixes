@@ -769,9 +769,9 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "openmw-config"
-version = "1.0.5"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba29c2402a093283f70200f571ef4d485a91a133ef5372469ef8464e62f53bf7"
+checksum = "016350068cba3d4d4f93c85448c1ad9d1d34934a56c11bd2813dcb57f88dd849"
 dependencies = [
  "windows-sys",
 ]

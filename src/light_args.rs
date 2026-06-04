@@ -17,7 +17,8 @@ use crate::default;
 #[allow(clippy::struct_excessive_bools)]
 pub struct LightArgs {
     /// Path to openmw.cfg
-    /// By default, uses the system paths defined by:
+    /// By default, uses `OpenMW` root config discovery, falling back to the default user config.
+    /// These paths are defined by:
     /// <https://openmw.readthedocs.io/en/latest/reference/modding/paths.html>
     /// Can be the literal path to an openmw.cfg file (including not literally being called openmw.cfg)
     /// Or the directory in which an openmw.cfg file lives.

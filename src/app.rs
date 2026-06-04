@@ -106,7 +106,7 @@ fn load_openmw_config(
     let loaded_config = if let Some(config_path) = explicit_config_path(args) {
         openmw_config::OpenMWConfiguration::new(Some(config_path))
     } else {
-        openmw_config::OpenMWConfiguration::from_env()
+        openmw_config::OpenMWConfiguration::from_env_or_user_config()
     };
 
     match loaded_config {
