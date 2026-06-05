@@ -2,10 +2,12 @@ use std::{fmt, str::FromStr};
 
 use palette::{Hsv, IntoColor, rgb::Srgb};
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
+use tes3::esp::LightFlags;
 
 #[derive(Debug)]
 pub enum ParseLightError {
     ExclusiveFields(&'static str, &'static str),
+    ConflictingLightFlags(&'static str, &'static str),
     IncompleteRgb,
     BadPair(String),
     UnknownField(String),
@@ -17,8 +19,8 @@ pub enum ParseLightError {
 impl std::fmt::Display for ParseLightError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use ParseLightError::{
-            BadNumber, BadPair, ExclusiveFields, IncompleteRgb, MissingPrefix, UnknownField,
-            UnknownVariant,
+            BadNumber, BadPair, ConflictingLightFlags, ExclusiveFields, IncompleteRgb,
+            MissingPrefix, UnknownField, UnknownVariant,
         };
         match self {
             BadPair(s) => write!(f, "Expected key=value pair, got: `{s}`"),
@@ -26,13 +28,15 @@ impl std::fmt::Display for ParseLightError {
                 f,
                 "Key {existing_field} is mutually exclusive with {bad_field}"
             ),
+            ConflictingLightFlags(existing_flag, bad_flag) => write!(
+                f,
+                "Light flag `{existing_flag}` cannot be combined with `{bad_flag}`"
+            ),
             IncompleteRgb => write!(f, "RGB overrides must specify red, green, and blue"),
             UnknownField(k) => write!(f, "Unknown field: `{k}`"),
             BadNumber(field, e) => write!(f, "Invalid number for `{field}`: {e}"),
             MissingPrefix => write!(f, "Missing type prefix (e.g., `Fixed:` or `Mult:`)"),
-            UnknownVariant(v) => {
-                write!(f, "Unknown light type: `{v}` (expected `Fixed` or `Mult`)")
-            }
+            UnknownVariant(v) => write!(f, "Unknown light flag: `{v}`"),
         }
     }
 }
@@ -744,31 +748,19 @@ impl FromStr for CustomCellAmbient {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub enum LightFlag {
-    #[serde(rename = "FLICKERSLOW")]
-    FlickerSlow,
-    #[serde(rename = "FLICKER")]
-    Flicker,
-    #[serde(rename = "PULSE")]
-    Pulse,
-    #[serde(rename = "PULSESLOW")]
-    PulseSlow,
-    #[default]
-    #[serde(rename = "NONE")]
-    None,
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LightFlag {
+    flags: LightFlags,
 }
 
-use tes3::esp::LightFlags;
 impl LightFlag {
-    pub fn to_esp_flag(&self) -> LightFlags {
-        match &self {
-            Self::Flicker => LightFlags::FLICKER,
-            Self::FlickerSlow => LightFlags::FLICKER_SLOW,
-            Self::Pulse => LightFlags::PULSE,
-            Self::PulseSlow => LightFlags::PULSE_SLOW,
-            Self::None => LightFlags::empty(),
-        }
+    pub const fn from_esp_flags(flags: LightFlags) -> Self {
+        Self { flags }
+    }
+
+    /// Converts this config override to its TES3 light flag bits.
+    pub fn to_esp_flag(self) -> LightFlags {
+        self.flags
     }
 }
 
@@ -776,15 +768,136 @@ impl FromStr for LightFlag {
     type Err = ParseLightError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "flicker" => Ok(LightFlag::Flicker),
-            "flickerslow" => Ok(LightFlag::FlickerSlow),
-            "pulse" => Ok(LightFlag::Pulse),
-            "pulseslow" => Ok(LightFlag::PulseSlow),
-            "none" => Ok(LightFlag::None),
-            _ => Err(ParseLightError::UnknownVariant(s.to_string())),
+        parse_light_flags(s).map(Self::from_esp_flags)
+    }
+}
+
+impl Serialize for LightFlag {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let names = light_flag_names(self.flags);
+        match names.as_slice() {
+            [] => serializer.serialize_str("NONE"),
+            [name] => serializer.serialize_str(name),
+            _ => {
+                use serde::ser::SerializeSeq;
+
+                let mut seq = serializer.serialize_seq(Some(names.len()))?;
+                for name in names {
+                    seq.serialize_element(name)?;
+                }
+                seq.end()
+            }
         }
     }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RawLightFlag {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl<'de> Deserialize<'de> for LightFlag {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = RawLightFlag::deserialize(deserializer)?;
+        let flags = match raw {
+            RawLightFlag::One(flag) => parse_light_flags(&flag),
+            RawLightFlag::Many(flags) => parse_light_flag_tokens(flags.iter().map(String::as_str)),
+        }
+        .map_err(serde::de::Error::custom)?;
+
+        Ok(Self::from_esp_flags(flags))
+    }
+}
+
+fn parse_light_flags(s: &str) -> Result<LightFlags, ParseLightError> {
+    if s.split('|').any(|raw_flag| raw_flag.trim().is_empty()) {
+        return Err(ParseLightError::UnknownVariant(s.to_owned()));
+    }
+
+    parse_light_flag_tokens(s.split('|'))
+}
+
+fn parse_light_flag_tokens<'a>(
+    raw_flags: impl IntoIterator<Item = &'a str>,
+) -> Result<LightFlags, ParseLightError> {
+    let mut flags = LightFlags::empty();
+    let mut parsed_any = false;
+    let mut has_none = false;
+    let mut has_real_flag = false;
+
+    for raw_flag in raw_flags.into_iter().map(str::trim) {
+        if raw_flag.is_empty() {
+            return Err(ParseLightError::UnknownVariant(raw_flag.to_owned()));
+        }
+        parsed_any = true;
+        let flag = parse_light_flag(raw_flag)?;
+        if flag.is_empty() {
+            has_none = true;
+        } else {
+            has_real_flag = true;
+            flags.insert(flag);
+        }
+        if has_none && has_real_flag {
+            return Err(ParseLightError::ConflictingLightFlags(
+                "NONE",
+                "other light flags",
+            ));
+        }
+    }
+
+    if parsed_any {
+        Ok(flags)
+    } else {
+        Err(ParseLightError::UnknownVariant(String::new()))
+    }
+}
+
+fn parse_light_flag(s: &str) -> Result<LightFlags, ParseLightError> {
+    let normalized = s.trim().to_ascii_uppercase();
+
+    match normalized.as_str() {
+        "NONE" => Ok(LightFlags::empty()),
+        "DYNAMIC" => Ok(LightFlags::DYNAMIC),
+        "CAN_CARRY" => Ok(LightFlags::CAN_CARRY),
+        "NEGATIVE" => Ok(LightFlags::NEGATIVE),
+        "FLICKER" => Ok(LightFlags::FLICKER),
+        "FIRE" => Ok(LightFlags::FIRE),
+        "OFF_BY_DEFAULT" => Ok(LightFlags::OFF_BY_DEFAULT),
+        "FLICKER_SLOW" => Ok(LightFlags::FLICKER_SLOW),
+        "PULSE" => Ok(LightFlags::PULSE),
+        "PULSE_SLOW" => Ok(LightFlags::PULSE_SLOW),
+        _ => Err(ParseLightError::UnknownVariant(s.to_owned())),
+    }
+}
+
+fn light_flag_names(flags: LightFlags) -> Vec<&'static str> {
+    let mut names = Vec::new();
+
+    for (flag, name) in [
+        (LightFlags::DYNAMIC, "DYNAMIC"),
+        (LightFlags::CAN_CARRY, "CAN_CARRY"),
+        (LightFlags::NEGATIVE, "NEGATIVE"),
+        (LightFlags::FLICKER, "FLICKER"),
+        (LightFlags::FIRE, "FIRE"),
+        (LightFlags::OFF_BY_DEFAULT, "OFF_BY_DEFAULT"),
+        (LightFlags::FLICKER_SLOW, "FLICKER_SLOW"),
+        (LightFlags::PULSE, "PULSE"),
+        (LightFlags::PULSE_SLOW, "PULSE_SLOW"),
+    ] {
+        if flags.contains(flag) {
+            names.push(name);
+        }
+    }
+
+    names
 }
 
 #[cfg(test)]
@@ -794,7 +907,7 @@ mod tests {
     #[test]
     fn parses_cli_light_override_fixed_fields() {
         let (id, data) = parse_light_override(
-            "Torch_001=radius=255,duration=1200,red=10,green=20,blue=30,flag=FLICKERSLOW",
+            "Torch_001=radius=255,duration=1200,red=10,green=20,blue=30,flag=FLICKER_SLOW",
         )
         .unwrap();
 
@@ -802,7 +915,7 @@ mod tests {
         assert_eq!(data.radius, Some(255));
         assert_eq!(data.duration, Some(1200.0));
         assert_eq!(data.color, Some([10, 20, 30, 0]));
-        assert!(matches!(data.flag, Some(LightFlag::FlickerSlow)));
+        assert_eq!(data.flag.unwrap().to_esp_flag(), LightFlags::FLICKER_SLOW);
     }
 
     #[test]
@@ -1042,15 +1155,94 @@ mod tests {
         }
 
         for (raw, expected) in [
-            ("FLICKERSLOW", LightFlag::FlickerSlow),
-            ("FLICKER", LightFlag::Flicker),
-            ("PULSE", LightFlag::Pulse),
-            ("PULSESLOW", LightFlag::PulseSlow),
-            ("NONE", LightFlag::None),
+            ("DYNAMIC", LightFlags::DYNAMIC),
+            ("CAN_CARRY", LightFlags::CAN_CARRY),
+            ("NEGATIVE", LightFlags::NEGATIVE),
+            ("FLICKER", LightFlags::FLICKER),
+            ("FIRE", LightFlags::FIRE),
+            ("OFF_BY_DEFAULT", LightFlags::OFF_BY_DEFAULT),
+            ("FLICKER_SLOW", LightFlags::FLICKER_SLOW),
+            ("PULSE", LightFlags::PULSE),
+            ("PULSE_SLOW", LightFlags::PULSE_SLOW),
+            ("NONE", LightFlags::empty()),
         ] {
             let parsed = toml::from_str::<FlagWrapper>(&format!("flag = '{raw}'")).unwrap();
 
-            assert!(std::mem::discriminant(&parsed.flag) == std::mem::discriminant(&expected));
+            assert_eq!(parsed.flag.to_esp_flag(), expected);
         }
+    }
+
+    #[test]
+    fn toml_light_flag_rejects_legacy_compound_names() {
+        for raw in ["FLICKERSLOW", "PULSESLOW", "CANCARRY", "OFFBYDEFAULT"] {
+            let Err(err) = toml::from_str::<CustomLightData>(&format!("flag = '{raw}'")) else {
+                panic!("accepted legacy flag spelling {raw}");
+            };
+
+            assert!(err.to_string().contains("Unknown light flag"));
+        }
+    }
+
+    #[test]
+    fn toml_light_flag_accepts_flag_arrays() {
+        #[derive(Deserialize)]
+        struct FlagWrapper {
+            flag: LightFlag,
+        }
+
+        let parsed = toml::from_str::<FlagWrapper>("flag = ['CAN_CARRY', 'PULSE_SLOW']").unwrap();
+
+        assert_eq!(
+            parsed.flag.to_esp_flag(),
+            LightFlags::CAN_CARRY | LightFlags::PULSE_SLOW
+        );
+    }
+
+    #[test]
+    fn cli_light_flag_accepts_multiple_real_flag_names() {
+        let (_, data) = parse_light_override("Torch=flag=CAN_CARRY|PULSE_SLOW").unwrap();
+
+        assert_eq!(
+            data.flag.unwrap().to_esp_flag(),
+            LightFlags::CAN_CARRY | LightFlags::PULSE_SLOW
+        );
+    }
+
+    #[test]
+    fn light_flag_rejects_none_combined_with_real_flags() {
+        for raw in ["Torch=flag=NONE|CAN_CARRY", "Torch=flag=CAN_CARRY|NONE"] {
+            let err = parse_light_override(raw).unwrap_err();
+
+            assert!(matches!(err, ParseLightError::ConflictingLightFlags(..)));
+        }
+
+        let err = toml::from_str::<CustomLightData>("flag = ['NONE', 'CAN_CARRY']").unwrap_err();
+
+        assert!(err.to_string().contains("cannot be combined"));
+    }
+
+    #[test]
+    fn cli_light_flag_rejects_undocumented_separators() {
+        for raw in [
+            "Torch=flag=CAN_CARRY+PULSE_SLOW",
+            "Torch=flag=CAN_CARRY;PULSE_SLOW",
+        ] {
+            let err = parse_light_override(raw).unwrap_err();
+
+            assert!(matches!(err, ParseLightError::UnknownVariant(_)));
+        }
+    }
+
+    #[test]
+    fn toml_light_flag_serializes_with_canonical_underscores() {
+        let serialized = toml::to_string(&CustomLightData {
+            flag: Some(LightFlag::from_esp_flags(
+                LightFlags::CAN_CARRY | LightFlags::PULSE_SLOW,
+            )),
+            ..CustomLightData::default()
+        })
+        .unwrap();
+
+        assert!(serialized.contains("flag = [\"CAN_CARRY\", \"PULSE_SLOW\"]"));
     }
 }
