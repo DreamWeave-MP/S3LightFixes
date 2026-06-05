@@ -16,11 +16,11 @@ use crate::default;
 // while making the command-line interface and clap mapping pointlessly dishonest.
 #[allow(clippy::struct_excessive_bools)]
 pub struct LightArgs {
-    /// Path to openmw.cfg
-    /// By default, uses the system paths defined by:
+    /// Directory containing openmw.cfg.
+    /// By default, uses `OpenMW` root config discovery, falling back to the default user config.
+    /// These paths are defined by:
     /// <https://openmw.readthedocs.io/en/latest/reference/modding/paths.html>
-    /// Can be the literal path to an openmw.cfg file (including not literally being called openmw.cfg)
-    /// Or the directory in which an openmw.cfg file lives.
+    /// May also be the literal path to an openmw.cfg file; the filename must be exactly openmw.cfg.
     #[arg(short = 'c', long = "openmw-cfg")]
     pub openmw_cfg: Option<PathBuf>,
 
