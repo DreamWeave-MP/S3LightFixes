@@ -761,7 +761,12 @@ pub enum LightFlag {
 
 use tes3::esp::LightFlags;
 impl LightFlag {
-    pub fn to_esp_flag(&self) -> LightFlags {
+    const ANIMATION_FLAGS: LightFlags = LightFlags::FLICKER
+        .union(LightFlags::FLICKER_SLOW)
+        .union(LightFlags::PULSE)
+        .union(LightFlags::PULSE_SLOW);
+
+    fn to_animation_flags(&self) -> LightFlags {
         match &self {
             Self::Flicker => LightFlags::FLICKER,
             Self::FlickerSlow => LightFlags::FLICKER_SLOW,
@@ -769,6 +774,19 @@ impl LightFlag {
             Self::PulseSlow => LightFlags::PULSE_SLOW,
             Self::None => LightFlags::empty(),
         }
+    }
+
+    /// Converts this legacy animation override to its TES3 light flag bits.
+    ///
+    /// This intentionally returns only the flicker/pulse subset. Use [`Self::apply_to`] when
+    /// mutating an existing light so non-animation flags such as `CAN_CARRY` are preserved.
+    pub fn to_esp_flag(&self) -> LightFlags {
+        self.to_animation_flags()
+    }
+
+    pub fn apply_to(&self, flags: &mut LightFlags) {
+        flags.remove(Self::ANIMATION_FLAGS);
+        flags.insert(self.to_esp_flag());
     }
 }
 
