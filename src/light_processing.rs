@@ -206,7 +206,7 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) -
         }
 
         if let Some(flag) = &replacement.flag {
-            flag.apply_to(&mut light.data.flags);
+            light.data.flags = flag.to_esp_flag();
         }
     } else {
         apply_plain_hsv_adjustment(
@@ -306,6 +306,10 @@ mod tests {
             duration_mult: 1.0,
             ..LightConfig::default()
         }
+    }
+
+    const fn flag(flags: LightFlags) -> LightFlag {
+        LightFlag::from_esp_flags(flags)
     }
 
     #[test]
@@ -485,14 +489,14 @@ mod tests {
     }
 
     #[test]
-    fn first_matching_light_override_wins_and_flag_replaces_animation_bits_only() {
+    fn first_matching_light_override_wins_and_flag_replacement_is_exact() {
         let mut light_config = config();
         light_config.standard_radius = 10.0;
         light_config.light_regexes.push((
             Regex::new("torch").unwrap(),
             CustomLightData {
                 radius: Some(111),
-                flag: Some(LightFlag::PulseSlow),
+                flag: Some(flag(LightFlags::PULSE_SLOW)),
                 ..CustomLightData::default()
             },
         ));
@@ -500,7 +504,7 @@ mod tests {
             Regex::new("torch_special").unwrap(),
             CustomLightData {
                 radius: Some(222),
-                flag: Some(LightFlag::Flicker),
+                flag: Some(flag(LightFlags::FLICKER)),
                 ..CustomLightData::default()
             },
         ));
@@ -515,19 +519,16 @@ mod tests {
         process_light(&light_config, &mut light);
 
         assert_eq!(light.data.radius, 111);
-        assert_eq!(
-            light.data.flags,
-            LightFlags::CAN_CARRY | LightFlags::FIRE | LightFlags::PULSE_SLOW
-        );
+        assert_eq!(light.data.flags, LightFlags::PULSE_SLOW);
     }
 
     #[test]
-    fn legacy_none_flag_clears_animation_bits_only() {
+    fn none_flag_clears_all_flags() {
         let mut light_config = config();
         light_config.light_regexes.push((
             Regex::new("torch").unwrap(),
             CustomLightData {
-                flag: Some(LightFlag::None),
+                flag: Some(flag(LightFlags::empty())),
                 ..CustomLightData::default()
             },
         ));
@@ -541,16 +542,16 @@ mod tests {
 
         process_light(&light_config, &mut light);
 
-        assert_eq!(light.data.flags, LightFlags::CAN_CARRY | LightFlags::FIRE);
+        assert_eq!(light.data.flags, LightFlags::empty());
     }
 
     #[test]
-    fn legacy_flag_override_preserves_unknown_bits() {
+    fn flag_replacement_strips_source_bits_not_named_by_user() {
         let mut light_config = config();
         light_config.light_regexes.push((
             Regex::new("torch").unwrap(),
             CustomLightData {
-                flag: Some(LightFlag::Pulse),
+                flag: Some(flag(LightFlags::PULSE)),
                 ..CustomLightData::default()
             },
         ));
@@ -565,10 +566,33 @@ mod tests {
 
         process_light(&light_config, &mut light);
 
-        assert!(light.data.flags.contains(unknown_flag));
-        assert!(light.data.flags.contains(LightFlags::CAN_CARRY));
-        assert!(light.data.flags.contains(LightFlags::PULSE));
-        assert!(!light.data.flags.contains(LightFlags::FLICKER));
+        assert_eq!(light.data.flags, LightFlags::PULSE);
+    }
+
+    #[test]
+    fn flag_override_can_insert_carryable_flags() {
+        let mut light_config = config();
+        light_config.light_regexes.push((
+            Regex::new("torch").unwrap(),
+            CustomLightData {
+                flag: Some(flag(LightFlags::CAN_CARRY | LightFlags::PULSE_SLOW)),
+                ..CustomLightData::default()
+            },
+        ));
+        let mut light = light(
+            "torch",
+            30.0,
+            10,
+            10,
+            LightFlags::FIRE | LightFlags::FLICKER,
+        );
+
+        process_light(&light_config, &mut light);
+
+        assert_eq!(
+            light.data.flags,
+            LightFlags::CAN_CARRY | LightFlags::PULSE_SLOW
+        );
     }
 
     #[test]
