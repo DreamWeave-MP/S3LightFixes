@@ -32,7 +32,9 @@ pub const PLUGIN_NAME: &str = "S3LightFixes.omwaddon";
 #[must_use]
 pub fn is_fixable_plugin(plug_path: &Path) -> bool {
     metadata(plug_path).is_ok()
-        && !plug_path.to_string_lossy().contains(PLUGIN_NAME)
+        && !plug_path
+            .file_stem()
+            .is_some_and(|stem| stem.eq_ignore_ascii_case("S3LightFixes"))
         && plug_path.extension().is_some_and(|ext| {
             matches!(
                 ext.to_ascii_lowercase().to_str().unwrap_or_default(),
@@ -179,5 +181,35 @@ mod tests {
         assert!(!is_fixable_plugin(txt.as_path()));
         assert!(!is_fixable_plugin(generated.as_path()));
         assert!(!is_fixable_plugin(&missing));
+    }
+
+    #[test]
+    fn is_fixable_plugin_rejects_renamed_output_with_esp_extension() {
+        let esp = TempFile::with_exact_name_in_unique_dir("S3LightFixes.esp");
+        let upper_esp = TempFile::with_exact_name_in_unique_dir("S3LIGHTFIXES.ESP");
+        let omwaddon = TempFile::with_exact_name_in_unique_dir("S3LightFixes.omwaddon");
+        let omwgame = TempFile::with_exact_name_in_unique_dir("S3LightFixes.omwgame");
+        let esm = TempFile::with_exact_name_in_unique_dir("S3LightFixes.esm");
+
+        assert!(
+            !is_fixable_plugin(esp.as_path()),
+            "S3LightFixes.esp must be rejected"
+        );
+        assert!(
+            !is_fixable_plugin(upper_esp.as_path()),
+            "S3LIGHTFIXES.ESP must be rejected"
+        );
+        assert!(
+            !is_fixable_plugin(omwaddon.as_path()),
+            "S3LightFixes.omwaddon must be rejected"
+        );
+        assert!(
+            !is_fixable_plugin(omwgame.as_path()),
+            "S3LightFixes.omwgame must be rejected"
+        );
+        assert!(
+            !is_fixable_plugin(esm.as_path()),
+            "S3LightFixes.esm must be rejected"
+        );
     }
 }
