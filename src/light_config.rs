@@ -370,10 +370,7 @@ impl LightConfig {
         let mut errors = Vec::new();
 
         for id in std::mem::take(&mut self.excluded_ids) {
-            match regex::RegexBuilder::new(&id)
-                .case_insensitive(true)
-                .build()
-            {
+            match regex::RegexBuilder::new(&id).case_insensitive(true).build() {
                 Ok(pattern) => self.excluded_id_regexes.push(pattern),
                 Err(error) => {
                     let message = format!("Couldn't compile excluded id regex: {id}: {error}");
@@ -388,10 +385,7 @@ impl LightConfig {
         }
 
         for id in std::mem::take(&mut self.excluded_plugins) {
-            match regex::RegexBuilder::new(&id)
-                .case_insensitive(true)
-                .build()
-            {
+            match regex::RegexBuilder::new(&id).case_insensitive(true).build() {
                 Ok(pattern) => self.excluded_plugin_regexes.push(pattern),
                 Err(error) => {
                     let message = format!("Couldn't compile excluded plugin regex: {id}: {error}");
