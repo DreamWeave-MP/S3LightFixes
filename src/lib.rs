@@ -32,7 +32,9 @@ pub const PLUGIN_NAME: &str = "S3LightFixes.omwaddon";
 #[must_use]
 pub fn is_fixable_plugin(plug_path: &Path) -> bool {
     metadata(plug_path).is_ok()
-        && !plug_path.to_string_lossy().contains(PLUGIN_NAME)
+        && !plug_path.file_stem().is_some_and(|stem| {
+            stem.eq_ignore_ascii_case("S3LightFixes")
+        })
         && plug_path.extension().is_some_and(|ext| {
             matches!(
                 ext.to_ascii_lowercase().to_str().unwrap_or_default(),
