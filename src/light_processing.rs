@@ -189,12 +189,14 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) -
             use_global_fallbacks,
         );
 
-        if let Some(duration_mult) = replacement.duration_mult {
-            light.data.time = scaled_i32(light.data.time, duration_mult);
-        } else if let Some(fixed_duration) = replacement.duration {
-            light.data.time = fixed_duration_to_i32(fixed_duration);
-        } else {
-            light.data.time = scaled_i32(light.data.time, light_config.duration_mult);
+        if light.data.time != -1 {
+            if let Some(duration_mult) = replacement.duration_mult {
+                light.data.time = scaled_i32(light.data.time, duration_mult);
+            } else if let Some(fixed_duration) = replacement.duration {
+                light.data.time = fixed_duration_to_i32(fixed_duration);
+            } else {
+                light.data.time = scaled_i32(light.data.time, light_config.duration_mult);
+            }
         }
 
         if let Some(radius_mult) = replacement.radius_mult {
@@ -217,7 +219,9 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) -
         );
 
         light.data.radius = scaled_u32(light.data.radius, global_radius);
-        light.data.time = scaled_i32(light.data.time, light_config.duration_mult);
+        if light.data.time != -1 {
+            light.data.time = scaled_i32(light.data.time, light_config.duration_mult);
+        }
     }
 
     if let Some(replacement) = replacement_light_data {
