@@ -7,20 +7,8 @@ In other words, make light gud. What sets this version apart is that it's a stan
 <div align="center">
 <h1>DOWNLOAD</h1>
 
-[Windows](https://github.com/magicaldave/S3LightFixes/releases/latest/download/windows-latest.zip) | [Mac](https://github.com/magicaldave/S3LightFixes/releases/latest/download/macos-latest.zip) | [Linux](https://github.com/magicaldave/S3LightFixes/releases/latest/download/ubuntu-latest.zip) | [Development Builds (All Platforms)](https://github.com/DreamWeave-MP/S3LightFixes/releases/tag/development)
+[Windows](https://github.com/DreamWeave-MP/S3LightFixes/releases/latest/download/s3lightfixes-Windows-X64.zip) | [Mac (Apple Silicon)](https://github.com/DreamWeave-MP/S3LightFixes/releases/latest/download/s3lightfixes-macOS-ARM64.zip) | [Mac (Intel)](https://github.com/DreamWeave-MP/S3LightFixes/releases/latest/download/s3lightfixes-macOS-X64.zip) | [Linux](https://github.com/DreamWeave-MP/S3LightFixes/releases/latest/download/s3lightfixes-Linux-X64.zip) | [Development Builds (All Platforms)](https://github.com/DreamWeave-MP/S3LightFixes/releases/tag/development)
 </div>
-
-# Security
-
-Starting from version 0.1.9 and onward, S3LightFixes is now cryptographically signed using SigStore on all platforms. Release packages include the necessary `.bundle` files to ensure the cryptographic signatures for yourself.
-
-Verifying the binary on a linux-based system:
-
-```
-cosign verify-blob ./s3lightfixes --certificate-identity-regexp="https://github.com/magicaldave/S3LightFixes/.github/workflows/" --certificate-oidc-issuer="https://token.actions.githubusercontent.com" --bundle ./S3LF-ubuntu-20.04.bundle
-```
-
-Replace `ubuntu` with `macos` or `windows` as needed for your target platform.
 
 # Usage
 
@@ -32,12 +20,12 @@ When running via the command line, numerous parameters are available to change h
 
 # Toml Schema
 
-You may optionally edit the lightconfig.toml S3Lightfixes creates (next to your user openmw.cfg) to adjust its settings for your next run.
-Or, make your own lightconfig.toml and place it next to the S3LightFixes executable before running it. The toml schema is as follows:
+You may optionally edit the lightconfig.toml S3LightFixes creates next to your user openmw.cfg to adjust its settings for your next run.
+Every setting is optional; the values below are the defaults unless noted otherwise. The toml schema is as follows:
 
 ```toml
 # Disable pulsing lights
-disable_pulse = true
+disable_pulse = false
 # Disable flickering lights
 disable_flickering = true
 # Nullify negative lights
@@ -47,40 +35,41 @@ dry_run = false
 # Validate lightconfig.toml, CLI overrides, and regexes without generating a plugin
 validate_config = false
 # Hue multiplier for non-colored lights
-standard_hue = 0.6000000238418579
+standard_hue = 0.62
 # Saturation multiplier for non-colored lights
-standard_saturation = 0.800000011920929
+standard_saturation = 0.8
 # Value multiplier for non-colored lights
-standard_value = 0.5699999928474426
+standard_value = 0.57
 # Radius multiplier for non-colored lights
-standard_radius = 2.0
+standard_radius = 1.2
 # Hue multiplier for colored lights
 colored_hue = 1.0
 # Saturation multiplier for colored lights
-colored_saturation = 0.8999999761581421
+colored_saturation = 0.9
 # Value multiplier for colored lights
-colored_value = 0.699999988079071
+colored_value = 0.7
 # Radius multiplier for colored lights
-colored_radius = 1.100000023841858
+colored_radius = 1.1
 # Duration Multiplier for carryable lights
 duration_mult = 2.5
-# You may use regular expressions to exclude certain record ids or plugins from the set
-# Note that these are only examples and by default no records or plugins are currently excluded.
+# Regular expressions for light record ids to leave alone. None by default; these are examples.
 excluded_ids = [
     # Contains purple
-    "*purple*",
-    # Ending with glow
-    "glow^",
+    ".*purple.*",
+    # Ends with glow
+    "glow$",
 ]
 
+# Regular expressions for plugins to skip. By default this is a short list of plugins lightfixes
+# can't read (see src/default.rs); setting it replaces that list. These are examples.
 excluded_plugins = [
-    # Exclude oaab plugins and master files
-    "OAAB*", ".*esm"
+    # OAAB plugins and master files
+    "^OAAB.*", "\\.esm$"
 ]
 
 # By default, this is the data-local directory of your openmw installation. If one is not found, then, the plugin will output to the location specified using the `-o` or `--output` argument. 
 # If neither is specified, the plugin saves to the current working directory.
-output_dir = "/home/s3kshun8/.config/openmw/sw0rdsinger/override/"
+output_dir = "/path/to/your/openmw/data-local/"
 
 # Normally this field is always false, and must be set on the command line using `-u` or `--update`.
 # However, if you're prone to trying many tweaks on the command line yourself, you can set it to true here once and never do it again.
@@ -146,7 +135,7 @@ Additionally, S3LightFixes will perform the following:
 - Back up the selected OpenMW config to `<config-file>.s3lightfixes.bak` before `--auto-enable` edits it
 - Create a config file adjacent to your openmw.cfg if one doesn't already exist
 - Write run metadata plus one-line light and cell change logs to stdout and `lightconfig.log` next to your OpenMW user config
-- Disable sunlight color in interiors for compatibility with vtastek's custom shader stack for openmw 0.47
+- With `--classic`, disable sunlight color in interiors for compatibility with vtastek's custom shader stack for openmw 0.47
 - Optionally remove the Flicker and FlickerSlow flags from all lights
 - Nullify all negative lights by default; disable with `disable_negative_lights = false` or `--disable-negative-lights false` if a setup really needs them preserved
 
@@ -247,3 +236,7 @@ Shell completions and the roff man page are generated to stdout, so redirect the
 ./s3lightfixes --generate-completion bash > s3lightfixes.bash
 ./s3lightfixes --generate-manpage > s3lightfixes.1
 ```
+
+# License
+
+S3LightFixes is released under the [MIT License](LICENSE).
