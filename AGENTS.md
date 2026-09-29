@@ -13,7 +13,7 @@
 - Generate shell completions/manpage without needing an OpenMW install: `cargo run -- --generate-completion bash` or `cargo run -- --generate-manpage`.
 
 ## Runtime/config gotchas
-- `--openmw-cfg/-c` accepts either a config file path or a directory containing `openmw.cfg`; if omitted, the code first checks `./openmw.cfg`, then platform defaults via `openmw-config`.
+- `--openmw-cfg/-c` accepts either a directory containing `openmw.cfg` or a file named exactly `openmw.cfg`; if omitted, discovery is `openmw-config`'s `from_env_or_user_config` (`OPENMW_CONFIG`, `OPENMW_CONFIG_DIR`, an `openmw.cfg` beside the executable, the Linux global config, then the user config), with `discovered_or_user_config` in `src/app.rs` adding the user-config fallback openmw-config 1.1 skips on Windows and macOS.
 - `lightconfig.toml` is read/written next to the selected OpenMW user config unless a local config is supplied next to the executable; CLI values override TOML values, and list-style exclusions are merged rather than replaced.
 - Output selection is not “any file path”: `--output/-o` must be an existing directory; without it, output goes to OpenMW `data-local`, falling back to cwd.
 - `--auto-enable/-e` edits the selected OpenMW config to enable the generated plugin; avoid using it in tests unless that is exactly what you mean.
@@ -24,4 +24,8 @@
 - Only `CELL` and `LIGH` records are loaded from source plugins; generated output sorts objects and writes metadata plus record deltas to `lightconfig.log` next to the OpenMW config.
 - Negative-light nulling defaults on but is user-configurable; flicker/pulse disabling, HSV/RGB overrides, and ambient/fog/sunlight overrides are user-facing compatibility behavior, not cosmetic refactors.
 - `default::excluded_plugins()` contains specific known-bad plugin names with comments explaining parser failures; do not “clean up” those exclusions without reproducing the affected mods.
-- CI delegates to `DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v27` and builds binary name `s3lightfixes`; keep release assumptions aligned with that workflow.
+- CI delegates to `DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v51` with `mod_template: true` and builds binary name `s3lightfixes`; keep release assumptions aligned with that workflow.
+
+## The site
+- `content/`, `templates/`, `sass/`, `static/`, `tools/` and `buildSite` are a DreamWeave Mod Template (V5) site, built and deployed by StroggForge. `content/home/mod.toml` declares the program and its releases (`versioning = "decimal"`: 0.4.58 came before 0.4.6); CI writes `content/home/mod.lock`. Template files other than `sass/brand.sass` are copied from the template, not edited here.
+- The docs in `content/docs/` describe the code on the default branch. When behavior, an option or a default changes, change the page that documents it in the same commit.

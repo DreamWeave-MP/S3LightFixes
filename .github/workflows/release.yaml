@@ -10,10 +10,11 @@ on:
 jobs:
   build:
     permissions:
+      actions: write
       contents: write
       pages: write
       id-token: write
-    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v41
+    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v51
     secrets: inherit
     with:
       # Required: JSON array of binary names to build. Add more for monorepos.
@@ -21,3 +22,6 @@ jobs:
       cargo_publish: false
       enable_portmaster: true
       enable_android: true
+      # StroggForge records each release in content/home/mod.lock and deploys the documentation
+      # site in content/, in place of rustdoc Pages.
+      mod_template: true
