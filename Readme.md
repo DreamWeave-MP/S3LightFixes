@@ -1,242 +1,93 @@
 # S3LightFixes
 
-S3LightFixes is a descendant of [Waza-lightfixes](https://modding-openmw.com/mods/waza_lightfixes/), which itself is a descendant of [Lightfixes.pl](https://modding-openmw.com/tips/custom-shaders/#lightfixes-plugin) by vtastek. All three applications are designed to make ESP files which adjust the lighting values from *all* mods listed in one's openmw.cfg.
+Generate a plugin that retunes every light in your OpenMW load order.
 
-In other words, make light gud. What sets this version apart is that it's a standalone binary application, instead of piggybacking off tes3cmd. The changes it makes are the same as the previous two, but with additional conveniences like automatic installation, support for portable installs of OpenMW, itself having greater portability, and *ultimate* customization of lighting values in your configuration as quickly and easily as I could come up with. Anything you can imagine doing with lighting is doable with lightfixes, and support for PBR shaders can be disabled or enabled at will.
+S3LightFixes reads every plugin your `openmw.cfg` loads and writes one more,
+`S3LightFixes.omwaddon`: a fixed copy of every light record. Firelight turns softer and reaches
+further, colored lights keep their color, flicker stops, negative lights go dark, and carried
+lights burn longer. Every multiplier is a setting, and any light or interior cell can be given
+values of its own.
 
-<div align="center">
-<h1>DOWNLOAD</h1>
+The plugin is not something you download. It is built from your load order, on your machine, and
+built again when your mods change. S3LightFixes descends from vtastek's Lightfixes.pl and
+wazabear's Waza-lightfixes, and needs nothing else installed.
 
-[Windows](https://github.com/DreamWeave-MP/S3LightFixes/releases/latest/download/s3lightfixes-Windows-X64.zip) | [Mac (Apple Silicon)](https://github.com/DreamWeave-MP/S3LightFixes/releases/latest/download/s3lightfixes-macOS-ARM64.zip) | [Mac (Intel)](https://github.com/DreamWeave-MP/S3LightFixes/releases/latest/download/s3lightfixes-macOS-X64.zip) | [Linux](https://github.com/DreamWeave-MP/S3LightFixes/releases/latest/download/s3lightfixes-Linux-X64.zip) | [Development Builds (All Platforms)](https://github.com/DreamWeave-MP/S3LightFixes/releases/tag/development)
-</div>
+**Documentation, downloads and the Rust API reference: <https://dreamweave-mp.github.io/S3LightFixes/>**
 
-# Usage
+## Install
 
-Download the executable for your OS and run it however's most convenient. Double-click it or run it through the terminal.
+Download the build for your system from the
+[releases](https://github.com/DreamWeave-MP/S3LightFixes/releases): Windows, macOS, Linux, Android
+and PortMaster. The [development build](https://github.com/DreamWeave-MP/S3LightFixes/releases/tag/development)
+is the default branch, which the documentation describes.
 
-A file, `S3LightFixes.omwaddon`, will be created. Add the folder it's in as a data directory in OpenMW's Launcher (or openmw.cfg, manually), and enable `S3LightFixes.omwaddon` in the `Content Files` tab of the launcher. If you don't know what that means, watch [this video.](https://www.youtube.com/watch?v=xzq_ksVuRgc&themeRefresh=1)
+On Arch Linux, the AUR package [`s3lightfixes-git`](https://aur.archlinux.org/packages/s3lightfixes-git)
+builds the default branch:
 
-When running via the command line, numerous parameters are available to change how lightfixes changes the lights in your install. If you prefer to run LightFixes from a GUI, you can edit its `lightConfig.toml` instead. `lightConfig.toml` can be found [in the folders mentioned here, next to your openmw.cfg.](https://openmw.readthedocs.io/en/latest/reference/modding/paths.html)
+```sh
+yay -S s3lightfixes-git
+```
 
-# Toml Schema
+Or build it from a clone, with Rust and `git`:
 
-You may optionally edit the lightconfig.toml S3LightFixes creates next to your user openmw.cfg to adjust its settings for your next run.
-Every setting is optional; the values below are the defaults unless noted otherwise. The toml schema is as follows:
+```sh
+cargo build --release
+```
+
+## Use
+
+```sh
+s3lightfixes
+```
+
+That finds your `openmw.cfg`, writes `S3LightFixes.omwaddon` to your `data-local` folder, or the
+folder you ran it in, and prints every change. Enable the plugin last in your load order, or let
+the program add it:
+
+```sh
+s3lightfixes --auto-enable
+s3lightfixes --openmw-cfg /games/total-overhaul   # a portable or second install
+s3lightfixes --dry-run                             # print the changes, write nothing
+```
+
+Settings live in `lightconfig.toml` beside your `openmw.cfg`, written on the first run.
+
+## As a library
+
+The program is a library with a `main` on top. It is not on crates.io, because it depends on
+`tes3` from Git:
 
 ```toml
-# Disable pulsing lights
-disable_pulse = false
-# Disable flickering lights
-disable_flickering = true
-# Nullify negative lights
-disable_negative_lights = true
-# Validate config and source plugins, print planned changes, but do not write files
-dry_run = false
-# Validate lightconfig.toml, CLI overrides, and regexes without generating a plugin
-validate_config = false
-# Hue multiplier for non-colored lights
-standard_hue = 0.62
-# Saturation multiplier for non-colored lights
-standard_saturation = 0.8
-# Value multiplier for non-colored lights
-standard_value = 0.57
-# Radius multiplier for non-colored lights
-standard_radius = 1.2
-# Hue multiplier for colored lights
-colored_hue = 1.0
-# Saturation multiplier for colored lights
-colored_saturation = 0.9
-# Value multiplier for colored lights
-colored_value = 0.7
-# Radius multiplier for colored lights
-colored_radius = 1.1
-# Duration Multiplier for carryable lights
-duration_mult = 2.5
-# Regular expressions for light record ids to leave alone. None by default; these are examples.
-excluded_ids = [
-    # Contains purple
-    ".*purple.*",
-    # Ends with glow
-    "glow$",
-]
-
-# Regular expressions for plugins to skip. By default this is a short list of plugins lightfixes
-# can't read (see src/default.rs); setting it replaces that list. These are examples.
-excluded_plugins = [
-    # OAAB plugins and master files
-    "^OAAB.*", "\\.esm$"
-]
-
-# By default, this is the data-local directory of your openmw installation. If one is not found, then, the plugin will output to the location specified using the `-o` or `--output` argument. 
-# If neither is specified, the plugin saves to the current working directory.
-output_dir = "/path/to/your/openmw/data-local/"
-
-# Normally this field is always false, and must be set on the command line using `-u` or `--update`.
-# However, if you're prone to trying many tweaks on the command line yourself, you can set it to true here once and never do it again.
-save_config = false
-
-
-# You may also set custom values for light configurations for each light *or* cell record in lightConfig.toml.
-# This allows complete control and customization over all light colors, durations, radii, and flags (carryable, pulse, flicker, etc) in your lightConfig.toml
-# Fixed colors use RGB components matching the TES3 Construction Set values: red, green, and blue from 0 to 255. RGB multipliers use red_mult, green_mult, and blue_mult.
-# Color precedence for light overrides: fixed RGB, when present, replaces the source RGB as the base color and disables global HSV fallback for missing HSV components; without fixed RGB, missing HSV components still use the standard/colored global HSV multipliers. HSV fixed fields/multipliers adjust the selected base color per component, fixed and multiplier forms for the same HSV component are mutually exclusive, and RGB multipliers are always applied last.
-# A few examples are shown below.
-# These customizations to lights may also be applied on the command line and saved to lightConfig.toml by using the `-u` argument, along with `--light` for each light record, or `--ambient` for each cell you wish to edit.
-# See further below for command-line examples.
-
-[light_overrides.light_com_candle_02_64]
-red = 255
-green = 128
-blue = 64
-
-[light_overrides.Torch_000]
-red = 64
-green = 128
-blue = 255
-hue = 220
-value_mult = 0.75
-radius = 254
-duration = 1199.0
-
-[light_overrides.Torch_001]
-hue_mult = 0.2999999523162842
-red_mult = 1.1
-radius_mult = 1.0
-flag = ["CAN_CARRY", "PULSE_SLOW"]
-
-[ambient_overrides."caius cosades' house".ambient]
-red = 64
-green = 48
-blue = 32
+[dependencies]
+s3lightfixes = { git = "https://github.com/DreamWeave-MP/S3LightFixes" }
 ```
 
-All parameters available in the lightConfig.toml may also be used as command line arguments. See below for further details on supported command line arguments.
+```rust
+let changes = s3lightfixes::process_light(&s3lightfixes::LightConfig::default(), &mut light);
+```
 
-## How Does It Work?
+## Where to read next
 
-More specifically, the lightfixes plugin adjusts the color and radius of colored or whitish lights for your config separately. The radius in lightConfig.toml is used as a multiplier on top of the existing radius of the light, so they'll generally be brighter with the default configuration.
+- [Start here](https://dreamweave-mp.github.io/S3LightFixes/docs/start-here/): a first run
+- [What a run changes](https://dreamweave-mp.github.io/S3LightFixes/docs/what-it-changes/): the
+  arithmetic applied to every light
+- [Overrides and exclusions](https://dreamweave-mp.github.io/S3LightFixes/docs/overrides/)
+- [Command line](https://dreamweave-mp.github.io/S3LightFixes/docs/cli/) and
+  [lightconfig.toml](https://dreamweave-mp.github.io/S3LightFixes/docs/lightconfig/)
+- [Rust API](https://dreamweave-mp.github.io/S3LightFixes/docs/api/)
 
-S3LightFixes also supports portable installations of OpenMW by way of utilizing the `-c` or `--openmw-cfg` argument.
-Users running OpenMW with custom launchers such as `omw` should include the `-c` argument as well.
+## Development
 
 ```sh
-./s3lightfixes -c /dir/where/openmw.cfg/is/
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -W clippy::pedantic -D warnings
+cargo test --all-features
 ```
 
-To automatically enable S3LightFixes.omwaddon in whatever openmw.cfg you have asked it to use, use the `-e` argument:
+The site in `content/` is a
+[DreamWeave Mod Template](https://github.com/DreamWeave-MP/DreamWeave-Mod-Template) site; preview it
+with `zola serve`.
 
-```sh
-./s3lightfixes -e -c /my/total-overhaul/dir/
-```
-
-Additionally, S3LightFixes will perform the following:
-
-- Automatically install itself into your `data-local` directory of openmw (if using the `-e` or `--auto-enable` argument)
-- Back up the selected OpenMW config to `<config-file>.s3lightfixes.bak` before `--auto-enable` edits it
-- Create a config file adjacent to your openmw.cfg if one doesn't already exist
-- Write run metadata plus one-line light and cell change logs to stdout and `lightconfig.log` next to your OpenMW user config
-- With `--classic`, disable sunlight color in interiors for compatibility with vtastek's custom shader stack for openmw 0.47
-- Optionally remove the Flicker and FlickerSlow flags from all lights
-- Nullify all negative lights by default; disable with `disable_negative_lights = false` or `--disable-negative-lights false` if a setup really needs them preserved
-
-## Command Line Arguments
-
-```sh
-  -c, --openmw-cfg <OPENMW_CFG>
-          Path to openmw.cfg By default, uses the system paths defined by: https://openmw.readthedocs.io/en/latest/reference/modding/paths.html Can be the literal path to an openmw.cfg file (including not literally being called openmw.cfg) Or the directory in which an openmw.cfg file lives
-  -7, --classic
-          Enables classic mode using vtastek shaders. ONLY for openmw 0.47. Relevant shaders can be found in the OpenMW discord: https://discord.com/channels/260439894298460160/718892786157617163/966468825321177148
-  -o, --output <OUTPUT>
-          Output directory. The plugin may be saved to any location, but its name will always be `S3Lightfixes.omwaddon`. Accepts relative and absolute terms
-  -e, --auto-enable
-          Whether to automatically enable the output plugin in openmw.cfg. Disabled by default, and only available via CLI. Typically lightfixes is ran under momw-configurator, making this param unnecessary for many users
-  -n, --no-notifications
-          If used, print to stdout instead of using native GUI dialogs. Not available on android
-  -d, --debug
-          Output debugging information during lightfixes generation Primarily displays output related to the openmw.cfg being used for generation
-      --dry-run [<BOOL>]
-          Validate config and source plugins, print planned changes, but do not write files
-      --validate-config [<BOOL>]
-          Validate lightconfig.toml, CLI overrides, and regexes without generating a plugin
-      --generate-completion <SHELL>
-          Generate shell completion script to stdout [possible values: bash, elvish, fish, powershell, zsh]
-      --generate-manpage
-          Generate roff manpage to stdout
-  -f, --no-flicker <DISABLE_FLICKERING>
-          Whether to disable flickering lights during lightfixes generation [possible values: true, false]
-  -p, --no-pulse <DISABLE_PULSE>
-          Whether to disable pulsing lights during lightfixes generation [possible values: true, false]
-      --disable-negative-lights <DISABLE_NEGATIVE_LIGHTS>
-          Whether to null negative lights during lightfixes generation [possible values: true, false]
-      --standard-hue <STANDARD_HUE>
-          For lights in the orange range, multiply their HSV hue by this value.
-          If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 0.62.
-          This argument has no short form due to a conflict with -h.
-  -s, --standard-saturation <STANDARD_SATURATION>
-          For lights in the orange range, multiply their HSV saturation by this amount.
-          If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 0.8.
-  -v, --standard-value <STANDARD_VALUE>
-          For lights in the orange range, multiply their HSV value by this amount.
-          If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 0.57.
-  -r, --standard-radius <STANDARD_RADIUS>
-          For lights in the orange range, multiply their radius by this value.
-          If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 1.2.
-  -H, --colored-hue <COLORED_HUE>
-          For lights that are red, purple, blue, green, or yellow, multiply their HSV hue by this value.
-          If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 1.
-  -S, --colored-saturation <COLORED_SATURATION>
-          For lights that are red, purple, blue, green, or yellow, multiply their HSV saturation by this amount.
-          If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 0.9.
-      --colored-value <COLORED_VALUE>
-          For lights that are red, purple, blue, green, or yellow, multiply their HSV value by this amount.
-          If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 0.7.
-  -R, --colored-radius <COLORED_RADIUS>
-          For lights that are red, purple, blue, green, or yellow, multiply their radius by this value.
-          If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 1.1.
-  -M, --duration-mult <DURATION_MULT>
-          Multiplies the duration of all carryable lights.
-          If this argument is not used, the value will be derived from lightConfig.toml or use the default value of 2.5.
-  -x, --excluded-ids <EXCLUDED_IDS>
-          List of Regex patterns of light recordIds to exclude. This setting is *merged* onto values defined by lightconfig.toml.
-          If this argument is not used, the value will be derived from lightConfig.toml.
-  -X, --excluded-plugins <EXCLUDED_PLUGINS>
-          List of Regex patterns of plugins to exclude. This setting is *merged* onto values defined by lightconfig.toml.
-          If this argument is not used, the value will be derived from lightConfig.toml.
-     --light <LIGHT_OVERRIDES>
-          Colon-separated list of regexes to light values.
-               May be specified multiple times instead of as a separated list.
-               Light color values may use fixed RGB fields (`red`, `green`, `blue`), HSV fixed fields (`hue`, `saturation`, `value`), HSV multipliers (`hue_mult`, `saturation_mult`, `value_mult`), and RGB multipliers (`red_mult`, `green_mult`, `blue_mult`).
-               EG:
-               --light "Torch_001=radius=255,red=255,green=128,blue=64,hue=220,blue_mult=0.5,duration=1200,flag=FLICKER_SLOW" --light "Torch_002=radius_mult=2.0,hue_mult=1.3,red_mult=1.1,duration_mult=5.0,flag=CAN_CARRY|PULSE_SLOW"
-               OR
-               --light "Torch_001=radius=255,red=255,green=128,blue=64,hue=220,blue_mult=0.5,duration=1200,flag=FLICKER_SLOW:Torch_002=radius_mult=2.0,hue_mult=1.3,red_mult=1.1,duration_mult=5.0,flag=CAN_CARRY|PULSE_SLOW"
-               RGB color components are 0-255, matching TES3/Construction Set values. Radius and duration are u32 (can be very big).
-               `flag` may include: NONE, DYNAMIC, CAN_CARRY, NEGATIVE, FLICKER, FIRE, OFF_BY_DEFAULT, FLICKER_SLOW, PULSE, PULSE_SLOW. Separate multiple CLI flags with `|`; use an array in TOML. This replaces the source light's full flag set.
-               Color precedence: fixed RGB, when present, replaces the source RGB as the base color and disables global HSV fallback for missing HSV components; without fixed RGB, missing HSV components still use the standard/colored global HSV multipliers. HSV fixed fields/multipliers adjust the selected base color per component, fixed and multiplier forms for the same HSV component are mutually exclusive, and RGB multipliers are always applied last.
-      --ambient <AMBIENT_OVERRIDES>
-          
-                      Colon-separated list of cell id regexes, to the corresponding ambient data.
-                      `sunlight`, `ambient`, `fog`, and `fog_density` are available parameters.
-                      Values are provided as fixed RGB values, no multipliers.
-                      RGB color components are 0-255, matching TES3/Construction Set values.
-                      Each field of cell ambient data is separated by a semicolon, as below:
-                      --ambient "caius cosades' house=sunlight=red=255,green=255,blue=255;ambient=red=64,green=48,blue=32"
-                      
-  -U, --update-light-config
-          Force-saves the light config on this run. Note that this parameter does not merge into lightConfig.toml like others, and must be manually set there.
-  -h, --help
-          Print help
-  -V, --version
-          Print version
-```
-
-Shell completions and the roff man page are generated to stdout, so redirect them wherever your package or shell setup expects:
-
-```sh
-./s3lightfixes --generate-completion bash > s3lightfixes.bash
-./s3lightfixes --generate-manpage > s3lightfixes.1
-```
-
-# License
+## License
 
 S3LightFixes is released under the [MIT License](LICENSE).
