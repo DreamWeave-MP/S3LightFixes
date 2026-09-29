@@ -61,10 +61,21 @@ save_config = false
 [ambient_overrides]
 ```
 
-Every key is optional: one left out takes its default. Keys the program does not know are ignored,
-misspelled ones included, and so is a top-level key written below a `[table]` header, because TOML
-puts it inside that table. Keep settings above the override tables. A file that is not valid TOML,
-or holds a value of the wrong type, stops the run with a message and exit code 1.
+Every key is optional: one left out takes its default. A file that is not valid TOML, or holds a
+value of the wrong type, stops the run with a message and exit code 1.
+
+## Unknown keys
+
+A run ignores a key the program does not know, usually a misspelled one, and says so on standard
+error. `--validate-config` fails on it instead, with exit code 1, so a check never passes a setting
+that does nothing. Both name the key in full: a top-level setting written below an override's
+`[table]` header, which TOML puts inside that table, shows up as
+`light_overrides."^torch$".standard_hue`. Keep settings above the override tables. Saving the file
+writes only the keys the program knows, so it drops unknown ones.
+
+`save_log` and `auto_install`, which older versions wrote, are not unknown: they do nothing, and
+`--validate-config` says they can be deleted and passes. The log is written on every run, and
+`auto_enable` replaced `auto_install`.
 
 ## Settings
 

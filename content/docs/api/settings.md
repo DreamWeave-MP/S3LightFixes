@@ -101,19 +101,23 @@ functions and [`process_light`](@/docs/api/processing.md#process-light) read onl
 What a run does to build its settings:
 
 1. Reads `lightconfig.toml` from the folder of the chain's user `openmw.cfg`, or starts from
-   `Default` when there is none.
+   `Default` when there is none, and notes each key it does not read.
 2. Applies `light_args` over it: the options given replace the file's values, `-x`, `-X`, `--light`
    and `--ambient` are added to its lists and tables, and `--classic` sets `disable_interior_sun`.
 3. Picks the output folder, as [Where files go](@/docs/files.md#the-plugin) describes, unless this
    is a `--validate-config` run.
 4. Writes `lightconfig.toml` when the file did not exist, `save_config` is set, or
    `update_light_config` is, and this is neither a dry run nor a check.
-5. Compiles the patterns.
+5. Reports the keys it did not read, as [Unknown keys](@/docs/lightconfig.md#unknown-keys)
+   describes: a warning on standard error, or for a `--validate-config` run a notification and a
+   failure. `save_log` and `auto_install`, which older versions wrote, are only mentioned, and only
+   by a check.
+6. Compiles the patterns.
 
 Fails when the file cannot be read or written, when `dry_run` and `validate_config` are both on,
-and when a pattern does not compile, after a [notification](@/docs/api/running.md#notification-box)
-for each bad pattern. It ends the process, with exit code 1, when the file is not valid TOML or
-`--output` is not a folder.
+when a pattern does not compile, after a [notification](@/docs/api/running.md#notification-box)
+for each bad pattern, and when a `--validate-config` run finds a key it does not know. It ends the
+process, with exit code 1, when the file is not valid TOML or `--output` is not a folder.
 
 ```rust
 use clap::Parser;

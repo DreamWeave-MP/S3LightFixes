@@ -34,7 +34,8 @@ It is read two ways, and both refuse a key together with its `_mult` form, an in
 `red`/`green`/`blue`, and a multiplier that is not finite, and both clamp `hue`, `saturation` and
 `value` into range:
 
-- `Deserialize`, from a `lightconfig.toml` table. Unknown keys are ignored.
+- `Deserialize`, from a `lightconfig.toml` table. Unknown keys are ignored here, and
+  [`LightConfig::get`](@/docs/api/settings.md#lightconfig-get) reports them.
 - `FromStr`, from the command line's `key=value,key=value` form, with
   [`ParseLightError`](#parselighterror). Unknown keys are errors.
 

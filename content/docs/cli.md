@@ -78,7 +78,7 @@ s3lightfixes --ambient "caius cosades' house=ambient=red=64,green=48,blue=32;fog
 | Option | Meaning |
 |---|---|
 | `--dry-run [<BOOL>]` | Read everything, print the summary and every change, and write nothing: no plugin, log or settings |
-| `--validate-config [<BOOL>]` | Read `lightconfig.toml` and the options, compile every pattern, print `Validated <path> successfully`, and stop. Plugins are not read |
+| `--validate-config [<BOOL>]` | Read `lightconfig.toml` and the options, compile every pattern, print `Validated <path> successfully`, and stop. Plugins are not read. A key `lightconfig.toml` does not know fails it; see [Unknown keys](@/docs/lightconfig.md#unknown-keys) |
 | `-U`, `--update-light-config` | Save the settings of this run into `lightconfig.toml`. `save_config = true` in the file does it on every run |
 | `-n`, `--no-notifications` | Print messages instead of showing dialogs |
 | `-d`, `--debug` | Also print the settings, the OpenMW config and the plugin header to standard error |
@@ -94,8 +94,8 @@ s3lightfixes --dry-run --standard-value 0.7 | grep '"torch"'
 
 Messages go to a dialog box on Windows, macOS and Linux desktops, and are printed on Android. When
 no dialog can be shown, such as on a Linux system without zenity, kdialog or yad, they are printed
-too. The summary and the record lines always go to standard output; plugins that fail to load are
-reported on standard error.
+too. The summary and the record lines always go to standard output; plugins that fail to load, and
+keys `lightconfig.toml` has that the program does not know, are reported on standard error.
 
 ## Completions and the manual page
 
@@ -127,11 +127,12 @@ standard output and do nothing else: no config is read. They cannot be given tog
 | Code | Meaning |
 |---|---|
 | 0 | Done. Also after a dry run, a successful check, `--help`, `--version`, and the generated completions and manual page |
-| 1 | `lightconfig.toml` cannot be read, a pattern does not compile, `--output` is not a folder, `dry_run` and `validate_config` are both on, or a file could not be written |
+| 1 | `lightconfig.toml` cannot be read, a pattern does not compile, `--validate-config` found a key it does not know, `--output` is not a folder, `dry_run` and `validate_config` are both on, or a file could not be written |
 | 2 | An option is wrong or unknown, or the plugin would be empty because no plugin supplied a record |
 | 3 | A plugin's path has no file name. It should never happen |
 | 4 | The load order has no content files |
 | 127 | The `--openmw-cfg` path is wrong, or no `openmw.cfg` could be found or read |
 
-For a pattern that does not compile, or a file that could not be written, standard error has the
-details after `Error:`; the other failures show a message first.
+For a pattern that does not compile, a key `--validate-config` does not know, or a file that could
+not be written, standard error has the details after `Error:`; the other failures show a message
+first.

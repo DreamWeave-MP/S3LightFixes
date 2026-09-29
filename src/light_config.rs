@@ -83,6 +83,48 @@ where
     ser_map.end()
 }
 
+/// Settings older versions read and wrote into `lightconfig.toml`, with what replaced each. A file
+/// written by one of them still has them, so they are not reported as unknown.
+const RETIRED_KEYS: [(&str, &str); 2] = [
+    (
+        "auto_install",
+        "`auto_enable` and `--auto-enable` enable the plugin",
+    ),
+    ("save_log", "lightconfig.log is written on every run"),
+];
+
+/// The dotted TOML key of a setting deserialization ignored, like `light_overrides."^torch".raduis`.
+fn toml_key(path: &serde_ignored::Path) -> String {
+    let mut parts = Vec::new();
+    let mut current = path;
+    loop {
+        match current {
+            serde_ignored::Path::Root => break,
+            serde_ignored::Path::Map { parent, key } => {
+                let bare = !key.is_empty()
+                    && key
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+                parts.push(if bare {
+                    key.clone()
+                } else {
+                    toml::Value::String(key.clone()).to_string()
+                });
+                current = parent;
+            }
+            serde_ignored::Path::Seq { parent, index } => {
+                parts.push(index.to_string());
+                current = parent;
+            }
+            serde_ignored::Path::Some { parent }
+            | serde_ignored::Path::NewtypeStruct { parent }
+            | serde_ignored::Path::NewtypeVariant { parent } => current = parent,
+        }
+    }
+    parts.reverse();
+    parts.join(".")
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 // This struct is the public TOML schema. Grouping the booleans into enum wrappers would either
 // change the config format or add serde indirection that exists only to satisfy clippy.
@@ -191,25 +233,72 @@ impl LightConfig {
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Light config not found"))
     }
 
+    /// Reads `lightconfig.toml`, or gives the defaults when there is none. Also says whether it was
+    /// missing, and gives the keys of every setting in it this version does not read.
     fn load(
         user_config_path: &std::path::Path,
         early_no_notifications: bool,
-    ) -> io::Result<(Self, bool)> {
+    ) -> io::Result<(Self, bool, Vec<String>)> {
         let Ok(config_path) = Self::find(&user_config_path.to_path_buf()) else {
-            return Ok((LightConfig::default(), true));
+            return Ok((LightConfig::default(), true, Vec::new()));
         };
 
         let config_contents = read_to_string(config_path)?;
-        let config = toml::from_str(&config_contents).unwrap_or_else(|error| {
-            notification_box(
-                "Failed to read light config!",
-                &format!("Lightconfig.toml couldn't be read: {error}"),
-                early_no_notifications,
-            );
-            std::process::exit(1);
-        });
+        let mut ignored_keys = Vec::new();
+        let config = toml::Deserializer::parse(&config_contents)
+            .and_then(|deserializer| {
+                serde_ignored::deserialize(deserializer, |path| {
+                    ignored_keys.push(toml_key(&path));
+                })
+            })
+            .unwrap_or_else(|error| {
+                notification_box(
+                    "Failed to read light config!",
+                    &format!("Lightconfig.toml couldn't be read: {error}"),
+                    early_no_notifications,
+                );
+                std::process::exit(1);
+            });
 
-        Ok((config, false))
+        Ok((config, false, ignored_keys))
+    }
+
+    /// Reports the settings `lightconfig.toml` has and this version does not read. Unknown ones,
+    /// usually misspelled or under the wrong table, are a warning on a run, which goes on without
+    /// them, and an error when validating. Retired ones are only mentioned when validating.
+    fn check_ignored_keys(&self, ignored_keys: &[String], validating: bool) -> io::Result<()> {
+        let mut unknown_keys = Vec::new();
+        for key in ignored_keys {
+            match RETIRED_KEYS.iter().find(|(retired, _)| retired == key) {
+                Some((retired, replacement)) if validating => println!(
+                    "`{retired}` is no longer used: {replacement}. It can be deleted from {DEFAULT_CONFIG_NAME}."
+                ),
+                Some(_) => {}
+                None => unknown_keys.push(format!("`{key}`")),
+            }
+        }
+
+        if unknown_keys.is_empty() {
+            return Ok(());
+        }
+
+        let unknown_keys = unknown_keys.join(", ");
+        if !validating {
+            eprintln!(
+                "[ WARNING ]: {DEFAULT_CONFIG_NAME} has settings S3LightFixes does not know, so this run ignores them: {unknown_keys}. Check their spelling, and the table each is under."
+            );
+            return Ok(());
+        }
+
+        let message = format!(
+            "{DEFAULT_CONFIG_NAME} has settings S3LightFixes does not know: {unknown_keys}. A run ignores them. Check their spelling, and the table each is under."
+        );
+        notification_box(
+            "Unknown settings in light config!",
+            &message,
+            self.no_notifications,
+        );
+        Err(io::Error::new(io::ErrorKind::InvalidInput, message))
     }
 
     fn apply_scalar_args(&mut self, light_args: &mut LightArgs) {
@@ -456,7 +545,8 @@ impl LightConfig {
     /// # Errors
     ///
     /// Returns filesystem errors encountered while reading or writing `lightconfig.toml`, or while
-    /// resolving the fallback output directory.
+    /// resolving the fallback output directory. Returns an `InvalidInput` error when a pattern does
+    /// not compile, and when validating finds a key in `lightconfig.toml` it does not know.
     pub fn get(
         mut light_args: LightArgs,
         openmw_config: &openmw_config::OpenMWConfiguration,
@@ -465,7 +555,7 @@ impl LightConfig {
 
         let early_no_notifications =
             std::env::var("S3L_NO_NOTIFICATIONS").is_ok() || light_args.no_notifications;
-        let (mut light_config, write_config) =
+        let (mut light_config, write_config, ignored_keys) =
             Self::load(&user_config_path, early_no_notifications)?;
 
         let debug_from_env = std::env::var("S3L_DEBUG").is_ok();
@@ -505,8 +595,10 @@ impl LightConfig {
             )?;
         }
 
+        let known_keys = light_config.check_ignored_keys(&ignored_keys, effective_validate_config);
         // Consume the original values *after* reserializing the config
         light_config.compile_regexes()?;
+        known_keys?;
 
         Ok(light_config)
     }
@@ -793,6 +885,59 @@ mod tests {
                 .unwrap()
                 .contains("standard_hue = 0.62")
         );
+    }
+
+    #[test]
+    fn loading_names_every_setting_it_does_not_read_by_its_toml_key() {
+        let temp_dir = TempDir::new("loading-names-ignored-keys");
+        std::fs::write(
+            temp_dir.path().join(DEFAULT_CONFIG_NAME),
+            r#"
+            save_log = false
+            standard_satuation = 0.7
+
+            [light_overrides.torch_001]
+            raduis = 300
+
+            [ambient_overrides."Caius Cosades' House".ambient]
+            red = 64
+            green = 48
+            blue = 32
+            alpha = 255
+            "#,
+        )
+        .unwrap();
+
+        let (config, missing, mut ignored_keys) = LightConfig::load(temp_dir.path(), true).unwrap();
+        ignored_keys.sort();
+
+        assert!(!missing);
+        assert_eq!(config.light_overrides.len(), 1);
+        assert_eq!(
+            ignored_keys,
+            [
+                "ambient_overrides.\"Caius Cosades' House\".ambient.alpha",
+                "light_overrides.torch_001.raduis",
+                "save_log",
+                "standard_satuation",
+            ]
+        );
+    }
+
+    #[test]
+    fn unknown_settings_fail_validation_but_not_a_run_and_retired_ones_neither() {
+        let config = LightConfig {
+            no_notifications: true,
+            ..LightConfig::default()
+        };
+        let retired = ["save_log".to_owned(), "auto_install".to_owned()];
+        let unknown = ["standard_satuation".to_owned()];
+
+        assert!(config.check_ignored_keys(&retired, true).is_ok());
+        assert!(config.check_ignored_keys(&unknown, false).is_ok());
+        let err = config.check_ignored_keys(&unknown, true).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("`standard_satuation`"));
     }
 
     #[test]
