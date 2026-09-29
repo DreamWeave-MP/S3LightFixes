@@ -31,7 +31,7 @@ pub struct LightArgs {
     pub use_classic: bool,
 
     /// Output directory.
-    /// The plugin may be saved to any location, but its name will always be `S3Lightfixes.omwaddon`.
+    /// The plugin may be saved to any location, but its name will always be `S3LightFixes.omwaddon`.
     /// Accepts relative and absolute terms.
     #[arg(short = 'o', long = "output")]
     pub output: Option<PathBuf>,
@@ -211,4 +211,28 @@ pub struct LightArgs {
         help = &format!("Force-saves the light config on this run. Note that this parameter does not merge into lightConfig.toml like others, and must be manually set there.")
     )]
     pub update_light_config: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::CommandFactory;
+
+    use super::LightArgs;
+
+    #[test]
+    fn output_help_names_the_generated_plugin_as_written() {
+        let command = LightArgs::command();
+        let output = command
+            .get_arguments()
+            .find(|argument| argument.get_id() == "output")
+            .unwrap();
+
+        assert!(
+            output
+                .get_help()
+                .unwrap()
+                .to_string()
+                .contains(crate::PLUGIN_NAME)
+        );
+    }
 }
