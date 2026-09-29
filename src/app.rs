@@ -565,21 +565,27 @@ fn write_log_outputs(
 ) -> io::Result<()> {
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
-    match write_log_to(&mut stdout, metadata, logs) {
-        Ok(()) => {}
-        Err(err) if err.kind() == io::ErrorKind::BrokenPipe => {}
-        Err(err) => return Err(err),
-    }
+    ignore_broken_pipe(write_log_to(&mut stdout, metadata, logs))?;
 
     let path = config.user_config_path().join(LOG_NAME);
     let mut file = File::create(path)?;
     write_log_to(&mut file, metadata, logs)
 }
 
-fn write_dry_run_outputs(metadata: &RunMetadata, logs: &[RecordLog]) -> io::Result<()> {
-    let stdout = io::stdout();
-    let mut stdout = stdout.lock();
-    write_dry_run_to(&mut stdout, metadata, logs)
+/// A reader that stops early, like `head`, has seen all it wanted: that is not a failed run.
+fn ignore_broken_pipe(result: io::Result<()>) -> io::Result<()> {
+    match result {
+        Err(err) if err.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        result => result,
+    }
+}
+
+fn write_dry_run_outputs(
+    writer: impl Write,
+    metadata: &RunMetadata,
+    logs: &[RecordLog],
+) -> io::Result<()> {
+    ignore_broken_pipe(write_dry_run_to(writer, metadata, logs))
 }
 
 fn write_dry_run_to(
@@ -707,7 +713,7 @@ pub fn run() -> io::Result<()> {
 
     if header.masters.is_empty() {
         if light_config.dry_run {
-            write_dry_run_outputs(&metadata, &logs)?;
+            write_dry_run_outputs(io::stdout().lock(), &metadata, &logs)?;
             return Ok(());
         }
 
@@ -720,7 +726,7 @@ pub fn run() -> io::Result<()> {
     }
 
     if light_config.dry_run {
-        write_dry_run_outputs(&metadata, &logs)?;
+        write_dry_run_outputs(io::stdout().lock(), &metadata, &logs)?;
         return Ok(());
     }
 
@@ -1579,6 +1585,25 @@ mod tests {
         assert!(used_ids.contains("duplicate_cell"));
         assert!(!used_ids.contains("excluded_cell"));
         assert!(logs.is_empty());
+    }
+
+    #[test]
+    fn dry_run_output_stops_quietly_when_the_reader_goes_away() {
+        struct ClosedPipe;
+
+        impl Write for ClosedPipe {
+            fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+                Err(io::Error::from(io::ErrorKind::BrokenPipe))
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let result = write_dry_run_outputs(ClosedPipe, &test_metadata(0, 1), &[]);
+
+        assert!(result.is_ok(), "{result:?}");
     }
 
     #[test]
