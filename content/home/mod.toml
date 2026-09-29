@@ -94,12 +94,205 @@ url = "https://github.com/McArren"
 # publish it, set the same version in Cargo.toml, commit, and push its tag: git tag 0.4.61.
 # StroggForge builds and publishes it, then records it in mod.lock beside this file.
 #
-# Releases from v0.1.1 to v0.3.3 (December 2024 to May 2025) are on GitHub under tags with a v
-# prefix. A Rust project's release tag here is the bare version, so they cannot be declared: the
-# site would look for tags that do not exist and list them as unreleased.
+# Releases from v0.1.1 to v0.3.3 (December 2024 to May 2025) were tagged with a v prefix, so each
+# names its tag. Their GitHub releases' archives are named for the machine that built them
+# (windows-latest.zip), not for a platform, so they are listed without downloads.
 #
 # Cargo.toml says 0.4.59, which is what 0.4.6 was built with and reports as its version. It sorts
 # below 0.4.6, so it is not declared; the next release needs a version above 0.4.6 in both files.
+
+[[releases]]
+version = "0.1.1"
+tag = "v0.1.1"
+date = 2024-12-04
+summary = "The first release: a program of its own that writes S3LightFixes.omwaddon for the load order in openmw.cfg, where Lightfixes.pl and Waza-lightfixes needed tes3cmd."
+added = [
+    "Every light in the load order recolored and resized, with hue, saturation, value and radius multipliers for standard (orange) lights and for colored ones.",
+    "Sunlight taken out of interior cells.",
+    "`disable_flickering` removes the flicker flags from every light.",
+    "The plugin is saved in OpenMW's `data-local` folder, and `auto_install` enables it in `openmw.cfg`.",
+    "`lightconfig.toml` beside `openmw.cfg`, written with the defaults when there is none. `save_log` writes the plugin as text to `lightconfig.log`.",
+    "`OPENMW_CONFIG` and `OPENMW_CONFIG_DIR` point it at a portable install's `openmw.cfg`.",
+]
+known_issues = [
+    "Negative lights are meant to be turned off, but are left out of the plugin instead, until 0.2.0.",
+    "`standard_saturation` in `lightconfig.toml` is not read, so its default is always used, until 0.3.0.",
+]
+
+[[releases]]
+version = "0.1.2"
+tag = "v0.1.2"
+date = 2024-12-14
+summary = "Works with an OpenMW config file of any name."
+fixed = ["`lightconfig.toml` is written beside, and the plugin enabled in, the config file that was read, whatever its name."]
+
+[[releases]]
+version = "0.1.3"
+tag = "v0.1.3"
+date = 2024-12-14
+summary = "The log goes beside the config file too."
+fixed = ["`save_log` writes `lightconfig.log` beside the config file that was read, whatever its name."]
+
+[[releases]]
+version = "0.1.4"
+tag = "v0.1.4"
+date = 2025-01-01
+summary = "Debug output, and clearer failures when openmw.cfg cannot be used."
+added = ["`S3L_DEBUG` prints the config, the plugins and the data folders that were found, and the plugin's header."]
+fixed = [
+    "A crash on a missing folder, through an updated openmw-cfg.",
+    "An `openmw.cfg` that lists no plugins stops the run with a message.",
+    "An `openmw.cfg` that cannot be read is reported with the reason.",
+]
+
+[[releases]]
+version = "0.1.5"
+tag = "v0.1.5"
+date = 2025-01-02
+summary = "Reads plugins whose extension is in capitals, and runs on older Linux systems."
+fixed = [
+    "Plugins with a capitalized extension, like `.ESP`, are read instead of skipped.",
+    "A value of the wrong type in `lightconfig.toml` is reported as one.",
+]
+changed = ["The Linux build is made on Ubuntu 20.04, so it runs on older systems."]
+
+[[releases]]
+version = "0.1.6"
+tag = "v0.1.6"
+date = 2025-01-04
+summary = "Dialogs for success and failure."
+added = ["A dialog reports a finished run, or an `openmw.cfg` or plugin list that cannot be read. With `S3L_NO_NOTIFICATIONS` set, the message is printed instead."]
+fixed = ["The message for a plugin that fails to load reads properly."]
+
+[[releases]]
+version = "0.1.7"
+tag = "v0.1.7"
+date = 2025-01-16
+summary = "Refuses to write an empty plugin, and builds for Android."
+fixed = [
+    "A plugin with no masters stops the run with a message instead of being written.",
+    "Builds for Android, where messages are printed instead of shown in a dialog.",
+]
+changed = ["Updated openmw-cfg and tes3."]
+
+# v0.1.8 was tagged but never published; v0.1.9 carries its changes.
+[[releases]]
+version = "0.1.9"
+tag = "v0.1.9"
+date = 2025-01-20
+summary = "Signed builds."
+added = ["Every archive holds a Sigstore bundle, `S3LF-<runner>.bundle`, to check the program with `cosign verify-blob`."]
+
+[[releases]]
+version = "0.2.0"
+tag = "v0.2.0"
+date = 2025-01-26
+summary = "Negative lights are turned off, as they were always meant to be."
+fixed = [
+    "Negative lights are written to the plugin, with the flag removed and a radius of 0. Before, they were left out.",
+    "Enabling the plugin starts a new line when `openmw.cfg` does not end with one.",
+]
+
+[[releases]]
+version = "0.3.0"
+tag = "v0.3.0"
+date = 2025-03-08
+summary = "Command-line options for every setting, and nothing installed or enabled unless asked."
+added = [
+    "A command-line option for every `lightconfig.toml` setting, which takes the file's place for that run.",
+    "`-c`, `--openmw-cfg`: the folder of the `openmw.cfg` to read.",
+    "`-o`, `--output`: the folder to write the plugin to.",
+    "`-e`, `--auto-enable`: enable the plugin in `openmw.cfg`.",
+    "`-7`, `--classic`: for vtastek's shaders on OpenMW 0.47, a standard radius of 2.0 and no interior sunlight.",
+    "`-l`, `--write-log`, `-n`, `--no-notifications`, `-d`, `--debug` and `-i`, `--info`.",
+]
+breaking = [
+    "The plugin is written to the working folder, or `--output`, instead of `data-local`, and one left in `data-local` is deleted.",
+    "The plugin is enabled in `openmw.cfg` only with `--auto-enable`. `auto_install` is no longer read.",
+    "Interior sunlight is taken out only with `--classic`.",
+    "Only the `lightconfig.toml` beside `openmw.cfg` is read, not one beside the program or in `data-local`.",
+]
+changed = ["The default standard radius is 1.2, down from 2.0, and the standard hue 0.62, up from 0.6."]
+fixed = ["`standard_saturation` in `lightconfig.toml` is read."]
+known_issues = ["`lightconfig.toml` is looked for in the wrong place, so every run uses the defaults and writes them over it, until 0.3.3."]
+
+[[releases]]
+version = "0.3.1"
+tag = "v0.3.1"
+date = 2025-04-24
+summary = "Negative lights are black as well as off."
+fixed = ["Negative lights are also made black, so vtastek's classic light falloff no longer shows them."]
+known_issues = ["Its GitHub release has no Linux archive."]
+
+[[releases]]
+version = "0.3.2"
+tag = "v0.3.2"
+date = 2025-04-25
+summary = "The Linux build moves to Ubuntu 22.04. The program is unchanged."
+changed = ["The Linux build is made on Ubuntu 22.04, and needs a system at least that new."]
+known_issues = ["Its GitHub release has only the Windows archive."]
+
+[[releases]]
+version = "0.3.21"
+tag = "v0.3.21"
+date = 2025-04-25
+summary = "Release workflow changes only. The program is unchanged."
+
+[[releases]]
+version = "0.3.22"
+tag = "v0.3.22"
+date = 2025-04-25
+summary = "Release workflow changes only. The program is unchanged."
+
+[[releases]]
+version = "0.3.23"
+tag = "v0.3.23"
+date = 2025-04-25
+summary = "Release workflow changes only. The program is unchanged."
+known_issues = ["Its GitHub release has only the Windows archive."]
+
+[[releases]]
+version = "0.3.24"
+tag = "v0.3.24"
+date = 2025-04-25
+summary = "Release workflow changes only. The program is unchanged."
+
+[[releases]]
+version = "0.3.25"
+tag = "v0.3.25"
+date = 2025-04-25
+summary = "Release workflow changes only. The program is unchanged."
+known_issues = ["Its GitHub release has no Linux archive."]
+
+# v0.3.26 was tagged but never published.
+[[releases]]
+version = "0.3.27"
+tag = "v0.3.27"
+date = 2025-04-25
+summary = "Release workflow changes only. The program is unchanged."
+known_issues = ["Its GitHub release has no archives."]
+
+[[releases]]
+version = "0.3.28"
+tag = "v0.3.28"
+date = 2025-04-25
+summary = "Release workflow changes only, which add development builds. The program is unchanged."
+known_issues = ["Its GitHub release has no Linux archive."]
+
+[[releases]]
+version = "0.3.29"
+tag = "v0.3.29"
+date = 2025-04-25
+summary = "Updated dependencies, and the readme in every archive."
+added = ["`Readme.md` in every archive."]
+changed = ["Updated tes3, openmw-cfg and clap."]
+
+[[releases]]
+version = "0.3.3"
+tag = "v0.3.3"
+date = 2025-05-08
+summary = "lightconfig.toml is read again."
+fixed = ["`lightconfig.toml` is read from the folder of `openmw.cfg`. From 0.3.0 on it was looked for in the wrong place, so every run used the defaults and wrote them over it."]
 
 [[releases]]
 version = "0.4.0"
