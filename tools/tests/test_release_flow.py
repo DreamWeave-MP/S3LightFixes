@@ -615,14 +615,18 @@ class ReleaseLifecycle(unittest.TestCase):
     def test_archive_contents(self):
         self.scratch.write("content/lantern/docs/_index.md", '+++\ntitle = "Lantern docs"\n+++\nThe manual.\n')
         self.scratch.write("content/lantern/docs/setup.md", '+++\ntitle = "Setup"\n+++\nSet it up.\n')
+        self.scratch.write("content/lantern/materials/index.md", '+++\ntitle = "Materials"\n+++\nGrains.\n')
+        self.scratch.write("content/lantern/.agents/helper.md", "Shipped as it is.\n")
+        self.scratch.write("config.toml", 'ignored_content = ["**/.agents/**"]\n' + (self.root / "config.toml").read_text())
         self.scratch.commit("Add docs")
         build_site(self.root, "build")
         archive = zipfile.ZipFile(self.root / "dist/lantern.zip")
         names = set(archive.namelist())
         for expected in ("Lantern.omwscripts", "scripts/lantern/player.lua", "lantern-dwmod.toml", "dreamweave.release.json", "lantern-Documentation/index.html"):
             self.assertIn(expected, names)
-        for rendered in ("index.md", "docs/_index.md", "docs/setup.md", "mod.toml", "Documentation/index.html"):
+        for rendered in ("index.md", "docs/_index.md", "docs/setup.md", "materials/index.md", "mod.toml", "Documentation/index.html"):
             self.assertNotIn(rendered, names, "the documentation ships rendered, not as its Markdown")
+        self.assertIn(".agents/helper.md", names, "Markdown that is not a page is payload")
         self.assertEqual(archive.read("lantern-dwmod.toml"), (self.root / "content/lantern/mod.toml").read_bytes())
         self.assertNotIn("mod.lock", names)
         self.assertFalse(any(name.startswith("_changelog") for name in names))

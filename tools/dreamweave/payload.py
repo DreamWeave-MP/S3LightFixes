@@ -1,8 +1,8 @@
 """A project's payload: every committed file under its directory, checked against mod.toml.
 
 mod.lock stays out: it records the archive's own hash, so including it would be circular. When the
-archive carries <slug>-Documentation/, the Markdown it was rendered from stays out too: index.md
-and every docs section beneath it. mod.toml ships as <slug>-dwmod.toml, and the documentation
+archive carries <slug>-Documentation/, the Markdown it was rendered from stays out too: every
+page's index.md and every docs section beneath the project. mod.toml ships as <slug>-dwmod.toml, and the documentation
 folder carries the slug as well, so mods extracted side by side keep their own.
 """
 
@@ -53,10 +53,12 @@ def generated_archive_roots(project: Project) -> tuple[str, ...]:
 
 
 def documentation_sources(paths: list[str]) -> set[str]:
-    """index.md and every docs section beneath it: the Markdown <slug>-Documentation/ renders."""
-    sections = {PurePosixPath(path).parent for path in paths if PurePosixPath(path).name == SECTION_INDEX}
+    """The Markdown <slug>-Documentation/ renders: each page's index.md, the project's own and any page
+    bundle's beneath it, and every docs section. Hidden directories hold payload, not pages."""
+    visible = [path for path in paths if not any(part.startswith(".") for part in PurePosixPath(path).parts)]
+    sections = {PurePosixPath(path).parent for path in visible if PurePosixPath(path).name == SECTION_INDEX}
     sections.discard(PurePosixPath("."))
-    return {path for path in paths if path == INDEX or any(section in PurePosixPath(path).parents for section in sections)}
+    return {path for path in visible if PurePosixPath(path).name == INDEX or any(section in PurePosixPath(path).parents for section in sections)}
 
 
 def working_tree_entries(root: Path, directory: str) -> list[gitrepo.TreeEntry]:
