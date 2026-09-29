@@ -345,7 +345,10 @@ impl LightConfig {
 
     fn save_to_user_config(&self, user_config_path: &std::path::Path) -> io::Result<()> {
         let config_serialized = toml::to_string_pretty(self).map_err(to_io_error)?;
-        let config_path = user_config_path.join(DEFAULT_CONFIG_NAME);
+        // Rewrite the file that was read, even when it is spelled lightConfig.toml, so a
+        // case-sensitive file system does not end up with two configs to choose between.
+        let config_path = Self::find(&user_config_path.to_path_buf())
+            .unwrap_or_else(|_| user_config_path.join(DEFAULT_CONFIG_NAME));
         let mut config_file = File::create(config_path)?;
         write!(config_file, "{config_serialized}")
     }
@@ -768,6 +771,28 @@ mod tests {
         assert!(serialized.contains("saturation = 1.0"));
         assert!(serialized.contains("value = 1.0"));
         assert!(!serialized.contains("red ="));
+    }
+
+    #[test]
+    fn saving_rewrites_the_lightconfig_it_found_whatever_its_case() {
+        let temp_dir = TempDir::new("saving-rewrites-found-lightconfig");
+        let found = temp_dir.path().join("lightConfig.toml");
+        std::fs::write(&found, "standard_hue = 0.5\n").unwrap();
+
+        LightConfig::default()
+            .save_to_user_config(temp_dir.path())
+            .unwrap();
+
+        let names = std::fs::read_dir(temp_dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["lightConfig.toml"]);
+        assert!(
+            std::fs::read_to_string(found)
+                .unwrap()
+                .contains("standard_hue = 0.62")
+        );
     }
 
     #[test]
