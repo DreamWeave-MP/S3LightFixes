@@ -16,8 +16,8 @@ Every download is the same command-line program, built for one system.
 | `s3lightfixes-Windows-X64.zip` | Windows, x86-64 |
 | `s3lightfixes-macOS-ARM64.zip` | macOS, Apple silicon |
 | `s3lightfixes-macOS-X64.zip` | macOS, Intel |
-| `s3lightfixes-Linux-X64.zip` | Linux, x86-64, glibc 2.28 or newer |
-| `s3lightfixes-Portmaster-ARM64.zip` | ARM64 Linux handhelds, glibc 2.28 or newer. A program to run from a terminal or over SSH, not a PortMaster port |
+| `s3lightfixes-Linux-X64.zip` | Linux, x86-64, glibc 2.34 or newer |
+| `s3lightfixes-Portmaster-ARM64.zip` | ARM64 Linux handhelds, glibc 2.34 or newer. A program to run from a terminal or over SSH, not a PortMaster port |
 | `s3lightfixes-Android-ARM64.zip` | Android 6 (API 23) or newer, ARM64. A program for a terminal such as Termux, not an app. Messages are printed, never shown as dialogs |
 
 Each archive the current workflow builds holds `s3lightfixes` (`s3lightfixes.exe` on Windows),
