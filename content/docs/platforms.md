@@ -123,9 +123,12 @@ and the AUR package have all of it; the next release will.
 
 ## Older releases
 
-This site lists releases from 0.4.0. The releases before it, v0.1.1 to v0.3.3, from December 2024
-to May 2025, are on the [GitHub releases page](https://github.com/DreamWeave-MP/S3LightFixes/releases),
-tagged with a `v` in front. The lineage goes further back: S3LightFixes succeeds
+The releases before 0.4.0, v0.1.1 to v0.3.3, from December 2024 to May 2025, were tagged with a `v`
+in front. The changelog lists them with the rest, marked unverified, as it does 0.4.0 to 0.4.52:
+their archives have older names, such as `windows-latest.zip`, that are not matched to a platform,
+so none is recorded. They can still be downloaded from the
+[GitHub releases page](https://github.com/DreamWeave-MP/S3LightFixes/releases). The lineage goes
+further back: S3LightFixes succeeds
 [Waza-lightfixes](https://github.com/glassmancody/waza_lightfixes), which followed vtastek's
 Lightfixes.pl, a tes3cmd script. All three write a plugin that relights every mod in an
 `openmw.cfg`; S3LightFixes is the one that needs nothing else installed.
