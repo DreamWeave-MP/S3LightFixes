@@ -43,3 +43,26 @@ fn unreadable_lightconfig_fails_with_a_nonzero_status() {
 
     let _ = std::fs::remove_dir_all(directory);
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn notifications_print_when_no_dialog_program_can_be_found() {
+    let directory = scratch_dir("no-dialog-program");
+    let missing = directory.join("missing");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_s3lightfixes"))
+        .arg("--openmw-cfg")
+        .arg(&missing)
+        .env("PATH", "")
+        .env_remove("S3L_NO_NOTIFICATIONS")
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(127), "{output:?}");
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("could not be resolved"),
+        "{output:?}"
+    );
+
+    let _ = std::fs::remove_dir_all(directory);
+}

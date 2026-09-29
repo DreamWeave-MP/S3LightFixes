@@ -43,20 +43,24 @@ pub fn is_fixable_plugin(plug_path: &Path) -> bool {
         })
 }
 
-/// Displays a notification taking title and message as argument
+/// Displays a notification taking title and message as argument.
+///
+/// The message is printed to standard output instead when `no_notifications` is set, on Android,
+/// and when no dialog can be shown, such as on a system without zenity, kdialog or yad.
 pub fn notification_box(title: &str, message: &str, no_notifications: bool) {
     #[cfg(target_os = "android")]
     println!("{message}");
 
     #[cfg(not(target_os = "android"))]
-    if no_notifications {
-        println!("{message}");
-    } else {
-        let _ = native_dialog::DialogBuilder::message()
+    if no_notifications
+        || native_dialog::DialogBuilder::message()
             .set_title(title)
             .set_text(message)
             .alert()
-            .show();
+            .show()
+            .is_err()
+    {
+        println!("{message}");
     }
 }
 
