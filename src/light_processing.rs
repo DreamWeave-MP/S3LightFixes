@@ -189,14 +189,16 @@ pub fn process_light(light_config: &LightConfig, light: &mut tes3::esp::Light) -
             use_global_fallbacks,
         );
 
-        if light.data.time != -1 {
-            if let Some(duration_mult) = replacement.duration_mult {
+        // An infinite light's -1 means "never burns out", not a time to multiply. A fixed
+        // duration is the one way to give it a finite time.
+        if let Some(duration_mult) = replacement.duration_mult {
+            if light.data.time != -1 {
                 light.data.time = scaled_i32(light.data.time, duration_mult);
-            } else if let Some(fixed_duration) = replacement.duration {
-                light.data.time = fixed_duration_to_i32(fixed_duration);
-            } else {
-                light.data.time = scaled_i32(light.data.time, light_config.duration_mult);
             }
+        } else if let Some(fixed_duration) = replacement.duration {
+            light.data.time = fixed_duration_to_i32(fixed_duration);
+        } else if light.data.time != -1 {
+            light.data.time = scaled_i32(light.data.time, light_config.duration_mult);
         }
 
         if let Some(radius_mult) = replacement.radius_mult {
@@ -708,5 +710,36 @@ mod tests {
 
         assert_eq!(global.data.radius, 0);
         assert_eq!(overridden.data.radius, 0);
+    }
+
+    #[test]
+    fn infinite_lights_keep_their_duration_unless_an_override_fixes_one() {
+        let mut light_config = config();
+        light_config.duration_mult = 2.5;
+        light_config.light_regexes.push((
+            Regex::new("multiplied").unwrap(),
+            CustomLightData {
+                duration_mult: Some(3.0),
+                ..CustomLightData::default()
+            },
+        ));
+        light_config.light_regexes.push((
+            Regex::new("fixed").unwrap(),
+            CustomLightData {
+                duration: Some(600.0),
+                ..CustomLightData::default()
+            },
+        ));
+        let mut global = light("global", 30.0, 10, -1, LightFlags::default());
+        let mut multiplied = light("multiplied", 30.0, 10, -1, LightFlags::default());
+        let mut fixed = light("fixed", 30.0, 10, -1, LightFlags::default());
+
+        process_light(&light_config, &mut global);
+        process_light(&light_config, &mut multiplied);
+        process_light(&light_config, &mut fixed);
+
+        assert_eq!(global.data.time, -1);
+        assert_eq!(multiplied.data.time, -1);
+        assert_eq!(fixed.data.time, 600);
     }
 }
