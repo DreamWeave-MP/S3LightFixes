@@ -1,0 +1,596 @@
+{
+  "schema_version": "2",
+  "document": "lock",
+  "project": "55e873c9-1ddc-4b13-b59a-0eb790bb2565",
+  "note": "Written by CI when a release tag is pushed: what each published release's archive contains. Do not edit.",
+  "releases": [
+    {
+      "version": "0.4.53",
+      "locked_from": "5efcc03aeb7b33d24f87a1d0f9e4ee47016ddbb5",
+      "artifacts": [
+        {
+          "id": "windows-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-Windows-X64.zip",
+          "media_type": "application/zip",
+          "size": 1481159,
+          "digests": {
+            "sha256": "760bdec3b0dc61315b9b0b47deca263cfc767c969b644076a29f9de3b26fe9f4"
+          },
+          "platform": {
+            "os": "windows",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-arm64",
+          "format": "binary",
+          "filename": "s3lightfixes-macOS-ARM64.zip",
+          "media_type": "application/zip",
+          "size": 1664633,
+          "digests": {
+            "sha256": "55dee9c00df22e886d34f3f71eb3daa740ff272bdc1f4023cdaf794b3f392c4c"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "aarch64"
+          }
+        },
+        {
+          "id": "macos-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-macOS-X64.zip",
+          "media_type": "application/zip",
+          "size": 1755784,
+          "digests": {
+            "sha256": "805ab301eba031d0b4a62cd3b0949e80d787bed1cdf329172b72c58a044e7891"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "linux-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-Linux-X64.zip",
+          "media_type": "application/zip",
+          "size": 1870654,
+          "digests": {
+            "sha256": "6ed7991ac64c89699e84c690428ead2224e3641c9d6347f60f12aed8eab88908"
+          },
+          "platform": {
+            "os": "linux",
+            "arch": "x86_64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [
+        {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64"
+        },
+        {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "S3LightFixes",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.4.55",
+      "locked_from": "4f47db7a4ac087745f7264bd2d55e949cd144cfd",
+      "artifacts": [
+        {
+          "id": "windows-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-Windows-X64.zip",
+          "media_type": "application/zip",
+          "size": 1481041,
+          "digests": {
+            "sha256": "e418b709cf91a5716f66691a72a1f867c25fbe78aba46b301ee3812bfbfcbc1f"
+          },
+          "platform": {
+            "os": "windows",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-arm64",
+          "format": "binary",
+          "filename": "s3lightfixes-macOS-ARM64.zip",
+          "media_type": "application/zip",
+          "size": 1664466,
+          "digests": {
+            "sha256": "a5a57ad6ea1f685d060ea3482dbcae1a41963d7d072e9149fdec9a5dedb6ec1d"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "aarch64"
+          }
+        },
+        {
+          "id": "macos-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-macOS-X64.zip",
+          "media_type": "application/zip",
+          "size": 1755475,
+          "digests": {
+            "sha256": "9079e046dba18494dc0438b16eb5801f2af570b8a6203677321fd533450db84b"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "linux-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-Linux-X64.zip",
+          "media_type": "application/zip",
+          "size": 1870485,
+          "digests": {
+            "sha256": "713c2b51c76512eb42b85ce865bf8fbdb83af2faa3ab4da22934e68fee975e62"
+          },
+          "platform": {
+            "os": "linux",
+            "arch": "x86_64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [
+        {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64"
+        },
+        {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "S3LightFixes",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.4.56",
+      "locked_from": "d490db1d3ea9eeacd34973976da620e3dd2b3798",
+      "artifacts": [
+        {
+          "id": "windows-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-Windows-X64.zip",
+          "media_type": "application/zip",
+          "size": 1481109,
+          "digests": {
+            "sha256": "862e207038301a83cde6f0f0cb51150bf003cea6db0ce4bcaf21cef6b66c6251"
+          },
+          "platform": {
+            "os": "windows",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-arm64",
+          "format": "binary",
+          "filename": "s3lightfixes-macOS-ARM64.zip",
+          "media_type": "application/zip",
+          "size": 1664344,
+          "digests": {
+            "sha256": "8c855329b382ce00ee146be1943ef5e09e70c0013064ebd72ef86797af8b4ec4"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "aarch64"
+          }
+        },
+        {
+          "id": "macos-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-macOS-X64.zip",
+          "media_type": "application/zip",
+          "size": 1755502,
+          "digests": {
+            "sha256": "a258ba680d524c4c9ddc3c431f9ab364e02cc76f922c9dcd9acee34740a3bfd5"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "linux-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-Linux-X64.zip",
+          "media_type": "application/zip",
+          "size": 1870746,
+          "digests": {
+            "sha256": "d7148bd271bc6f09abe0bdbebba660ab752f9706ee2d3c241d9b092f03451bee"
+          },
+          "platform": {
+            "os": "linux",
+            "arch": "x86_64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [
+        {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64"
+        },
+        {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "S3LightFixes",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.4.57",
+      "locked_from": "287542c1b320ff04f264bfebab2808e931efb5b3",
+      "artifacts": [
+        {
+          "id": "windows-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-Windows-X64.zip",
+          "media_type": "application/zip",
+          "size": 1481132,
+          "digests": {
+            "sha256": "951ac51e8cdbf7faf9ae3aed05e65d7b2f6040d9962d44ee359b1560e192911a"
+          },
+          "platform": {
+            "os": "windows",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-arm64",
+          "format": "binary",
+          "filename": "s3lightfixes-macOS-ARM64.zip",
+          "media_type": "application/zip",
+          "size": 1664593,
+          "digests": {
+            "sha256": "887fab369501e93dc42380de248d40def843de152f18b0a7ba093539242d4bac"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "aarch64"
+          }
+        },
+        {
+          "id": "macos-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-macOS-X64.zip",
+          "media_type": "application/zip",
+          "size": 1755750,
+          "digests": {
+            "sha256": "e9e0d437764df4814853e7fec67175544feff12538c28e7c1df263e538c5ebfd"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "linux-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-Linux-X64.zip",
+          "media_type": "application/zip",
+          "size": 1870748,
+          "digests": {
+            "sha256": "8736d7c44d1bcde1fd661c6225b0dc360436684fd41dedb4d605a97b9b4fff26"
+          },
+          "platform": {
+            "os": "linux",
+            "arch": "x86_64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [
+        {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64"
+        },
+        {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "S3LightFixes",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.4.58",
+      "locked_from": "17eeda64fa5e55e94d360b5d27b6952ae00003b9",
+      "artifacts": [
+        {
+          "id": "windows-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-Windows-X64.zip",
+          "media_type": "application/zip",
+          "size": 1480478,
+          "digests": {
+            "sha256": "e02093600e889af05e0503a3a352743a4e67465ffc9cb3c43f96494af16f3660"
+          },
+          "platform": {
+            "os": "windows",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-arm64",
+          "format": "binary",
+          "filename": "s3lightfixes-macOS-ARM64.zip",
+          "media_type": "application/zip",
+          "size": 1663846,
+          "digests": {
+            "sha256": "6dec4d734cc3d5f3cf8ab166343734c66d119541864c97ad35e32e937abb57c3"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "aarch64"
+          }
+        },
+        {
+          "id": "macos-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-macOS-X64.zip",
+          "media_type": "application/zip",
+          "size": 1756323,
+          "digests": {
+            "sha256": "a866a36b0cc7ab102c6556a1d14f7f69b829fea33255d664735e51e44048ac58"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "linux-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-Linux-X64.zip",
+          "media_type": "application/zip",
+          "size": 1869836,
+          "digests": {
+            "sha256": "08026abaed756b7822c7d2d51808c22fbb3b3d0e39b487018b7529dabf8df136"
+          },
+          "platform": {
+            "os": "linux",
+            "arch": "x86_64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [
+        {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64"
+        },
+        {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "S3LightFixes",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.4.6",
+      "locked_from": "1d43ba1c6c37c9d0d0375f2412c9654c6968f3ac",
+      "artifacts": [
+        {
+          "id": "windows-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-Windows-X64.zip",
+          "media_type": "application/zip",
+          "size": 1459199,
+          "digests": {
+            "sha256": "cbfc1c5d8b62d1ef12030b6fdc22abbf68e5d8359d7dc0014597e9c16c839acc"
+          },
+          "platform": {
+            "os": "windows",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-arm64",
+          "format": "binary",
+          "filename": "s3lightfixes-macOS-ARM64.zip",
+          "media_type": "application/zip",
+          "size": 1657926,
+          "digests": {
+            "sha256": "6dd20dc0de5847acc1020c2586facfeef70b9cf01a5b0c553a4fc218cd9b985a"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "aarch64"
+          }
+        },
+        {
+          "id": "macos-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-macOS-X64.zip",
+          "media_type": "application/zip",
+          "size": 1733677,
+          "digests": {
+            "sha256": "1750b52799ab61885e2e0f4fa43e4b8abd18a3b14c8c103cc791e360af536160"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "linux-x64",
+          "format": "binary",
+          "filename": "s3lightfixes-Linux-X64.zip",
+          "media_type": "application/zip",
+          "size": 1848168,
+          "digests": {
+            "sha256": "b909953db267f68f8b08831f78e157ed65d0a94e9e302fde72ea9429be268bbd"
+          },
+          "platform": {
+            "os": "linux",
+            "arch": "x86_64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [
+        {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64"
+        },
+        {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "S3LightFixes",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    }
+  ]
+}
