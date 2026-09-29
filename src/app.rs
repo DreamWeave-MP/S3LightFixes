@@ -129,6 +129,25 @@ fn explicit_config_path(args: &LightArgs) -> Result<Option<PathBuf>, String> {
     ))
 }
 
+/// openmw-config 1.1 stops looking when the platform has no global config directory, as on
+/// Windows and macOS, before it falls back to the user's openmw.cfg. Fall back here instead.
+fn discovered_or_user_config(
+    discovered: Result<openmw_config::OpenMWConfiguration, openmw_config::ConfigError>,
+    user_config_file: impl FnOnce() -> Result<PathBuf, openmw_config::ConfigError>,
+) -> Result<openmw_config::OpenMWConfiguration, openmw_config::ConfigError> {
+    match discovered {
+        Err(error @ openmw_config::ConfigError::PlatformPathUnavailable(_)) => {
+            match user_config_file() {
+                Ok(user_config) if user_config.is_file() => {
+                    openmw_config::OpenMWConfiguration::new(Some(user_config))
+                }
+                _ => Err(error),
+            }
+        }
+        discovered => discovered,
+    }
+}
+
 fn load_openmw_config(
     args: &LightArgs,
     no_notifications: bool,
@@ -142,7 +161,10 @@ fn load_openmw_config(
     } {
         openmw_config::OpenMWConfiguration::new(Some(config_path))
     } else {
-        openmw_config::OpenMWConfiguration::from_env_or_user_config()
+        discovered_or_user_config(
+            openmw_config::OpenMWConfiguration::from_env_or_user_config(),
+            openmw_config::try_default_user_config_file,
+        )
     };
 
     match loaded_config {
@@ -1027,6 +1049,29 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn discovery_falls_back_to_the_user_config_where_the_platform_has_no_global_config() {
+        let user_dir = std::env::temp_dir().join(format!(
+            "s3lightfixes-user-config-fallback-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_FILE.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&user_dir).unwrap();
+        std::fs::write(user_dir.join("openmw.cfg"), "content=Morrowind.esm\n").unwrap();
+
+        let config = discovered_or_user_config(
+            Err(openmw_config::ConfigError::PlatformPathUnavailable(
+                "global_config",
+            )),
+            || Ok(user_dir.join("openmw.cfg")),
+        )
+        .unwrap();
+
+        assert_eq!(config.user_config_path(), user_dir);
+
+        let _ = std::fs::remove_dir_all(user_dir);
     }
 
     #[test]
