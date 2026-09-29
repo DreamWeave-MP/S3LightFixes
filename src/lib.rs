@@ -49,7 +49,10 @@ pub fn is_fixable_plugin(plug_path: &Path) -> bool {
 /// and when no dialog can be shown, such as on a system without zenity, kdialog or yad.
 pub fn notification_box(title: &str, message: &str, no_notifications: bool) {
     #[cfg(target_os = "android")]
-    println!("{message}");
+    {
+        let _ = (title, no_notifications);
+        println!("{message}");
+    }
 
     #[cfg(not(target_os = "android"))]
     if no_notifications
