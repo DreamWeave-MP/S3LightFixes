@@ -400,7 +400,7 @@ impl LightConfig {
         }
 
         for (id, light_data) in std::mem::take(&mut self.light_overrides) {
-            match regex::Regex::new(&id) {
+            match regex::RegexBuilder::new(&id).case_insensitive(true).build() {
                 Ok(pattern) => self.light_regexes.push((pattern, light_data)),
                 Err(error) => {
                     let message = format!("Couldn't compile light override regex: {id}: {error}");
@@ -411,7 +411,7 @@ impl LightConfig {
         }
 
         for (id, light_data) in std::mem::take(&mut self.ambient_overrides) {
-            match regex::Regex::new(&id) {
+            match regex::RegexBuilder::new(&id).case_insensitive(true).build() {
                 Ok(pattern) => self.ambient_regexes.push((pattern, light_data)),
                 Err(error) => {
                     let message = format!("Couldn't compile ambient override regex: {id}: {error}");
@@ -713,6 +713,41 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("Couldn't compile excluded id regex")
+        );
+    }
+
+    #[test]
+    fn light_and_ambient_overrides_match_ids_of_any_case() {
+        let mut config = toml::from_str::<LightConfig>(
+            r#"
+            [light_overrides.Torch_256]
+            radius = 999
+
+            [ambient_overrides."Caius Cosades' House".ambient]
+            red = 64
+            green = 48
+            blue = 32
+            "#,
+        )
+        .unwrap();
+        config.no_notifications = true;
+        config.compile_regexes().unwrap();
+        let mut torch = tes3::esp::Light {
+            id: "Torch_256".to_owned(),
+            data: tes3::esp::LightData {
+                radius: 256,
+                ..tes3::esp::LightData::default()
+            },
+            ..tes3::esp::Light::default()
+        };
+
+        crate::process_light(&config, &mut torch);
+
+        assert_eq!(torch.data.radius, 999);
+        assert!(
+            config.ambient_regexes[0]
+                .0
+                .is_match("balmora, caius cosades' house")
         );
     }
 
