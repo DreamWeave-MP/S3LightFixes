@@ -1,0 +1,24 @@
+{% extends "docs/base.html" %}
+
+{% block docs_content %}
+    {{ section.content | safe }}
+    {#- A section whose body already links its pages sets extra.hide_child_cards = true. -#}
+    {% set hide_child_cards = section.extra.hide_child_cards | default(value=false) %}
+    {% if (section.pages or section.subsections) and not hide_child_cards %}
+    <div class="docs-section-links">
+        {% for child_page in section.pages %}
+            <a class="docs-section-link" href="{{ child_page.permalink | safe }}">
+                <strong>{{ child_page.title }}</strong>
+                {% if child_page.description %}<span>{{ child_page.description }}</span>{% endif %}
+            </a>
+        {% endfor %}
+        {% for subsection_path in section.subsections %}
+            {% set subsection = get_section(path=subsection_path) %}
+            <a class="docs-section-link" href="{{ subsection.permalink | safe }}">
+                <strong>{{ subsection.title }}</strong>
+                {% if subsection.description %}<span>{{ subsection.description }}</span>{% endif %}
+            </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+{% endblock docs_content %}

@@ -1,0 +1,240 @@
+# S3LightFixes. Structured facts only: the name and summary are `title` and `description` in
+# index.md. Every key is explained at
+# https://dreamweave-mp.github.io/DreamWeave-Mod-Template/guide/mod-toml/
+
+# Permanent identity. Never changes, whatever the program is called or wherever it is hosted.
+id = "55e873c9-1ddc-4b13-b59a-0eb790bb2565"
+
+# The slug names the project on this site. Release tags are bare versions, like Cargo's: 0.4.6.
+slug = "s3lightfixes"
+type = "tool"
+status = "active"
+license = "MIT"
+
+# Releases are numbered like decimals: 0.3.29 came before 0.3.3, and 0.4.58 before 0.4.6.
+versioning = "decimal"
+
+[[maintainers]]
+name = "DreamWeave"
+url = "https://github.com/DreamWeave-MP"
+
+[links]
+documentation = "@/docs/_index.md"
+donate = "https://ko-fi.com/magicaldave"
+
+# A program: StroggForge's Rust workflow (.github/workflows/release.yaml) builds it once per
+# [[platforms]] entry and publishes each release. It is not on crates.io: it depends on tes3 from
+# git, which crates.io does not accept.
+[package]
+format = "binary"
+binary = "s3lightfixes"
+
+[[platforms]]
+os = "windows"
+arch = "x86_64"
+
+[[platforms]]
+os = "macos"
+arch = "aarch64"
+
+[[platforms]]
+os = "macos"
+arch = "x86_64"
+
+[[platforms]]
+os = "linux"
+arch = "x86_64"
+
+# A command-line program for a terminal such as Termux, not an app.
+[[platforms]]
+os = "android"
+arch = "aarch64"
+
+# The same program built for ARM64 Linux handhelds.
+[[platforms]]
+os = "linux"
+arch = "aarch64"
+variant = "portmaster"
+
+[install]
+notes = """
+**Arch Linux**: the AUR package
+[`s3lightfixes-git`](https://aur.archlinux.org/packages/s3lightfixes-git) builds the default branch
+from source and installs `s3lightfixes` to `/usr/bin`. With an AUR helper, `yay -S
+s3lightfixes-git`; without one, `git clone https://aur.archlinux.org/s3lightfixes-git.git`, then
+`makepkg -si` in that folder. [Start here](@/docs/start-here.md#arch-linux) has the details.
+"""
+post_install = """
+Run `s3lightfixes`. It reads your load order from `openmw.cfg` and writes
+`S3LightFixes.omwaddon`; enable that plugin last in your load order, and run the program again
+whenever your mods change. [Start here](@/docs/start-here.md) walks through a first run.
+"""
+
+[[credits]]
+name = "vtastek"
+role = "Lightfixes.pl, the tes3cmd script this all descends from"
+url = "https://modding-openmw.com/tips/custom-shaders/#lightfixes-plugin"
+
+[[credits]]
+name = "wazabear"
+role = "Waza-lightfixes, the program S3LightFixes succeeds"
+url = "https://github.com/glassmancody/waza_lightfixes"
+
+[[credits]]
+name = "Greatness7"
+role = "tes3, the Rust library that reads and writes the plugins"
+url = "https://github.com/Greatness7"
+
+[[credits]]
+name = "Arrean"
+role = "Infinite lights that stay infinite"
+url = "https://github.com/McArren"
+
+# Every published version, oldest first. To release, add the next one here with the day you
+# publish it, set the same version in Cargo.toml, commit, and push its tag: git tag 0.4.61.
+# StroggForge builds and publishes it, then records it in mod.lock beside this file.
+#
+# Releases from v0.1.1 to v0.3.3 (December 2024 to May 2025) are on GitHub under tags with a v
+# prefix. A Rust project's release tag here is the bare version, so they cannot be declared: the
+# site would look for tags that do not exist and list them as unreleased.
+#
+# Cargo.toml says 0.4.59, which is what 0.4.6 was built with and reports as its version. It sorts
+# below 0.4.6, so it is not declared; the next release needs a version above 0.4.6 in both files.
+
+[[releases]]
+version = "0.4.0"
+date = 2025-06-17
+summary = "Pulsing lights, carried-light duration and exclusions become settings, and openmw.cfg is read through openmw-config."
+added = [
+    "`disable_pulse` and `--no-pulse` remove the pulse flags from every light.",
+    "`duration_mult` and `--duration-mult` multiply light durations.",
+    "`excluded_ids` and `excluded_plugins`: regular expressions for light ids and plugins to leave alone, with a built-in list of plugins that do not parse.",
+]
+changed = [
+    "OpenMW's configuration is read with the openmw-config crate.",
+    "A `lightconfig.toml` that leaves out a setting uses its default instead of failing.",
+]
+fixed = ["The generated plugin's header counts its records correctly."]
+
+[[releases]]
+version = "0.4.1"
+date = 2025-06-17
+summary = "Finds the OpenMW config in its default Windows location, and reports every handled error in a notification."
+fixed = [
+    "Finding openmw.cfg in its default Windows location, including a Documents folder that OneDrive has moved.",
+    "Every error the program handles is shown as a notification, not only some of them.",
+]
+
+[[releases]]
+version = "0.4.2"
+date = 2025-07-04
+summary = "Per-light and per-cell overrides, and plugins read in parallel."
+added = [
+    "`--light` and `[light_overrides]`: color, radius, duration and flags for the lights whose id matches a regular expression.",
+    "`--ambient` and `[ambient_overrides]`: ambient, sunlight and fog colors and fog density for the interior cells whose id matches.",
+    "`-U`, `--update-light-config`, and `save_config` save the settings of a run into `lightconfig.toml`.",
+    "`disable_interior_sun` in `lightconfig.toml`, the setting behind `--classic`.",
+]
+changed = ["Plugins are read in parallel, and only their cell and light records."]
+known_issues = ["`excluded_plugins` is read but not applied, until 0.4.51."]
+fixed = [
+    "A relative `--openmw-cfg` path is resolved from the working directory.",
+    "Only cells that were changed are written to the plugin.",
+    "Interior cells without ambient data are no longer reported as changed.",
+]
+
+[[releases]]
+version = "0.4.3"
+date = 2025-07-04
+summary = "Builds with stable Rust. The program is unchanged."
+
+[[releases]]
+version = "0.4.4"
+date = 2025-07-07
+summary = "vfstool_lib 0.2.0, which no longer pulls in DirectXTex. The program is unchanged."
+
+# 0.4.41 was tagged but never published; 0.4.42 reverts its one change.
+[[releases]]
+version = "0.4.42"
+date = 2025-08-07
+summary = "The same program as 0.4.4: 0.4.41's lookup of openmw.cfg in the working directory and its parent is reverted."
+
+[[releases]]
+version = "0.4.43"
+date = 2025-08-15
+summary = "Cells the plugin replaces are written without a water height."
+fixed = ["Every cell the plugin replaces is written without the water height of the plugin it was copied from."]
+
+[[releases]]
+version = "0.4.44"
+date = 2025-09-02
+summary = "Licensed GPL-3.0-or-later, with dependencies updated."
+added = ["A license: GPL-3.0-or-later."]
+
+[[releases]]
+version = "0.4.45"
+date = 2025-09-26
+summary = "Dependency updates and a corrected linker for ARM64 Linux builds."
+
+[[releases]]
+version = "0.4.46"
+date = 2025-10-03
+summary = "An openmw-config update that fixes how the user openmw.cfg is handled, and the license in every archive."
+fixed = ["Handling of the user openmw.cfg, through an updated openmw-config."]
+added = ["`LICENSE` in every release archive."]
+
+# 0.4.47, 0.4.48 and 0.4.49 were tagged but never published; 0.4.50 carries their changes.
+[[releases]]
+version = "0.4.50"
+date = 2025-10-19
+summary = "Overrides apply in the order lightconfig.toml lists them, and excluded ids also exclude cells."
+changed = [
+    "`excluded_ids` also matches interior cell ids.",
+    "Light and ambient overrides keep the order they have in `lightconfig.toml`, so the first match is the first listed.",
+]
+fixed = ["Builds on macOS again, with an updated native-dialog."]
+
+[[releases]]
+version = "0.4.51"
+date = 2025-12-17
+summary = "Excluded plugins are excluded again."
+fixed = ["`excluded_plugins` is applied again, without regard to case. From 0.4.2 on it had been read and ignored."]
+
+[[releases]]
+version = "0.4.52"
+date = 2025-12-17
+summary = "A build for Intel Macs."
+added = ["An Intel macOS archive, beside Apple silicon, Windows and Linux."]
+
+[[releases]]
+version = "0.4.53"
+date = 2025-12-18
+summary = "Archives are named `s3lightfixes-<platform>.zip`. The program is unchanged."
+
+# 0.4.54 was tagged but never published.
+[[releases]]
+version = "0.4.55"
+date = 2025-12-19
+summary = "Release workflow changes only. The program is unchanged."
+
+[[releases]]
+version = "0.4.56"
+date = 2025-12-19
+summary = "Release workflow changes only. The program is unchanged."
+
+[[releases]]
+version = "0.4.57"
+date = 2025-12-20
+summary = "Release workflow changes only. The program is unchanged."
+
+[[releases]]
+version = "0.4.58"
+date = 2025-12-22
+summary = "A regular expression that does not compile is reported instead of dropped."
+fixed = ["An invalid `excluded_ids` or `excluded_plugins` pattern shows a notification naming it."]
+
+[[releases]]
+version = "0.4.6"
+date = 2026-04-06
+summary = "openmw-config 0.1.93 and an updated tes3. This build reports its version as 0.4.59."
+changed = ["OpenMW's configuration is read with openmw-config 0.1.93."]

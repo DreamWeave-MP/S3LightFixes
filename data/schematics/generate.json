@@ -1,0 +1,20 @@
+{
+  "id": "generate",
+  "title": "One run, one plugin",
+  "description": "S3LightFixes reads the lights and interior cells of every plugin in your load order and writes the fixed versions into one plugin that loads after them.",
+  "mode": "flow",
+  "direction": "horizontal",
+  "nodes": [
+    { "id": "cfg", "kind": "source", "title": "openmw.cfg", "detail": "Your load order: every content= file, found through the data= directories." },
+    { "id": "tool", "kind": "tool", "title": "s3lightfixes", "detail": "Takes the last version of each light record, recolors it, resizes its radius, stretches its duration and strips its flicker." },
+    { "id": "plugin", "kind": "result", "title": "S3LightFixes.omwaddon", "detail": "Every light, fixed, plus the interior cells you asked to relight. Enable it last." },
+    { "id": "settings", "kind": "input", "role": "support", "title": "lightconfig.toml", "detail": "Multipliers, exclusions and per-light overrides. Written on the first run; command-line options override it." },
+    { "id": "log", "kind": "result", "role": "support", "title": "lightconfig.log", "detail": "One line per record changed, old value and new, beside lightconfig.toml." }
+  ],
+  "edges": [
+    { "from": "cfg", "to": "tool" },
+    { "from": "tool", "to": "plugin" },
+    { "from": "settings", "to": "tool", "kind": "support", "label": "settings" },
+    { "from": "tool", "to": "log", "kind": "support", "label": "writes" }
+  ]
+}

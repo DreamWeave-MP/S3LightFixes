@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% import "macros/dw.html" as dw_macros %}
+{% import "macros/project.html" as project_model %}
+
+{#- The root section. With redirect_to set in content/_index.md this never renders: the site
+    opens on its one project. Without it, this is the catalog of every project. -#}
+{%- block content %}
+{%- if paginator %}{% set listed = paginator.pages %}{% else %}{% set listed = section.pages %}{% endif %}
+<header class="dw-hero">
+    <div class="dw-shell">
+        {%- if paginator %}{% set listed_total = paginator.total_pages %}{% else %}{% set listed_total = section.pages | length %}{% endif %}
+        <p class="dw-kicker"><span>Catalog</span><span>{{ listed_total }} project{{ listed_total | pluralize }}</span>{% if paginator and paginator.number_pagers > 1 %}<span>page {{ paginator.current_index }} of {{ paginator.number_pagers }}</span>{% endif %}</p>
+        <h1 class="dw-hero__title">{% if section.title %}{{ section.title }}{% else %}{{ config.title }}{% endif %}</h1>
+        {%- if section.description or config.description %}<p class="dw-hero__summary">{% if section.description %}{{ section.description }}{% else %}{{ config.description }}{% endif %}</p>{% endif %}
+    </div>
+</header>
+<div class="dw-shell">
+    {%- if section.content %}<div class="dw-prose dw-catalog__intro">{{ section.content | safe }}</div>{% endif %}
+    <ol class="dw-catalog">
+    {%- for item in listed %}
+        {%- set project = false %}
+        {%- if item.colocated_path %}
+        {%- set mod_toml = load_data(path="content/" ~ item.colocated_path ~ "mod.toml", required=false) %}
+        {%- if mod_toml %}
+        {%- set item_ci = false %}{% if dw and item.colocated_path in dw.projects %}{% set item_ci = dw.projects[item.colocated_path] %}{% endif %}
+        {%- set model_text = project_model::model(path=item.colocated_path, page=item, ci=item_ci) %}
+        {%- set project = load_data(literal=model_text, format="json") %}
+        {%- endif %}
+        {%- endif %}
+        <li class="dw-catalog__row">
+            <h2 class="dw-catalog__name"><a href="{{ item.permalink | safe }}">{{ item.title }}</a></h2>
+            <p class="dw-catalog__summary">{{ item.description | default(value="") }}</p>
+            <div class="dw-catalog__facts">
+                {%- if project %}
+                <span class="dw-badge">{{ dw_macros::type_label(type=project.type) }}</span>
+                {%- if project.heads.stable is defined %}<span class="dw-badge dw-badge--ok">{{ project.heads.stable.version }}</span>{% elif project.heads.development is defined %}<span class="dw-badge dw-badge--info">dev</span>{% endif %}
+                {%- if project.status != "active" %}<span class="dw-badge dw-badge--warn">{{ project.status }}</span>{% endif %}
+                {%- endif %}
+            </div>
+            {%- if item.taxonomies.tags is defined %}
+            <div class="dw-catalog__meta">
+                <ul class="dw-tags">{% for tag in item.taxonomies.tags %}<li><a href="{{ get_taxonomy_url(kind='tags', name=tag) | safe }}">{{ tag }}</a></li>{% endfor %}</ul>
+            </div>
+            {%- endif %}
+        </li>
+    {%- endfor %}
+    </ol>
+    {%- if paginator and paginator.number_pagers > 1 %}
+    <nav class="dw-pagination" aria-label="Catalog pages">
+        {%- if paginator.previous %}<a class="dw-button dw-button--small" href="{{ paginator.previous | safe }}" rel="prev">← Previous</a>{% else %}<span></span>{% endif %}
+        <span class="dw-pagination__pages">
+        {%- for number in range(start=1, end=paginator.number_pagers + 1) %}
+            {%- if number == paginator.current_index %}<span aria-current="page">{{ number }}</span>
+            {%- elif number == 1 %}<a href="{{ paginator.first | safe }}">1</a>
+            {%- else %}<a href="{{ paginator.base_url | safe }}{{ number }}/">{{ number }}</a>{% endif %}
+        {%- endfor %}
+        </span>
+        {%- if paginator.next %}<a class="dw-button dw-button--small" href="{{ paginator.next | safe }}" rel="next">Next →</a>{% else %}<span></span>{% endif %}
+    </nav>
+    {%- endif %}
+</div>
+{%- endblock content %}

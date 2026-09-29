@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""DreamWeave Mod Template build tool. See `./buildSite --help`, or docs in content/guide/.
+
+Needs Python 3.11+, PyYAML (for YAML frontmatter), git, and Zola for anything that renders.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "tools"))
+
+from dreamweave.cli import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

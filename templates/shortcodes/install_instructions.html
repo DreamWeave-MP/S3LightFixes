@@ -1,0 +1,14 @@
+{#- Kept from V4, where it rendered the install widget in the page body. V5 builds the Install
+    section from mod.toml, so this points there instead of rendering a second copy. -#}
+<aside class="dw-callout dw-callout--tip" role="note">
+  <p class="dw-callout__title">Installing</p>
+  {%- if describe %}
+  <ol>
+    <li>Download the archive from this page.</li>
+    <li>Extract it to a folder of its own, or install it with your mod manager.</li>
+    <li>Add the <code>openmw.cfg</code> lines from <a href="#install">Install</a>, with your own folder.</li>
+  </ol>
+  {%- else %}
+  <p>Download options, the <code>openmw.cfg</code> lines for your mods folder and what is in the archive are under <a href="#install">Install</a>.</p>
+  {%- endif %}
+</aside>
