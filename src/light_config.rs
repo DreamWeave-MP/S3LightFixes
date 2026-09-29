@@ -206,7 +206,7 @@ impl LightConfig {
                 &format!("Lightconfig.toml couldn't be read: {error}"),
                 early_no_notifications,
             );
-            std::process::exit(256);
+            std::process::exit(1);
         });
 
         Ok((config, false))

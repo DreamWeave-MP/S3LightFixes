@@ -531,7 +531,7 @@ fn auto_enable_plugin(
         }
         Err(err) => {
             eprintln!("{err}");
-            exit(256);
+            exit(1);
         }
     }
 }
@@ -649,7 +649,7 @@ pub fn run() -> io::Result<()> {
             "[ CRITICAL FAILURE ]: FAILED TO RESOLVE OUTPUT DIRECTORY!",
             light_config.no_notifications,
         );
-        exit(256);
+        exit(1);
     });
 
     if light_config.debug {
