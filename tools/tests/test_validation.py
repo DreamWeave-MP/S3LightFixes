@@ -248,6 +248,24 @@ class RepositoryRules(unittest.TestCase):
         self.scratch.add_project("gamma", 'id = "3c4d5e6f-7a8b-4c9d-8e0f-2a3b4c5d6e7f"\nslug = "gamma"\n' + crate.replace('"alpha"', '"gamma"'), title="Gamma")
         self.assertError("a repository has at most one Rust program and one Rust library, which share its bare version tags; content/alpha already is its library")
 
+    def test_a_programs_include_paths_start_where_stroggforge_builds_it(self):
+        program = 'id = "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e"\nslug = "beta"\ntype = "tool"\n[package]\nformat = "binary"\nbinary = "beta"\ninclude = ["README.md", "assets"]\n[[platforms]]\nos = "linux"\narch = "x86_64"\n'
+        self.scratch.add_project("beta", program, title="Beta")
+        self.scratch.write("README.md", "At the root.\n")
+        self.scratch.write("assets/icon.txt", "icon\n")
+        self.assertEqual(self.errors(), [], "a program built at the root packs from the root")
+        self.scratch.write("beta/Readme.md", "In the workspace member, in another case.\n")
+        self.assertError("'assets' is not a file or directory in beta/, the directory StroggForge builds the program in; include paths start there")
+        self.scratch.write("beta/assets/icon.txt", "icon\n")
+        self.assertEqual(self.errors(), [], "a workspace member's files match in any case, as StroggForge finds them")
+
+    def test_a_release_tag_is_a_git_tag_and_its_own(self):
+        release = '[[releases]]\nversion = "{version}"\ndate = 2026-01-02\ntag = "{tag}"\n'
+        self.scratch.add_project("lantern", LANTERN.replace("[[releases]]", release.format(version="0.9.0", tag="lantern-1.0.0") + "\n[[releases]]", 1), files=LANTERN_FILES)
+        self.assertError("more than one release is tagged lantern-1.0.0")
+        self.scratch.add_project("lantern", LANTERN.replace("[[releases]]", release.format(version="0.9.0", tag="old tag") + "\n[[releases]]", 1), files=LANTERN_FILES)
+        self.assertError("'old tag' is not a git tag name like v0.3.3")
+
     def test_a_v4_changelog_file_is_refused(self):
         self.scratch.add_project("lantern", LANTERN, files={**LANTERN_FILES, "changelog.md": "+++\ntitle = \"Changelog\"\n+++\n"})
         self.assertError("collides with the changelog page CI generates at /lantern/changelog/")
