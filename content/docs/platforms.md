@@ -1,6 +1,6 @@
 +++
 title = "Platforms, license and history"
-description = "What each download is, the AUR package, how releases are signed, the license and when it changed, what CI tests, and what has changed since 0.4.6."
+description = "What each download is, the AUR package, how releases are signed, the license and when it changed, what CI tests, and what upgrading from 0.4 means."
 weight = 70
 
 [extra]
@@ -21,8 +21,8 @@ Every download is the same command-line program, built for one system.
 | `s3lightfixes-Android-ARM64.zip` | Android 6 (API 23) or newer, ARM64. A program for a terminal such as Termux, not an app. Messages are printed, never shown as dialogs |
 
 Each archive the current workflow builds holds `s3lightfixes` (`s3lightfixes.exe` on Windows),
-`s3lightfixes-README.md`, `s3lightfixes-LICENSE`, and a Sigstore bundle. The Android and PortMaster builds are new since
-0.4.6; that release has the four desktop archives.
+`s3lightfixes-README.md`, `s3lightfixes-LICENSE`, and a Sigstore bundle. The Android and PortMaster builds are new in
+0.5.0; 0.4.53 to 0.4.6 have the four desktop archives.
 
 On Android the user config is read from `/storage/emulated/0/Alpha3/config`, where OpenMW's
 Android port keeps it; pass `--openmw-cfg` for anything else.
@@ -67,8 +67,8 @@ Each GitHub release also links every archive's VirusTotal scan.
 
 ## License
 
-MIT, from the first release after 0.4.6. Releases 0.4.44 to 0.4.6 are GPL-3.0-or-later; earlier
-ones were published without a license.
+MIT, from 0.5.0. Releases 0.4.44 to 0.4.6 are GPL-3.0-or-later; earlier ones were published
+without a license.
 
 ## What is tested
 
@@ -80,34 +80,41 @@ The tests cover the settings and their merging, override parsing and precedence,
 arithmetic, which version of a record wins, the masters, the cells, the log, the config paths, and
 `--auto-enable`'s backup. Some run the program itself, on a scratch `openmw.cfg`.
 
-## Since 0.4.6
+## Upgrading from 0.4
 
-The default branch has changed a great deal since 0.4.6, the latest release. The development build
-and the AUR package have all of it; the next release will.
+0.5.0, the first release after 0.4.6, changed the command line and the override formats. Most runs
+need no change; scripts and launchers that pass options may. After upgrading, `s3lightfixes
+--validate-config` says whether `lightconfig.toml` still reads as intended.
 
 **Breaking**
 
 - `-V` is `--version`. `--colored-value` no longer has a short form.
-- `-i`, `--info` is gone: use `--version`. `-l`, `--write-log`, which wrote the whole plugin as text,
-  is gone: every run writes `lightconfig.log` instead.
+- `-i`, `--info` is gone: use `--version`. `-l`, `--write-log` and `save_log`, which wrote the whole
+  plugin as text, are gone: every run writes `lightconfig.log` instead.
 - Flag names in overrides are the Construction Set's, with underscores: `FLICKER_SLOW` and
-  `PULSE_SLOW`. `FLICKERSLOW` and `PULSESLOW` are errors. `flag` now replaces the whole flag set
-  and takes any of the nine flags, or a list of them.
+  `PULSE_SLOW`. `FLICKERSLOW` and `PULSESLOW` are errors. `flag` takes any of the nine flags, or a
+  list of them, and replaces the light's whole flag set as before, so name `CAN_CARRY` to keep a
+  light carryable.
 - `--ambient` colors on the command line are `red`, `green` and `blue`. In `lightconfig.toml`,
   `hue`, `saturation` and `value` still work.
 - `--openmw-cfg` takes a folder holding `openmw.cfg`, or a file named exactly `openmw.cfg`.
-- Licensed MIT instead of GPL-3.0-or-later.
 
 **Added**
 
 - `red`, `green` and `blue` as a fixed color in light overrides, and `red_mult`, `green_mult` and
   `blue_mult`.
 - `--dry-run` and `--validate-config`, also as `dry_run` and `validate_config` in the file.
+  `--validate-config` fails on a key in `lightconfig.toml` it does not know; a run warns about it.
 - `--disable-negative-lights`: negative lights can be kept.
 - `lightconfig.log`, with a summary and one line per changed record, also printed on every run.
 - A backup of `openmw.cfg` before `--auto-enable` edits it.
 - `--generate-completion` and `--generate-manpage`.
 - Android and PortMaster builds.
+
+**Changed**
+
+- Licensed MIT instead of GPL-3.0-or-later.
+- The Linux builds need glibc 2.34 or newer, down from 2.39.
 
 **Fixed**
 

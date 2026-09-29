@@ -23,8 +23,8 @@ from your load order.
 
 {% callout(kind="note", title="Which version these pages describe") %}
 These pages describe the program on the default branch, which is what the development build and
-the AUR package carry. The latest release, 0.4.6, is older and differs in places:
-[what changed since 0.4.6](@/docs/platforms.md#since-0-4-6) lists how.
+the AUR package carry, and what releases are made from. 0.5.0 changed the command line: coming from
+0.4.6 or earlier, [Upgrading from 0.4](@/docs/platforms.md#upgrading-from-0-4) lists how.
 {% end %}
 
 ## Learn it

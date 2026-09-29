@@ -2,7 +2,7 @@
 name = "s3lightfixes"
 authors = ["Dave Corley", "MOMW Contributors"]
 license = "MIT"
-version = "0.4.59"
+version = "0.5.0"
 edition = "2024"
 
 [dependencies]

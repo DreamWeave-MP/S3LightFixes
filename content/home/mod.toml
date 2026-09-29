@@ -91,15 +91,15 @@ role = "Infinite lights that stay infinite"
 url = "https://github.com/McArren"
 
 # Every published version, oldest first. To release, add the next one here with the day you
-# publish it, set the same version in Cargo.toml, commit, and push its tag: git tag 0.4.61.
+# publish it, set the same version in Cargo.toml, commit, and push its tag: git tag 0.5.1.
 # StroggForge builds and publishes it, then records it in mod.lock beside this file.
 #
 # Releases from v0.1.1 to v0.3.3 (December 2024 to May 2025) were tagged with a v prefix, so each
 # names its tag. Their GitHub releases' archives are named for the machine that built them
 # (windows-latest.zip), not for a platform, so they are listed without downloads.
 #
-# Cargo.toml says 0.4.59, which is what 0.4.6 was built with and reports as its version. It sorts
-# below 0.4.6, so it is not declared; the next release needs a version above 0.4.6 in both files.
+# 0.4.6 was built with 0.4.59 in Cargo.toml, which sorts below it, so it reports 0.4.59. 0.5.0 is
+# the next version that sorts above 0.4.6 both as a decimal and as Cargo and pacman compare them.
 
 [[releases]]
 version = "0.1.1"
@@ -431,3 +431,54 @@ version = "0.4.6"
 date = 2026-04-06
 summary = "openmw-config 0.1.93 and an updated tes3. This build reports its version as 0.4.59."
 changed = ["OpenMW's configuration is read with openmw-config 0.1.93."]
+
+[[releases]]
+version = "0.5.0"
+date = 2026-09-29
+summary = "A cleaned-up command line, runs that check or preview without writing anything, a log of every change, RGB colors in overrides, and the MIT license."
+migration = """
+Most runs need no change. Scripts and launchers that pass options do: `-V` is now `--version`, so
+give `--colored-value` in full; use `--version` for `-i`; drop `-l`, since every run writes
+`lightconfig.log`. Spell light flags `FLICKER_SLOW` and `PULSE_SLOW`, and give `--ambient` colors as
+`red`, `green` and `blue`. `--openmw-cfg` needs a folder, or a file named exactly `openmw.cfg`. Then
+run `s3lightfixes --validate-config`: it says `save_log` can be deleted from `lightconfig.toml`, and
+fails on any other key it does not read.
+"""
+breaking = [
+    "`-V` is `--version`, and `--colored-value` no longer has a short form.",
+    "`-i`, `--info` is gone: use `--version`.",
+    "`-l`, `--write-log` and `save_log`, which wrote the whole plugin as text, are gone: every run writes `lightconfig.log` instead.",
+    "Light flags in overrides are spelled as in the Construction Set, `FLICKER_SLOW` and `PULSE_SLOW`; `FLICKERSLOW` and `PULSESLOW` are errors.",
+    "`--ambient` colors on the command line are `red`, `green` and `blue`, 0 to 255, not `hue`, `saturation` and `value`. `lightconfig.toml` still reads the old form.",
+    "`--openmw-cfg` takes a folder holding `openmw.cfg`, or a file named exactly `openmw.cfg`, and stops the run with exit code 127 on anything else.",
+]
+added = [
+    "`--dry-run` reads everything and prints every change without writing a file.",
+    "`--validate-config` checks `lightconfig.toml`, the options and every pattern, and stops. It fails on a key in `lightconfig.toml` it does not know, which a run warns about and ignores.",
+    "`dry_run` and `validate_config` in `lightconfig.toml`.",
+    "`red`, `green` and `blue` as a fixed color in light overrides, and `red_mult`, `green_mult` and `blue_mult`, applied last.",
+    "`flag` in light overrides takes any of the nine light flags, or a list of them, so an override can keep `CAN_CARRY`.",
+    "`--disable-negative-lights` and `disable_negative_lights`: negative lights can be kept.",
+    "`lightconfig.log`: the config, output and counts of a run, and one line per changed record. Every run also prints it.",
+    "`--auto-enable` backs up `openmw.cfg` to `openmw.cfg.s3lightfixes.bak` before editing it, and edits nothing if the backup fails.",
+    "`--generate-completion` for bash, elvish, fish, PowerShell and zsh, and `--generate-manpage`.",
+    "Android and PortMaster archives.",
+    "A Rust library, `s3lightfixes`, with the settings, overrides and light arithmetic the program uses.",
+]
+changed = [
+    "Licensed MIT, instead of GPL-3.0-or-later.",
+    "`openmw.cfg` is found as OpenMW finds its root config: `OPENMW_CONFIG`, `OPENMW_CONFIG_DIR`, beside the program, the Linux global config, then the user's.",
+    "The Linux builds need glibc 2.34 or newer, down from 2.39.",
+    "Every archive holds `s3lightfixes`, `s3lightfixes-README.md`, `s3lightfixes-LICENSE` and a Sigstore bundle.",
+    "openmw-config 1.1, and updated dependencies.",
+]
+fixed = [
+    "The user `openmw.cfg` is read when no other is found, on Windows and macOS too.",
+    "Exclusions and light and ambient overrides match ids and plugin names in any case. An override pattern with a capital letter matched nothing.",
+    "Infinite lights stay infinite, unless an override gives them a fixed duration.",
+    "A plugin named `S3LightFixes` is never read as input, whatever its extension.",
+    "An unreadable `lightconfig.toml` exits with status 1. On Linux and macOS it exited 0.",
+    "Messages are printed when no dialog can be shown, such as on Linux without zenity, kdialog or yad.",
+    "Saving rewrites `lightconfig.toml` under the name it was found with, instead of adding a second file on a case-sensitive system.",
+    "A dry run piped into `head` no longer ends in an error.",
+]

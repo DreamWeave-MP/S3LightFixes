@@ -120,7 +120,7 @@ Each run prints a summary and one line per changed record, and writes the same t
 `Dry run: no files written` in front, and writes no log.
 
 ```text
-# S3LightFixes 0.4.59
+# S3LightFixes 0.5.0
 # config: /home/you/.config/openmw/openmw.cfg
 # output: /home/you/.local/share/openmw/data/S3LightFixes.omwaddon
 # content files: 3

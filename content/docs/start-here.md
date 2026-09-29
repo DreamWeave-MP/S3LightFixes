@@ -68,7 +68,7 @@ your config sets none. A message box says where. In a terminal it also prints on
 record it changed. For Morrowind with both expansions, that starts:
 
 ```text
-# S3LightFixes 0.4.59
+# S3LightFixes 0.5.0
 # config: /home/you/.config/openmw/openmw.cfg
 # output: /home/you/.local/share/openmw/data/S3LightFixes.omwaddon
 # content files: 3

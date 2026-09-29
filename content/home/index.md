@@ -51,4 +51,5 @@ Android and PortMaster handhelds.
   and setting.
 
 These pages describe the default branch, which the development build and the AUR package carry.
-The latest release, 0.4.6, is older: [what has changed since](@/docs/platforms.md#since-0-4-6).
+Coming from 0.4.6 or earlier? [Upgrading from 0.4](@/docs/platforms.md#upgrading-from-0-4) lists
+what 0.5.0 changed.
