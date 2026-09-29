@@ -60,3 +60,10 @@ goatcounter = "dreamweave-mp"
 [extra.comments]
 enabled = true
 category = "General"
+
+# The hero draws a Velothi hall of 676 Morrowind lights and the lantern retuning them, live with
+# three.js r180 in static/js/vendor: static/js/s3lightfixes-hero.js. Offline documentation never
+# loads it.
+[extra.hero]
+script = "js/s3lightfixes-hero.js"
+preload = ["js/vendor/three.module.min.js", "js/vendor/three.core.min.js"]

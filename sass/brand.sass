@@ -35,6 +35,37 @@
       opacity: 1
       filter: drop-shadow(0 0 1rem color-mix(in oklab, var(--dw-accent) 40%, transparent))
 
+// The hero's art is static/js/s3lightfixes-hero.js: a hall of lights and the lantern retuning them.
+// The lantern logo above stands in until its first frame, and stays without WebGL; once the hall
+// is drawn, the logo steps aside. Taps on the hall are the hero's own, not a zoom.
+.dw-hero__art > .s3-hero__canvas
+  opacity: 0
+  transition: opacity .8s var(--dw-ease)
+
+.dw-hero__art.is-live > .s3-hero__canvas
+  opacity: 1
+
+.dw-hero--art
+  touch-action: manipulation
+
+  &::after
+    transition: opacity .8s var(--dw-ease)
+
+  &:has(> .dw-hero__art.is-live)::after
+    opacity: 0
+
+// On a phone or a tablet the words need the width, so the hall's lantern hangs above them.
+@media (max-width: 900px)
+  .dw-hero--art .dw-hero__text
+    padding-top: 11rem
+
+  .dw-hero.dw-hero--art::after
+    top: 1rem
+    right: 50%
+    width: 9rem
+    transform: translateX(50%)
+    opacity: 1
+
 // The header's top edge in the lantern's four panes: cyan, magenta, yellow and black.
 .dw-header
   border-top-color: transparent
