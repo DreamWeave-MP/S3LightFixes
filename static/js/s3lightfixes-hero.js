@@ -1663,13 +1663,15 @@ function mount(root) {
   let lanternScale = 1;
   const lanternHome = new THREE.Vector3();
   const vanishing = new THREE.Vector2();
+  const drawnSize = new THREE.Vector2();
   function layout() {
     const rect = root.getBoundingClientRect();
     width = Math.max(1, Math.round(rect.width));
     height = Math.max(1, Math.round(rect.height));
     const dpr = Math.min(window.devicePixelRatio || 1, small ? 1.5 : 1.75) * quality.level;
-    renderer.setPixelRatio(dpr);
-    renderer.setSize(width, height, false);
+    if (renderer.getPixelRatio() !== dpr) renderer.setPixelRatio(dpr);
+    const drawn = renderer.getSize(drawnSize);
+    if (drawn.x !== width || drawn.y !== height) renderer.setSize(width, height, false);
     const w = Math.max(1, Math.floor(width * dpr));
     const h = Math.max(1, Math.floor(height * dpr));
     sceneTarget.setSize(w, h);
