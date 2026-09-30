@@ -1253,9 +1253,20 @@ function mount(root) {
   const hallLength = small ? 110 : HALL.length;
   const hall = hallGeometry(hallLength);
   const sandstone = '#8a7358';
-  scene.add(new THREE.Mesh(hall.floor, surface(0, '#6f604e', 0.55)));
-  for (const wall of hall.walls) scene.add(new THREE.Mesh(wall, surface(1, sandstone, 0.8)));
-  scene.add(new THREE.Mesh(hall.vault, surface(2, '#7c6a55', 0.85)));
+  // The floor, walls and vault draw after everything standing in front of them, so the stone
+  // hidden behind a pilaster, a rib or a fixture is never shaded: three.js otherwise orders opaque
+  // meshes by material before depth, and these were made first. Drawn last, they must lose a tie
+  // in depth as they did when drawn first, so they pass only where strictly nearer.
+  const hallSurfaces = [
+    new THREE.Mesh(hall.floor, surface(0, '#6f604e', 0.55)),
+    ...hall.walls.map((wall) => new THREE.Mesh(wall, surface(1, sandstone, 0.8))),
+    new THREE.Mesh(hall.vault, surface(2, '#7c6a55', 0.85)),
+  ];
+  for (const mesh of hallSurfaces) {
+    mesh.renderOrder = 1;
+    mesh.material.depthFunc = THREE.LessDepth;
+    scene.add(mesh);
+  }
   const bays = Math.ceil(hallLength / HALL.spacing) + 2;
   const pilasters = new THREE.InstancedMesh(pilasterGeometry(), surface(3, '#9a8264', 0.7), bays * 2);
   const ribs = new THREE.InstancedMesh(ribGeometry(), surface(3, '#9a8264', 0.7), bays);
