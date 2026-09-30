@@ -66,6 +66,7 @@ const FIXED_GAIN = 1.55;  // the fixed colours are darker by design; the hall is
 
 // The stutter the neon shows now and then, as intervals of its beat: short, short, long, short.
 const STUTTER = [1, 1, 2, 1];
+const STUTTER_BEATS = STUTTER.reduce((sum, beats) => sum + beats, 0);
 const STUTTER_BEAT = 0.42;
 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1585,35 +1586,70 @@ function mount(root) {
     header.draw([[['# S3LightFixes 0.5.0', 'comment']], [['# changed lights: ', 'comment'], [String(count), count ? 'new' : 'comment']]]);
   }
   const screen = new THREE.Vector3();
+  // placeCard's working space, kept from card to card and frame to frame.
+  const signCorners = [-0.8, 1.25, 0.8, 1.25, -0.8, -1.3, 0.8, -1.3];
+  const spotX = new Float64Array(6);
+  const spotY = new Float64Array(6);
+  const lanternBox = { left: 0, right: 0, top: 0, bottom: 0 };
+  const wordsBox = { left: 0, right: 0, top: 0, bottom: 0 };
+  const signBox = { left: 0, right: 0, top: 0, bottom: 0 };
+  const headerBox = { left: 0, right: 0, top: 0, bottom: 0 };
+  function area(box, left, top, card) {
+    return Math.max(0, Math.min(box.right, left + card.width) - Math.max(box.left, left)) * Math.max(0, Math.min(box.bottom, top + card.height) - Math.max(box.top, top));
+  }
+  function spotCost(left, top, card) {
+    const off = Math.max(0, 8 - left) + Math.max(0, left + card.width - width + 8) + Math.max(0, 8 - top) + Math.max(0, top + card.height - height + 8);
+    const signCost = signStart !== null ? area(signBox, left, top, card) * 2 : 0;
+    return area(lanternBox, left, top, card) * 2 + area(wordsBox, left, top, card) * 3 + area(place.facts, left, top, card) * 3 + area(headerBox, left, top, card) * 2 + signCost + off * card.height * 4;
+  }
   function placeCard(card, age) {
     screen.copy(card.anchor).project(camera);
     const sx = (screen.x + 1) / 2 * width;
     const sy = (1 - screen.y) / 2 * height - age * 10;
     if (screen.z > 1) return;
     const words = place.words;
-    const lanternBox = { left: place.x - place.size * 0.25, right: place.x + place.size * 0.25, top: place.y - place.size * 0.45, bottom: place.y + place.size * 0.2 };
-    const spots = [
-      [sx + 22, sy - card.height * 0.5],
-      [sx + 22, sy - card.height - 22],
-      [sx + 22, sy + 18],
-      [sx - 22 - card.width, sy - card.height - 22],
-      [sx - 22 - card.width, sy - card.height * 0.5],
-      [sx - 22 - card.width, sy + 18],
-    ];
-    const wordsBox = { left: words.left - 8, right: words.right + 8, top: words.top - 8, bottom: words.bottom + 8 };
-    const corners = [[-0.8, 1.25], [0.8, 1.25], [-0.8, -1.3], [0.8, -1.3]].map(([cx, cy]) => {
-      screen.set(cx, cy, 0).applyMatrix4(sign.matrixWorld).project(camera);
-      return [(screen.x + 1) / 2 * width, (1 - screen.y) / 2 * height];
-    });
-    const signBox = { left: Math.min(...corners.map((c) => c[0])), right: Math.max(...corners.map((c) => c[0])), top: Math.min(...corners.map((c) => c[1])), bottom: Math.max(...corners.map((c) => c[1])) };
-    const headerBox = { left: headerMesh.position.x - 8, right: headerMesh.position.x + header.width + 8, top: -headerMesh.position.y - 8, bottom: -headerMesh.position.y + header.height + 8 };
-    const area = (box, left, top) => Math.max(0, Math.min(box.right, left + card.width) - Math.max(box.left, left)) * Math.max(0, Math.min(box.bottom, top + card.height) - Math.max(box.top, top));
-    const cost = ([left, top]) => {
-      const off = Math.max(0, 8 - left) + Math.max(0, left + card.width - width + 8) + Math.max(0, 8 - top) + Math.max(0, top + card.height - height + 8);
-      const signCost = signStart !== null ? area(signBox, left, top) * 2 : 0;
-      return area(lanternBox, left, top) * 2 + area(wordsBox, left, top) * 3 + area(place.facts, left, top) * 3 + area(headerBox, left, top) * 2 + signCost + off * card.height * 4;
-    };
-    let [x, y] = spots.reduce((best, spot) => (cost(spot) < cost(best) ? spot : best));
+    lanternBox.left = place.x - place.size * 0.25;
+    lanternBox.right = place.x + place.size * 0.25;
+    lanternBox.top = place.y - place.size * 0.45;
+    lanternBox.bottom = place.y + place.size * 0.2;
+    spotX[0] = sx + 22; spotY[0] = sy - card.height * 0.5;
+    spotX[1] = sx + 22; spotY[1] = sy - card.height - 22;
+    spotX[2] = sx + 22; spotY[2] = sy + 18;
+    spotX[3] = sx - 22 - card.width; spotY[3] = sy - card.height - 22;
+    spotX[4] = sx - 22 - card.width; spotY[4] = sy - card.height * 0.5;
+    spotX[5] = sx - 22 - card.width; spotY[5] = sy + 18;
+    wordsBox.left = words.left - 8;
+    wordsBox.right = words.right + 8;
+    wordsBox.top = words.top - 8;
+    wordsBox.bottom = words.bottom + 8;
+    signBox.left = Infinity;
+    signBox.right = -Infinity;
+    signBox.top = Infinity;
+    signBox.bottom = -Infinity;
+    for (let i = 0; i < 8; i += 2) {
+      screen.set(signCorners[i], signCorners[i + 1], 0).applyMatrix4(sign.matrixWorld).project(camera);
+      const cx = (screen.x + 1) / 2 * width;
+      const cy = (1 - screen.y) / 2 * height;
+      signBox.left = Math.min(signBox.left, cx);
+      signBox.right = Math.max(signBox.right, cx);
+      signBox.top = Math.min(signBox.top, cy);
+      signBox.bottom = Math.max(signBox.bottom, cy);
+    }
+    headerBox.left = headerMesh.position.x - 8;
+    headerBox.right = headerMesh.position.x + header.width + 8;
+    headerBox.top = -headerMesh.position.y - 8;
+    headerBox.bottom = -headerMesh.position.y + header.height + 8;
+    let best = 0;
+    let bestCost = spotCost(spotX[0], spotY[0], card);
+    for (let i = 1; i < 6; i++) {
+      const spot = spotCost(spotX[i], spotY[i], card);
+      if (spot < bestCost) {
+        best = i;
+        bestCost = spot;
+      }
+    }
+    let x = spotX[best];
+    let y = spotY[best];
     x = THREE.MathUtils.clamp(x, 10, Math.max(10, width - card.width - 10));
     y = THREE.MathUtils.clamp(y, 10, Math.max(10, height - card.height - 10));
     card.mesh.position.set(x, -y, 0);
@@ -1782,7 +1818,7 @@ function mount(root) {
     if (times.length < 5) return null;
     const recent = times.slice(-5);
     const gaps = recent.slice(1).map((t, i) => t - recent[i]);
-    const beat = gaps.reduce((sum, gap) => sum + gap, 0) / STUTTER.reduce((sum, beats) => sum + beats, 0);
+    const beat = gaps.reduce((sum, gap) => sum + gap, 0) / STUTTER_BEATS;
     if (beat < 0.18 || beat > 0.8) return null;
     return gaps.every((gap, i) => Math.abs(gap - STUTTER[i] * beat) <= 0.24 * beat) ? beat : null;
   }
@@ -1858,6 +1894,16 @@ function mount(root) {
   let signBeat = STUTTER_BEAT;
   const lean = new THREE.Vector2();
   const tmp = new THREE.Vector3();
+  // The step's working values, kept from frame to frame so it allocates nothing.
+  const idleLean = new THREE.Vector2();
+  const lanternSway = new THREE.Vector3();
+  const chainTop = new THREE.Vector3();
+  const chainAnchor = new THREE.Vector3();
+  const CORE_OFFSET = new THREE.Vector3(0, -0.02, 0);
+  const neonVanilla = linear(NEON.vanilla);
+  const neonFixed = linear(NEON.fixed);
+  const neonColor = new THREE.Color();
+  const neonFixedNow = new THREE.Color();
   let lanternAngle = 0.4;
 
   // The stutter: the neon dips at each tap of the pattern.
@@ -1937,7 +1983,7 @@ function mount(root) {
     let hint = 1;
     if (!reduceMotion && time > nextHint) {
       const age = time - nextHint;
-      const span = STUTTER.reduce((a, b) => a + b, 0) * STUTTER_BEAT + 0.3;
+      const span = STUTTER_BEATS * STUTTER_BEAT + 0.3;
       hint = stutterDip(age, STUTTER_BEAT);
       if (age > span) nextHint = time + 22 + chance() * 12;
     }
@@ -1949,24 +1995,25 @@ function mount(root) {
       const hold = 9;
       const drawOut = 1.6;
       signAmount = age < drawIn ? age / drawIn : age < drawIn + hold ? 1 : Math.max(0, 1 - (age - drawIn - hold) / drawOut);
-      const cycle = STUTTER.reduce((a, b) => a + b, 0) * signBeat + signBeat * 2;
+      const cycle = STUTTER_BEATS * signBeat + signBeat * 2;
       if (age > drawIn * 0.5 && age < drawIn + hold) pulse = 0.72 + 0.28 * (1 - (1 - stutterDip(age % cycle, signBeat)) / 0.78);
       if (age > drawIn + hold + drawOut) signStart = null;
       // The strokes draw in order, then undraw in reverse.
       const total = strokes.length;
-      strokes.forEach((stroke, i) => {
+      for (let i = 0; i < total; i++) {
+        const stroke = strokes[i];
         const start = i / total;
         const local = THREE.MathUtils.clamp((signAmount - start) * total, 0, 1);
         stroke.mesh.visible = local > 0.001;
         stroke.mesh.geometry.setDrawRange(0, Math.floor(stroke.count * local / 3) * 3);
         stroke.uniforms.uIntensity.value = 2.4 * (0.85 + 0.15 * Math.sin(time * 3.1 + i));
-      });
+      }
     } else {
       for (const stroke of strokes) stroke.mesh.visible = false;
     }
     shared.uPulse.value = pulse;
     const neonBright = THREE.MathUtils.lerp(flick, 1, neonFix) * hint * pulse;
-    const neonColor = linear(NEON.vanilla).multiplyScalar(neonBright).lerp(linear(NEON.fixed).multiplyScalar(FIXED_GAIN * hint * pulse), neonFix);
+    neonColor.copy(neonVanilla).multiplyScalar(neonBright).lerp(neonFixedNow.copy(neonFixed).multiplyScalar(FIXED_GAIN * hint * pulse), neonFix);
     lighting.uNeonColor.value.copy(neonColor);
     lighting.uNeon.value.w = THREE.MathUtils.lerp(NEON.radius[0], NEON.radius[1], neonFix) / 128;
     tubeUniforms.uColor.value.copy(neonColor).multiplyScalar(1 / Math.max(0.05, neonBright * 0.8));
@@ -2016,34 +2063,35 @@ function mount(root) {
 
     // The camera leans with the pointer; the lantern turns, sways on its chain, and faces the pointer.
     const follow = reduceMotion ? 1 : Math.min(1, dt * 2);
-    const wanted = pointing && time - lastPointer < 4 ? pointer : new THREE.Vector2(Math.sin(time * 0.13) * 0.25, Math.sin(time * 0.09) * 0.15);
+    const wanted = pointing && time - lastPointer < 4 ? pointer : idleLean.set(Math.sin(time * 0.13) * 0.25, Math.sin(time * 0.09) * 0.15);
     lean.x += (wanted.x - lean.x) * follow;
     lean.y += (wanted.y - lean.y) * follow;
     camera.position.set(CAMERA_X + lean.x * 0.14, lean.y * 0.08, 0);
     camera.updateMatrixWorld();
     lanternAngle += dt * (0.32 + (pointing ? lean.x * 0.25 : 0));
     const sway = Math.sin(time * 0.6) * 0.035;
-    lantern.position.copy(lanternHome).add(new THREE.Vector3(Math.sin(time * 0.6) * 0.04, Math.cos(time * 1.2) * 0.012, 0));
+    lantern.position.copy(lanternHome).add(lanternSway.set(Math.sin(time * 0.6) * 0.04, Math.cos(time * 1.2) * 0.012, 0));
     lantern.rotation.set(Math.sin(time * 0.47) * 0.03, lanternAngle, sway);
     lantern.scale.setScalar(lanternScale);
     lantern.updateMatrixWorld();
-    const top = new THREE.Vector3(0, 0.73, 0).applyMatrix4(lantern.matrixWorld);
-    const anchor = new THREE.Vector3(lanternHome.x, HALL.spring + HALL.half - 0.05, LANTERN.z);
+    const top = chainTop.set(0, 0.73, 0).applyMatrix4(lantern.matrixWorld);
+    const anchor = chainAnchor.set(lanternHome.x, HALL.spring + HALL.half - 0.05, LANTERN.z);
     chain.position.copy(top).add(anchor).multiplyScalar(0.5);
     chain.scale.set(1, Math.max(0.01, anchor.distanceTo(top)), 1);
     chain.lookAt(anchor);
     chain.rotateX(Math.PI / 2);
-    core.position.copy(lantern.position).add(new THREE.Vector3(0, -0.02, 0));
+    core.position.copy(lantern.position).add(CORE_OFFSET);
     core.quaternion.copy(camera.quaternion);
     const flameFlicker = 0.92 + 0.08 * Math.sin(time * 5.3) * Math.sin(time * 3.7);
     core.material.uniforms.uGain.value = flameFlicker;
     for (const pane of panes) pane.material.uniforms.uFlame.value = flameFlicker;
     lighting.uLanternPos.value.copy(lantern.position);
-    beams.forEach((beam, i) => {
+    for (let i = 0; i < beams.length; i++) {
+      const beam = beams[i];
       const a = lanternAngle + i * Math.PI / 2;
       beam.material.uniforms.uAxis.value.set(Math.sin(a), -0.2, Math.cos(a)).normalize();
       beam.material.uniforms.uApex.value.copy(lantern.position);
-    });
+    }
     lighting.uLanternAngle.value = lanternAngle;
     lighting.uFlame.value.set(lantern.position.x, lantern.position.y, lantern.position.z, 2.8);
     dustUniforms.uFlamePos.value.copy(lantern.position);
