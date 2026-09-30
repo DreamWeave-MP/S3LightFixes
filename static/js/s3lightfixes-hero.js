@@ -1428,7 +1428,9 @@ function mount(root) {
     lantern.add(beam);
     return beam;
   });
-  const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 4), iron);
+  // The chain's iron is the fixtures' iron as a material of its own: one material drawn both
+  // instanced and not makes three.js switch between two programs for it, twice a frame.
+  const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 4), surface(4, '#2a2622', 0.4));
   scene.add(lantern, chain);
   const core = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), new THREE.ShaderMaterial({
     vertexShader: CARD_VERTEX,
