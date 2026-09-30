@@ -1540,14 +1540,36 @@ function mount(root) {
     }
     return cardCache.get(cacheKey);
   }
+  // A card's mesh, leader and their materials are kept for the next card when it goes: a new
+  // material costs three.js a program lookup that stalled the sweep at every card. A kept one comes
+  // back as a new one would be, and each card draws over the ones before it, as a newer object did.
   const cards = [];
+  const spareCards = [];
+  let cardsSpawned = 0;
+  function cardParts() {
+    const spare = spareCards.pop();
+    if (spare) {
+      spare.mesh.position.set(0, 0, 0);
+      spare.mesh.scale.set(1, 1, 1);
+      spare.leader.visible = true;
+      spare.leader.geometry.attributes.position.array.fill(0);
+      spare.leader.geometry.attributes.position.needsUpdate = true;
+      return spare;
+    }
+    const leaderGeometry = new THREE.BufferGeometry();
+    leaderGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    return { mesh: new THREE.Mesh(plane, overlayMaterial(null)), leader: new THREE.Line(leaderGeometry, leaderMaterial()) };
+  }
   function spawnCard(position, key, record, extra, life = 2.8) {
     for (const card of cards) card.life = Math.min(card.life, time - card.born + 0.3);
     const card = cardFor(key, record, extra);
-    const mesh = new THREE.Mesh(plane, overlayMaterial(card.texture));
-    const leaderGeometry = new THREE.BufferGeometry();
-    leaderGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-    const leader = new THREE.Line(leaderGeometry, leaderMaterial());
+    const { mesh, leader } = cardParts();
+    mesh.material.uniforms.tCard.value = card.texture;
+    mesh.material.uniforms.uOpacity.value = 0;
+    leader.material.uniforms.uOpacity.value = 0;
+    cardsSpawned += 1;
+    mesh.renderOrder = cardsSpawned;
+    leader.renderOrder = cardsSpawned;
     overlayScene.add(mesh, leader);
     cards.push({ mesh, leader, anchor: position.clone(), born: time, life, width: card.width, height: card.height });
   }
@@ -1980,9 +2002,7 @@ function mount(root) {
       const age = (time - card.born) / card.life;
       if (age >= 1) {
         overlayScene.remove(card.mesh, card.leader);
-        card.mesh.material.dispose();
-        card.leader.material.dispose();
-        card.leader.geometry.dispose();
+        spareCards.push({ mesh: card.mesh, leader: card.leader });
         cards.splice(i, 1);
         continue;
       }
