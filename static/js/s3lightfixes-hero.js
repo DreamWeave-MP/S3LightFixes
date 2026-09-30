@@ -70,6 +70,16 @@ const STUTTER_BEAT = 0.42;
 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// For tests only: ?s3lf-at=<seconds> steps the scene at 60 Hz to that moment, the same every time,
+// and holds it there with the governor off; ?s3lf-sign=<seconds> puts the neon sign up at a moment.
+const TEST = (() => {
+  const params = new URLSearchParams(location.search);
+  const at = parseFloat(params.get('s3lf-at'));
+  if (!Number.isFinite(at)) return null;
+  const sign = parseFloat(params.get('s3lf-sign'));
+  return { at: Math.max(0, at), sign: Number.isFinite(sign) ? sign : null };
+})();
+
 function cssColor(name, fallback) {
   const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const color = new THREE.Color(fallback);
@@ -1748,11 +1758,14 @@ function mount(root) {
     const beat = rhythm(taps);
     if (beat !== null && signStart === null) {
       taps.length = 0;
-      signStart = time;
-      signBeat = Math.max(0.36, beat);
-      spawnCard(neonPosition.clone().add(new THREE.Vector3(0, 0.8, 0)), 'neon-sign', NEON,
-        [['flags ', 'text'], ['DYNAMIC', 'old'], [' -> ', 'arrow'], ['DYNAMIC | SIGNAGE', 'new']], 5);
+      signUp(beat);
     }
+  }
+  function signUp(beat) {
+    signStart = time;
+    signBeat = Math.max(0.36, beat);
+    spawnCard(neonPosition.clone().add(new THREE.Vector3(0, 0.8, 0)), 'neon-sign', NEON,
+      [['flags ', 'text'], ['DYNAMIC', 'old'], [' -> ', 'arrow'], ['DYNAMIC | SIGNAGE', 'new']], 5);
   }
   const hero = root.closest('.dw-hero') || root;
   if (!reduceMotion) {
@@ -1796,7 +1809,8 @@ function mount(root) {
   let first = true;
   let lost = false;
   const neonFlicker = new Flicker(0.1, 7);
-  let nextHint = 14 + Math.random() * 8;
+  const chance = TEST ? random(1234) : Math.random;
+  let nextHint = 14 + chance() * 8;
   let signStart = null;
   let signBeat = STUTTER_BEAT;
   const lean = new THREE.Vector2();
@@ -1819,6 +1833,18 @@ function mount(root) {
     running = false;
     if (lost) return;
     const rawDt = clock.getDelta();
+    if (TEST && !reduceMotion) {
+      if (time < TEST.at) {
+        while (time < TEST.at - 1e-9) {
+          if (TEST.sign !== null && signStart === null && time >= TEST.sign) signUp(STUTTER_BEAT);
+          step(Math.min(1 / 60, TEST.at - time));
+        }
+      }
+      draw();
+      root.dataset.s3lfFrames = String(Number(root.dataset.s3lfFrames || 0) + 1);
+      if (visible && !document.hidden) requestFrame();
+      return;
+    }
     const dt = Math.min(rawDt, 0.05);
     if (!reduceMotion && rawDt < 0.5) {
       quality.slow = rawDt > 1 / 40 ? quality.slow + rawDt : Math.max(0, quality.slow - rawDt * 0.5);
@@ -1828,6 +1854,12 @@ function mount(root) {
         layout();
       }
     }
+    step(dt);
+    draw();
+    if (visible && !reduceMotion && !document.hidden) requestFrame();
+  }
+
+  function step(dt) {
     if (!reduceMotion) time += dt;
     shared.uTime.value = time;
     compositeMaterial.uniforms.uTime.value = time;
@@ -1864,7 +1896,7 @@ function mount(root) {
       const age = time - nextHint;
       const span = STUTTER.reduce((a, b) => a + b, 0) * STUTTER_BEAT + 0.3;
       hint = stutterDip(age, STUTTER_BEAT);
-      if (age > span) nextHint = time + 22 + Math.random() * 12;
+      if (age > span) nextHint = time + 22 + chance() * 12;
     }
     let signAmount = 0;
     let pulse = 1;
@@ -1974,7 +2006,9 @@ function mount(root) {
     lighting.uLanternAngle.value = lanternAngle;
     lighting.uFlame.value.set(lantern.position.x, lantern.position.y, lantern.position.z, 2.8);
     dustUniforms.uFlamePos.value.copy(lantern.position);
+  }
 
+  function draw() {
     renderer.setRenderTarget(sceneTarget);
     renderer.setClearColor(fog, 1);
     renderer.clear();
@@ -1997,7 +2031,6 @@ function mount(root) {
       first = false;
       root.classList.add('is-live');
     }
-    if (visible && !reduceMotion && !document.hidden) requestFrame();
   }
 
   function requestFrame() {
