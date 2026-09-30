@@ -167,6 +167,7 @@ const CONSTANTS = /* glsl */ `
   #define FLOOR_Y ${HALL.floor.toFixed(3)}
   #define SPRING_Y ${HALL.spring.toFixed(3)}
   #define FIXED_GAIN ${FIXED_GAIN.toFixed(3)}
+  #define REACH ${(Math.max(...KINDS.flatMap((kind) => kind.radius)) / 128).toFixed(6)}
 `;
 
 // The lights, shared by the stone, the fixtures, the flames and the dust, so they all agree.
@@ -397,8 +398,13 @@ const SURFACE_FRAGMENT = /* glsl */ `
     for (int o = -1; o <= 1; o++) {
       float k = k0 + float(o);
       if (k < 0.0 || k >= PER_SIDE) continue;
+      float dz = FIRST_Z - k * SPACING - p.z;
       for (int s = 0; s < 2; s++) {
         float side = s == 0 ? -1.0 : 1.0;
+        // No light reaches past REACH, the longest radius any kind has before or after, and the
+        // distance across the floor alone is already too far: its attenuation would be 0.
+        float dx = side * LIGHT_X - p.x;
+        if (dx * dx + dz * dz >= REACH * REACH) continue;
         float kind = slotKind(k, side);
         if (kind < 0.0) continue;
         vec3 lp = slotPosition(k, side, kind);
