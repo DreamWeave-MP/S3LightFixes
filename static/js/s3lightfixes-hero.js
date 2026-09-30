@@ -1496,14 +1496,20 @@ function mount(root) {
   const sign = new THREE.Group();
   sign.position.set(CAMERA_X - 1.3, 0.02, -5.6);
   sign.scale.setScalar(0.92);
-  const strokes = signStrokes().map((stroke) => {
-    const geometry = strokeGeometry(stroke.points);
-    const uniforms = { uColor: { value: signColors[stroke.color] }, uIntensity: { value: 2.4 }, uBlack: { value: stroke.color === 3 ? 1 : 0 }, uFog: shared.uFog, uFogDensity: shared.uFogDensity };
-    const mesh = new THREE.Mesh(geometry, new THREE.ShaderMaterial({ vertexShader: TUBE_VERTEX, fragmentShader: TUBE_FRAGMENT, uniforms }));
-    mesh.visible = false;
-    sign.add(mesh);
-    return { mesh, count: geometry.index.count, color: stroke.color, uniforms };
-  });
+  // Its tubes are built when the page is next idle after the first frame, or when the rhythm asks
+  // for the sign before that: most visits never see it, and they cost the first frame 25 ms.
+  const strokes = [];
+  function buildSign() {
+    if (strokes.length) return;
+    for (const stroke of signStrokes()) {
+      const geometry = strokeGeometry(stroke.points);
+      const uniforms = { uColor: { value: signColors[stroke.color] }, uIntensity: { value: 2.4 }, uBlack: { value: stroke.color === 3 ? 1 : 0 }, uFog: shared.uFog, uFogDensity: shared.uFogDensity };
+      const mesh = new THREE.Mesh(geometry, new THREE.ShaderMaterial({ vertexShader: TUBE_VERTEX, fragmentShader: TUBE_FRAGMENT, uniforms }));
+      mesh.visible = false;
+      sign.add(mesh);
+      strokes.push({ mesh, count: geometry.index.count, color: stroke.color, uniforms });
+    }
+  }
   scene.add(sign);
 
   // The overlay, drawn over the finished frame in the page's pixels: one log card at a time beside
@@ -1841,6 +1847,7 @@ function mount(root) {
     }
   }
   function signUp(beat) {
+    buildSign();
     signStart = time;
     signBeat = Math.max(0.36, beat);
     spawnCard(neonPosition.clone().add(new THREE.Vector3(0, 0.8, 0)), 'neon-sign', NEON,
@@ -2119,6 +2126,8 @@ function mount(root) {
     if (first) {
       first = false;
       root.classList.add('is-live');
+      if (window.requestIdleCallback) requestIdleCallback(buildSign, { timeout: 4000 });
+      else setTimeout(buildSign, 1000);
     }
   }
 
