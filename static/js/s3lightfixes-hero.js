@@ -2051,7 +2051,7 @@ function mount(root) {
   }
 
   function requestFrame() {
-    if (running || lost) return;
+    if (running || lost || !compiled) return;
     running = true;
     requestAnimationFrame(frame);
   }
@@ -2066,6 +2066,58 @@ function mount(root) {
     root.classList.remove('is-live');
     mount(root);
   });
+
+  // Every program the hero draws with is compiled before its first frame, one to a task, by drawing
+  // a stand-in with its material into a one-pixel target. The stone's shader alone is six programs of
+  // up to a quarter of a second each; the first frame used to compile all of them at once, holding the
+  // page still for a second or more, and a driver that compiles in the background still makes the
+  // next call that has to wait for it wait for every one queued. One at a time, the page answers
+  // between them, and the logo stands in until the last. The log cards' programs are among them, so
+  // the first card does not stall the sweep either. The stand-ins share geometry and materials with
+  // what they stand in for; the warming card and leader keep their programs alive for the real ones.
+  let compiled = false;
+  const warmTarget = new THREE.WebGLRenderTarget(1, 1, { type: targetType, depthBuffer: false });
+  const warming = new Map();
+  const standIn = (object) => {
+    const stand = object.isInstancedMesh ? new THREE.InstancedMesh(object.geometry, object.material, 1)
+      : object.isPoints ? new THREE.Points(object.geometry, object.material)
+        : object.isLine ? new THREE.Line(object.geometry, object.material)
+          : new THREE.Mesh(object.geometry, object.material);
+    stand.frustumCulled = false;
+    return stand;
+  };
+  const gather = (root) => root.traverse((object) => {
+    const material = object.material;
+    if (!material || Array.isArray(material)) return;
+    const key = `${material.vertexShader}\n${material.fragmentShader}\n${JSON.stringify(material.defines || {})}\n${object.isInstancedMesh}\n${object.isPoints}`;
+    if (!warming.has(key)) warming.set(key, standIn(object));
+  });
+  gather(scene);
+  gather(overlayScene);
+  const extra = new THREE.Scene();
+  for (const material of [brightMaterial, blurMaterial, copyMaterial, compositeMaterial]) extra.add(new THREE.Mesh(quad.geometry, material));
+  extra.add(new THREE.Mesh(plane, overlayMaterial(header.texture)));
+  extra.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(1, 0, 0)]), leaderMaterial()));
+  gather(extra);
+  const queue = [...warming.values()];
+  const single = new THREE.Scene();
+  const warmNext = () => {
+    if (lost) return;
+    const object = queue.shift();
+    if (!object) {
+      warmTarget.dispose();
+      compiled = true;
+      requestFrame();
+      return;
+    }
+    single.add(object);
+    renderer.setRenderTarget(warmTarget);
+    renderer.render(single, camera);
+    renderer.setRenderTarget(null);
+    single.remove(object);
+    setTimeout(warmNext, 0);
+  };
+  setTimeout(warmNext, 0);
 
   layout();
   new ResizeObserver(() => {
