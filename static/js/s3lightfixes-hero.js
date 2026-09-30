@@ -415,13 +415,13 @@ const SURFACE_FRAGMENT = /* glsl */ `
     lit += shade(p, n, v, uNeon.xyz + vec3(0.0, 0.55, 0.0), uNeonColor * 0.6 * uLightGain, uNeon.w, albedo, rough);
     lit += shade(p, n, v, uNeon.xyz - vec3(0.0, 0.55, 0.0), uNeonColor * 0.6 * uLightGain, uNeon.w, albedo, rough);
     lit += shade(p, n, v, uFlame.xyz, uFlameColor, uFlame.w, albedo, rough);
-    lit += shade(p, n, v, uSign.xyz, uSignColor * uSign.w * 4.0, 4.2, albedo, rough);
+    if (uSign.w > 0.0) lit += shade(p, n, v, uSign.xyz, uSignColor * uSign.w * 4.0, 4.2, albedo, rough);
     lit += beams(p, n) * albedo;
     lit += rimLight;
 
     // Negative lights take light away, as Morrowind's do.
     float dark = attenuation(length(uDark.xyz - p), uDark.w) * 1.6;
-    dark += attenuation(length(uSignDark.xyz - p), 2.2) * uSignDark.w * 1.4;
+    if (uSignDark.w > 0.0) dark += attenuation(length(uSignDark.xyz - p), 2.2) * uSignDark.w * 1.4;
     lit *= max(0.0, 1.0 - dark);
     lit = max(lit, vec3(0.0));
 
