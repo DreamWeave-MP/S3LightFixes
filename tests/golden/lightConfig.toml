@@ -1,0 +1,41 @@
+standard_hue = 0.7
+colored_radius = 2
+duration_mult = 1
+disable_pulse = true
+unknown_key = "ignored"
+excluded_ids = ["purple", "glow$"]
+excluded_plugins = ["TestC.*"]
+
+[light_overrides."hue_light_1.*"]
+radius = 500
+red = 10
+green = 20
+blue = 30
+hue_mult = 2.0
+flag = ["CAN_CARRY", "PULSE_SLOW"]
+
+[light_overrides.torch]
+radius_mult = 3.5
+duration = 1200.0
+saturation = 0.25
+value = 2.0
+hue = 400
+red_mult = 1.5
+flag = "FLICKER"
+
+[light_overrides.white_light]
+hue_mult = 0.5
+saturation_mult = 1.1
+value_mult = 0.9
+duration_mult = 0.5
+green_mult = -2.0
+blue_mult = 0.3
+flag = "NONE"
+
+[ambient_overrides."dark cave"]
+fog_density = 0.3
+ambient = { red = 1, green = 2, blue = 3 }
+sunlight = { hue = 120, saturation = 1.0, value = 0.5 }
+
+[ambient_overrides."caius.*"]
+fog = { red = 255, green = 0, blue = 128 }

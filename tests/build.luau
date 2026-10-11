@@ -1,0 +1,176 @@
+--!strict
+-- The plugins the S3LightFixes goldens were made from, built with @tes3: a function of the data
+-- folder to write TestA.esp, TestB.omwaddon, and TestC.esp into. S3LightFixes 0.4.59 recorded
+-- the first two as masters at 6685 and 628 bytes, which is what these come to.
+local tes3 = require '@tes3'
+
+type Fields = { [string]: unknown }
+
+local function light(
+  id: string,
+  red: number,
+  green: number,
+  blue: number,
+  radius: number,
+  time: number,
+  flags: string,
+  extra: Fields?
+): Fields
+  local record: Fields = {
+    type = 'Light',
+    id = id,
+    mesh = 'l\\' .. id .. '.nif',
+    data = {
+      weight = 1,
+      value = 5,
+      time = time,
+      radius = radius,
+      color = { red, green, blue, 0 },
+      flags = flags,
+    },
+  }
+
+  for key, value in extra or {} do
+    record[key] = value
+  end
+
+  return record
+end
+
+local function cell(
+  name: string,
+  ambient: { number },
+  sunlight: { number },
+  fog: { number },
+  density: number,
+  water: number?
+): Fields
+  return {
+    type = 'Cell',
+    name = name,
+    data = { flags = 'IS_INTERIOR', grid = { 0, 0 } },
+    waterHeight = water,
+    atmosphereData = {
+      ambientColor = ambient,
+      sunlightColor = sunlight,
+      fogColor = fog,
+      fogDensity = density,
+    },
+  }
+end
+
+-- A fully saturated color at `hue` degrees, as red, green, and blue from 0 to 1.
+local function hueColor(hue: number): (number, number, number)
+  local sector = hue / 60
+  local secondary = 1 - math.abs(sector % 2 - 1)
+  if sector < 1 then return 1, secondary, 0 end
+  if sector < 2 then return secondary, 1, 0 end
+  if sector < 3 then return 0, 1, secondary end
+  if sector < 4 then return 0, secondary, 1 end
+  if sector < 5 then return secondary, 0, 1 end
+
+  return 1, 0, secondary
+end
+
+--- An empty plugin by `test`, naming `masters`.
+local function plugin(masters: { { name: string, size: number } }?): tes3.Plugin
+  local built = tes3.new()
+  built:setAuthor 'test'
+  if masters then built:setMasters(masters) end
+
+  return built
+end
+
+--- Adds a record after the plugin's last.
+local function insert(built: tes3.Plugin, record: Fields) built:insertValue(built:count(), record) end
+
+--- Writes the plugin into the data folder, its header counting the records it holds.
+local function save(built: tes3.Plugin, dataFolder: string, name: string)
+  built:updateRecordCount()
+  jess.fs.write(dataFolder .. '/' .. name, built:save())
+end
+
+return function(dataFolder: string)
+  -- Colors around the whole hue wheel, at different values.
+  local testA = plugin()
+  local id = 0
+
+  for hue = 0, 359, 7 do
+    local red, green, blue = hueColor(hue)
+    local brightness = 0.3 + (hue % 70) / 100
+    local time = if hue % 3 == 0 then -1 else hue * 3
+    id += 1
+
+    local color = {
+      math.floor(red * 255 * brightness),
+      math.floor(green * 255 * brightness),
+      math.floor(blue * 255 * brightness),
+    }
+    insert(testA, light('Hue_Light_' .. id, color[1], color[2], color[3], 64 + hue, time, 'DYNAMIC'))
+  end
+
+  insert(
+    testA,
+    light('Torch_Flicker', 245, 140, 40, 256, 600, 'DYNAMIC | CAN_CARRY | FIRE | FLICKER_SLOW')
+  )
+  insert(
+    testA,
+    light('Torch_Pulse', 255, 200, 100, 128, 300, 'CAN_CARRY | PULSE | PULSE_SLOW | FLICKER')
+  )
+  insert(testA, light('Negative_Dark', 50, 50, 50, 200, 10, 'NEGATIVE | FLICKER'))
+  insert(testA, light('Black_Light', 0, 0, 0, 10, 10, 'DYNAMIC'))
+  insert(testA, light('White_Light', 255, 255, 255, 1000000, 2147483647, 'DYNAMIC'))
+  insert(testA, light('Grey_Light', 128, 128, 128, 4294967295, -2147483648, 'OFF_BY_DEFAULT'))
+  insert(testA, light('Shared_Light', 255, 128, 0, 100, 10, 'DYNAMIC'))
+  insert(testA, light('Excluded_Purple_Light', 200, 0, 200, 100, 10, 'DYNAMIC'))
+  insert(testA, light('Deleted_Light', 255, 128, 0, 100, 10, 'DYNAMIC', { flags = 'DELETED' }))
+  insert(
+    testA,
+    light(
+      'Named_Light',
+      255,
+      64,
+      32,
+      90,
+      45,
+      'DYNAMIC | CAN_CARRY',
+      { name = 'A Lamp', icon = 'm\\lamp.dds', script = 'LampScript', sound = 'Fire' }
+    )
+  )
+  insert(
+    testA,
+    cell('Dark Cave', { 10, 20, 30, 0 }, { 40, 50, 60, 0 }, { 70, 80, 90, 0 }, 0.5, 12.5)
+  )
+  insert(
+    testA,
+    cell('Caius Cosades\' House', { 1, 2, 3, 0 }, { 4, 5, 6, 0 }, { 7, 8, 9, 0 }, 1, nil)
+  )
+  insert(testA, cell('Shared_Light', { 1, 2, 3, 0 }, { 4, 5, 6, 0 }, { 7, 8, 9, 0 }, 1, nil))
+  insert(testA, {
+    type = 'Cell',
+    name = 'Exterior',
+    data = { flags = '', grid = { 3, 4 } },
+    atmosphereData = {
+      ambientColor = { 1, 1, 1, 0 },
+      sunlightColor = { 1, 1, 1, 0 },
+      fogColor = { 1, 1, 1, 0 },
+      fogDensity = 1,
+    },
+  })
+  save(testA, dataFolder, 'TestA.esp')
+
+  -- Overrides some of A's lights and cells (ids differ in case), and adds its own.
+  local testB = plugin { { name = 'TestA.esp', size = 0 } }
+  insert(testB, light('shared_light', 10, 200, 30, 333, 20, 'DYNAMIC'))
+  insert(testB, light('B_Only_Light', 100, 60, 20, 50, 70, 'DYNAMIC | FIRE'))
+  insert(
+    testB,
+    cell('dark cave', { 11, 21, 31, 0 }, { 41, 51, 61, 0 }, { 71, 81, 91, 0 }, 0.25, nil)
+  )
+  save(testB, dataFolder, 'TestB.omwaddon')
+
+  -- No lights, so never a master.
+  local testC = plugin()
+  insert(testC, { type = 'Static', id = 'rock', mesh = 'rock.nif' })
+  save(testC, dataFolder, 'TestC.esp')
+end

@@ -1,0 +1,80 @@
+disable_interior_sun = false
+disable_flickering = true
+disable_pulse = true
+disable_negative_lights = true
+auto_enable = false
+no_notifications = false
+debug = false
+dry_run = false
+validate_config = false
+standard_hue = 0.7
+standard_saturation = 0.8
+standard_value = 0.57
+standard_radius = 1.2
+colored_hue = 1.0
+colored_saturation = 0.9
+colored_value = 0.7
+colored_radius = 2.0
+duration_mult = 1.0
+excluded_plugins = ["TestC.*"]
+excluded_ids = [
+    "purple",
+    "glow$",
+    "excl.*",
+]
+output_dir = "<root>/out"
+save_config = false
+
+[light_overrides."hue_light_1.*"]
+red = 10
+green = 20
+blue = 30
+hue_mult = 2.0
+radius = 500
+flag = [
+    "CAN_CARRY",
+    "PULSE_SLOW",
+]
+
+[light_overrides.torch]
+red_mult = 1.5
+hue = 360
+saturation = 0.25
+value = 1.0
+radius_mult = 3.5
+duration = 1200.0
+flag = "FLICKER"
+
+[light_overrides.white_light]
+green_mult = -2.0
+blue_mult = 0.3
+hue_mult = 0.5
+saturation_mult = 1.1
+value_mult = 0.9
+duration_mult = 0.5
+flag = "NONE"
+
+[light_overrides.grey_light]
+radius = 5
+duration_mult = 4.0
+
+[ambient_overrides."dark cave"]
+fog_density = 0.3
+
+[ambient_overrides."dark cave".ambient]
+red = 1
+green = 2
+blue = 3
+
+[ambient_overrides."dark cave".sunlight]
+red = 0
+green = 128
+blue = 0
+
+[ambient_overrides."caius.*".fog]
+red = 255
+green = 0
+blue = 128
+
+[ambient_overrides."shared.*"]
+fog_density = 0.125

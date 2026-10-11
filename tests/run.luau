@@ -1,0 +1,418 @@
+--!strict
+-- @s3lightfixes over load orders built in scratch, checked against S3LightFixes 0.4.59's own
+-- output: the goldens in `golden/` are what the original wrote for the plugins `build.luau`
+-- makes, with the run's folder written as `<root>`. The `configured` goldens differ from the
+-- original's only in listing ambient overrides in the order `lightConfig.toml` does and in
+-- leaving `CAN_CARRY` alone under flag overrides.
+local orders = require './order'
+local s3lightfixes = require '@s3lightfixes'
+local tes3 = require '@tes3'
+local test = require '@jess/test'
+
+local expect = test.expect
+local suite = test.new()
+
+local function read(path: string): string return (assert(jess.fs.read(path), `no {path}`)) end
+
+--- The first line of `output` that starts with `prefix`.
+local function line(output: string, prefix: string): string
+  for _, candidate in string.split(output, '\n') do
+    if string.sub(candidate, 1, #prefix) == prefix then return candidate end
+  end
+
+  return error(`no line starts with {prefix} in:\n{output}`)
+end
+
+local function endsWith(text: string, ending: string): boolean
+  return string.sub(text, -#ending) == ending
+end
+
+--- The cells a run's log shows losing their sunlight.
+local function sunless(output: string): { string }
+  local cells = {}
+
+  for _, candidate in string.split(output, '\n') do
+    if string.sub(candidate, 1, 5) ~= 'CELL ' then continue end
+    if not string.find(candidate, '-> [0, 0, 0, 0]', 1, true) then continue end
+
+    table.insert(cells, (string.match(candidate, '"([^"]*)"')))
+  end
+
+  return cells
+end
+
+local function sorted(names: { string }): { string }
+  table.sort(names)
+  return names
+end
+
+suite.describe('the fixtures', function()
+  suite.it('are the plugins the original recorded as its masters', function()
+    local order = orders.new 'fixtures'
+    local data = jess.fs.join(order.root, 'data')
+    expect(jess.fs.size(jess.fs.join(data, 'TestA.esp'))).toBe(6685)
+    expect(jess.fs.size(jess.fs.join(data, 'TestB.omwaddon'))).toBe(628)
+    expect(jess.fs.size(jess.fs.join(data, 'TestC.esp'))).toBe(370)
+
+    local original = tes3.open(buffer.fromstring(orders.golden 'default.omwaddon'))
+    local masters = {}
+    for _, master in original:masters() do
+      table.insert(masters, { name = master.name, size = master.size })
+    end
+
+    expect(masters).toEqual {
+      { name = 'TestA.esp', size = 6685 },
+      { name = 'TestB.omwaddon', size = 628 },
+    }
+  end)
+end)
+
+suite.describe('against the original', function()
+  suite.it('matches it by default', function()
+    local order = orders.new 'default'
+    local output, options = orders.run(order, { noNotifications = true })
+    expect(output).toContain '# changed lights: 63'
+    -- Infinite (-1) durations stay infinite.
+    expect(output).toContain 'LIGH "Hue_Light_1" from "TestA.esp": color [76, 0, 0, 0] -> [53, 5, 5, 0], radius 64 -> 70\n'
+    orders.expectOriginal(order, 'default')
+    expect(string.find(read(order.cfg), 'S3LightFixes', 1, true)).toBeNil()
+
+    local report = assert(options.report)
+    expect(report.output).toBe(jess.fs.join(order.out, orders.PluginName))
+    expect(report.masters).toBe(2)
+    expect(report.objects).toBe(63)
+    expect(report.lights).toBe(63)
+    expect(report.cells).toBe(0)
+    expect(report.enabled).toBe(false)
+    expect(#assert(report.logs)).toBe(63)
+    expect(assert(report.logs)[1]).toEqual {
+      kind = 'LIGH',
+      plugin = 'TestB.omwaddon',
+      id = 'shared_light',
+      changes = {
+        'color [10, 200, 30, 0] -> [20, 140, 33, 0]',
+        'radius 333 -> 366',
+        'duration 20 -> 50',
+      },
+    }
+  end)
+
+  suite.it('matches it with a config and options', function()
+    local order = orders.new 'configured'
+    local input = orders.golden 'lightConfig.toml'
+    jess.fs.write(jess.fs.join(order.config, 'lightConfig.toml'), input)
+
+    orders.run(order, {
+      updateLightConfig = true,
+      lightOverrides = { { id = 'grey_light', radius = 5, durationMult = 4.0 } },
+      ambientOverrides = { { id = 'shared.*', fogDensity = 0.125 } },
+      excludedIds = { 'excl.*' },
+    })
+    orders.expectOriginal(order, 'configured')
+
+    -- The original saves lightconfig.toml lowercase, beside the file it read. A case-insensitive
+    -- file system (Windows, and macOS by default) makes those one file.
+    if not jess.fs.exists(jess.fs.join(order.config, 'OPENMW.CFG')) then
+      expect(read(jess.fs.join(order.config, 'lightConfig.toml'))).toBe(input)
+    end
+  end)
+end)
+
+suite.describe('overrides', function()
+  suite.it('keep infinite durations', function()
+    local order = orders.new 'infinite'
+    local output = orders.run(order, {
+      lightOverrides = {
+        { id = '^hue_light_1$', duration = 50 },
+        { id = '^hue_light_2$', duration = 50 },
+        { id = '^hue_light_4$', durationMult = 3 },
+      },
+    })
+
+    local changes = {
+      { light = 'Hue_Light_1', change = 'radius 64 -> 70' },
+      { light = 'Hue_Light_2', change = 'radius 71 -> 78, duration 21 -> 50' },
+      { light = 'Hue_Light_4', change = 'radius 85 -> 102' },
+    }
+
+    for _, expected in changes do
+      local found = line(output, `LIGH "{expected.light}"`)
+      expect({ line = found, ends = endsWith(found, expected.change) }).toEqual {
+        line = found,
+        ends = true,
+      }
+    end
+  end)
+
+  suite.it('never change whether a light can be carried', function()
+    local order = orders.new 'carry'
+    local output = orders.run(order, {
+      lightOverrides = {
+        { id = '^torch_flicker$', flag = 'FIRE' },
+        { id = '^hue_light_1$', flag = 'CAN_CARRY | FIRE' },
+      },
+    })
+
+    expect(line(output, 'LIGH "Torch_Flicker"')).toContain '-> LightFlags(CAN_CARRY | FIRE)'
+    expect(line(output, 'LIGH "Hue_Light_1"')).toContain '-> LightFlags(FIRE)'
+  end)
+
+  suite.it('apply in the order they are listed', function()
+    local order = orders.new 'order'
+    jess.fs.write(
+      jess.fs.join(order.config, 'lightconfig.toml'),
+      '[light_overrides."torch_.*"]\nradius = 100\n\n[light_overrides."^torch"]\nradius = 200\n'
+    )
+
+    local output = orders.run(order, {
+      updateLightConfig = true,
+      lightOverrides = { { id = 'torch_p', radius = 7 } },
+    })
+
+    local function radius(light: string): string
+      local found = line(output, `LIGH "{light}"`)
+      for _, change in string.split(found, ', ') do
+        if string.sub(change, 1, 6) == 'radius' then return change end
+      end
+
+      return error(`no radius change in {found}`)
+    end
+
+    expect(radius 'Torch_Flicker').toBe 'radius 256 -> 100'
+    expect(radius 'Torch_Pulse').toBe 'radius 128 -> 100'
+
+    local saved = read(jess.fs.join(order.config, 'lightconfig.toml'))
+
+    local function position(key: string): number
+      return (assert(string.find(saved, key, 1, true), `{key} in {saved}`))
+    end
+
+    expect(position '"torch_.*"' < position '"^torch"').toBe(true)
+    expect(position '"^torch"' < position 'torch_p').toBe(true)
+  end)
+
+  suite.it('match their patterns ignoring case', function()
+    local order = orders.new 'override-case'
+    jess.fs.write(
+      jess.fs.join(order.config, 'lightconfig.toml'),
+      '[light_overrides.Torch_Flicker]\nradius = 7\n\n[ambient_overrides."^Dark Cave$"]\nfog_density = 0.5\n'
+    )
+
+    local output = orders.run(order, {})
+    expect(line(output, 'LIGH "Torch_Flicker"')).toContain 'radius 256 -> 7'
+    expect(line(output, 'CELL "dark cave"')).toContain '-> 0.5'
+  end)
+end)
+
+suite.describe('interior sun', function()
+  suite.it('is disabled in the cells lightconfig.toml lists', function()
+    local order = orders.new 'sun-cells'
+    local config = jess.fs.join(order.config, 'lightconfig.toml')
+    jess.fs.write(config, 'disable_interior_sun = ["^Caius"]\n')
+
+    local output = orders.run(order, { updateLightConfig = true })
+    expect(sunless(output)).toEqual { 'caius cosades\' house' }
+
+    local saved = read(config)
+    expect(saved).toContain 'disable_interior_sun = ['
+    expect(saved).toContain '^Caius'
+  end)
+
+  suite.it('is disabled in the cells the option lists', function()
+    local order = orders.new 'sun-cells-option'
+    local output = orders.run(order, { disableInteriorSun = { 'cave' } })
+    expect(sunless(output)).toEqual { 'dark cave' }
+  end)
+end)
+
+suite.describe('what a run writes', function()
+  suite.it('is nothing on a dry run', function()
+    local order = orders.new 'dry'
+    local output, options = orders.run(order, { dryRun = true })
+    expect(output).toContain 'Dry run: no files written'
+    expect(output).toContain '# changed lights: 63'
+    expect(jess.fs.list(order.out)).toEqual {}
+    expect(jess.fs.list(order.config)).toEqual { 'openmw.cfg' }
+
+    local report = assert(options.report)
+    expect(report.dryRun).toBe(true)
+    expect(report.masters).toBe(2)
+    expect(report.objects).toBe(63)
+    expect(#assert(report.logs)).toBe(63)
+  end)
+
+  suite.it('is nothing on a validation', function()
+    local order = orders.new 'validate'
+    jess.fs.write(
+      jess.fs.join(order.config, 'lightconfig.toml'),
+      orders.golden 'lightConfig.toml'
+    )
+
+    local output, options = orders.run(order, { validateConfig = true })
+    expect(output).toContain 'successfully'
+    expect(jess.fs.list(order.out)).toEqual {}
+    expect(jess.fs.exists(jess.fs.join(order.config, 'lightconfig.log'))).toBe(false)
+    expect(options.report).toEqual { validated = true }
+  end)
+
+  suite.it('includes openmw.cfg only when asked to enable the plugin', function()
+    local order = orders.new 'enable'
+    local before = read(order.cfg)
+    local _, options = orders.run(order, { autoEnable = true })
+    expect(read(order.cfg)).toContain 'content=S3LightFixes.omwaddon'
+    expect(read(`{order.cfg}.bak`)).toBe(before)
+    expect(assert(options.report).enabled).toBe(true)
+  end)
+
+  suite.it('leaves a plugin outside the data folders disabled', function()
+    local elsewhere = jess.fs.join(orders.fresh 'elsewhere-output', 'elsewhere')
+    jess.fs.createDir(elsewhere)
+
+    local order = orders.new 'elsewhere'
+    local before = read(order.cfg)
+    local output, options = orders.run(order, { autoEnable = true, output = elsewhere })
+    expect(jess.fs.isFile(jess.fs.join(elsewhere, orders.PluginName))).toBe(true)
+    expect(output).toContain 'Refusing to auto-enable'
+    expect(read(order.cfg)).toBe(before)
+    expect(jess.fs.exists(`{order.cfg}.bak`)).toBe(false)
+    expect(assert(options.report).enabled).toBe(false)
+    expect(jess.fs.list(order.out)).toEqual {}
+  end)
+
+  suite.it('lists each exclusion once, however often it is saved', function()
+    local order = orders.new 'exclusions'
+    local config = jess.fs.join(order.config, 'lightconfig.toml')
+    jess.fs.write(
+      config,
+      'excluded_ids = ["purple", "glow$", "glow$"]\nexcluded_plugins = ["TestC.*"]\n'
+    )
+
+    for _ = 1, 2 do
+      orders.run(order, {
+        updateLightConfig = true,
+        excludedIds = { 'excl.*', 'purple', 'excl.*', 'Purple' },
+        excludedPlugins = { 'testc.*', 'Extra.esp' },
+      })
+    end
+
+    local saved = read(config)
+    expect(saved).toContain 'excluded_ids = [\n    "purple",\n    "glow$",\n    "excl.*",\n    "Purple",\n]'
+    expect(saved).toContain 'excluded_plugins = [\n    "TestC.*",\n    "Extra.esp",\n]'
+  end)
+
+  suite.it('goes to data-local, or else the working folder, never another data folder', function()
+    local order = orders.new 'no-data-local'
+    local data = jess.fs.join(order.root, 'data')
+    jess.fs.write(
+      order.cfg,
+      `data="{data}"\ncontent=TestA.esp\ncontent=TestB.omwaddon\ncontent=TestC.esp\n`
+    )
+
+    -- A dry run says where the plugin would go without writing it there.
+    local output = orders.run(order, { dryRun = true })
+    local working = jess.fs.join(jess.fs.cwd(), orders.PluginName)
+    expect(line(output, '# output: ')).toBe(`# output: {working}`)
+    expect(sorted(jess.fs.list(data))).toEqual { 'TestA.esp', 'TestB.omwaddon', 'TestC.esp' }
+  end)
+end)
+
+suite.describe('what a run reads', function()
+  suite.it('is an explicit configuration', function()
+    expect(function() s3lightfixes({}) end).toThrow 'S3LightFixes needs an OpenMW config'
+  end)
+
+  suite.it('stops at a pattern that does not compile', function()
+    local order = orders.new 'bad'
+    expect(function() orders.run(order, { excludedIds = { '(' } }) end).toThrow 'Couldn\'t compile excluded id regex'
+    expect(jess.fs.exists(jess.fs.join(order.out, orders.PluginName))).toBe(false)
+  end)
+
+  suite.it('stops at an override that sets a value and its multiplier', function()
+    local order = orders.new 'bad-override'
+    expect(
+      function()
+        orders.run(order, { lightOverrides = { { id = 'x', radius = 1, radiusMult = 2 } } })
+      end
+    ).toThrow 'light override x: Fields `radius` and `radius_mult` are mutually exclusive'
+  end)
+
+  suite.it('names each plugin by its file, however openmw.cfg spells it', function()
+    local order = orders.new 'spelling'
+    local data, out = jess.fs.join(order.root, 'data'), order.out
+    jess.fs.write(
+      order.cfg,
+      `data="{data}"\ndata-local="{out}"\ncontent=testa.ESP\ncontent=TESTB.omwaddon\n`
+    )
+
+    local output, options = orders.run(order, { noNotifications = true })
+    expect(output).toContain 'LIGH "Hue_Light_1" from "TestA.esp"'
+    expect(output).toContain 'LIGH "shared_light" from "TestB.omwaddon"'
+
+    local plugin = tes3.open(assert(jess.fs.readBuffer(assert(assert(options.report).output))))
+    local masters = {}
+    for _, master in plugin:masters() do
+      table.insert(masters, { name = master.name, size = master.size })
+    end
+
+    expect(masters).toEqual {
+      { name = 'TestA.esp', size = 6685 },
+      { name = 'TestB.omwaddon', size = 628 },
+    }
+  end)
+
+  suite.it('reads plugins last to first, and warns of one it cannot open', function()
+    local order = orders.new 'unreadable'
+    local broken = jess.fs.join(order.root, 'data', 'Broken.esp')
+    jess.fs.write(broken, 'not a plugin')
+    jess.fs.write(order.cfg, read(order.cfg) .. 'content=Broken.esp\n')
+
+    local output, options = orders.run(order, { noNotifications = true })
+    expect(output).toContain(
+      `[ WARNING ]: Plugin {broken}: could not be loaded due to error: failed to parse '{broken}': truncated record header at offset 0. Continuing light fixes without this mod`
+    )
+    expect(output).toContain '# content files: 5\n# loaded plugins: 3\n# masters: 2\n'
+
+    -- The override in TestB, which loads after TestA, is the one fixed.
+    local logs = assert(assert(options.report).logs)
+    expect(logs[1].plugin).toBe 'TestB.omwaddon'
+    expect(logs[1].id).toBe 'shared_light'
+    expect(logs[#logs].plugin).toBe 'TestA.esp'
+  end)
+
+  suite.it('is in the configured encoding, and so is what it writes', function()
+    local order = orders.empty('encoding', 'encoding=win1251\ncontent=Russian.esp\n')
+    local russian = tes3.new(nil, { encoding = 'win1251' })
+    russian:insertValue(russian:count(), {
+      type = 'Light',
+      id = 'Факел',
+      data = {
+        weight = 1,
+        value = 5,
+        time = 10,
+        radius = 100,
+        color = { 255, 160, 60, 0 },
+        flags = '',
+      },
+    })
+    russian:updateRecordCount()
+    jess.fs.write(jess.fs.join(order.root, 'data', 'Russian.esp'), russian:save())
+
+    -- Ids read in the wrong encoding would log as mojibake.
+    local output = orders.run(order, {})
+    expect(output).toContain 'LIGH "Факел" from "Russian.esp"'
+
+    local written = assert(jess.fs.readBuffer(jess.fs.join(order.out, orders.PluginName)))
+    local plugin = tes3.open(written, { encoding = 'win1251' })
+    local ids = {}
+    for index = 0, plugin:count() - 1 do
+      if plugin:tag(index) == 'LIGH' then table.insert(ids, tes3.records.id(plugin, index)) end
+    end
+
+    expect(ids).toEqual { 'Факел' }
+  end)
+end)
+
+-- Not here: the harness's comparison with the original binary over a real load order, which
+-- needs that binary and a real openmw.cfg (JESS_S3LIGHTFIXES_BIN, JESS_S3LIGHTFIXES_CFG).
+
+return suite

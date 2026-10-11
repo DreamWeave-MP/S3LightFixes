@@ -5,6 +5,7 @@ id = "org.dreamweave.s3lightfixes"
 version = "0.1.0"
 jess_api = "1"
 include = ["src"]
+tests = ["tests/run.luau"]
 
 [dependencies]
 "org.dreamweave.tes3" = "0.1"

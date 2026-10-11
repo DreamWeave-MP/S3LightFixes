@@ -1,0 +1,71 @@
+# S3LightFixes 0.4.59
+# config: <root>/config/openmw.cfg
+# output: <root>/out/S3LightFixes.omwaddon
+# content files: 4
+# loaded plugins: 3
+# masters: 2
+# changed cells: 0
+# changed lights: 63
+LIGH "shared_light" from "TestB.omwaddon": color [10, 200, 30, 0] -> [20, 140, 33, 0], radius 333 -> 366, duration 20 -> 50
+LIGH "B_Only_Light" from "TestB.omwaddon": color [100, 60, 20, 0] -> [57, 32, 21, 0], radius 50 -> 60, duration 70 -> 175
+LIGH "Hue_Light_1" from "TestA.esp": color [76, 0, 0, 0] -> [53, 5, 5, 0], radius 64 -> 70
+LIGH "Hue_Light_2" from "TestA.esp": color [94, 11, 0, 0] -> [66, 14, 7, 0], radius 71 -> 78, duration 21 -> 52
+LIGH "Hue_Light_3" from "TestA.esp": color [112, 26, 0, 0] -> [78, 24, 8, 0], radius 78 -> 85, duration 42 -> 105
+LIGH "Hue_Light_4" from "TestA.esp": color [130, 45, 0, 0] -> [74, 28, 15, 0], radius 85 -> 102
+LIGH "Hue_Light_5" from "TestA.esp": color [147, 69, 0, 0] -> [84, 36, 17, 0], radius 92 -> 110, duration 84 -> 210
+LIGH "Hue_Light_6" from "TestA.esp": color [165, 96, 0, 0] -> [94, 46, 19, 0], radius 99 -> 118, duration 105 -> 262
+LIGH "Hue_Light_7" from "TestA.esp": color [183, 128, 0, 0] -> [104, 57, 21, 0], radius 106 -> 127
+LIGH "Hue_Light_8" from "TestA.esp": color [201, 164, 0, 0] -> [115, 69, 23, 0], radius 113 -> 135, duration 147 -> 367
+LIGH "Hue_Light_9" from "TestA.esp": color [219, 204, 0, 0] -> [125, 83, 25, 0], radius 120 -> 144, duration 168 -> 420
+LIGH "Hue_Light_10" from "TestA.esp": color [225, 237, 0, 0] -> [135, 97, 27, 0], radius 127 -> 152
+LIGH "Hue_Light_11" from "TestA.esp": color [63, 76, 0, 0] -> [45, 53, 5, 0], radius 134 -> 147, duration 210 -> 525
+LIGH "Hue_Light_12" from "TestA.esp": color [67, 94, 0, 0] -> [49, 66, 7, 0], radius 141 -> 155, duration 231 -> 577
+LIGH "Hue_Light_13" from "TestA.esp": color [67, 112, 0, 0] -> [50, 78, 8, 0], radius 148 -> 162
+LIGH "Hue_Light_14" from "TestA.esp": color [62, 130, 0, 0] -> [48, 91, 9, 0], radius 155 -> 170, duration 273 -> 682
+LIGH "Hue_Light_15" from "TestA.esp": color [54, 147, 0, 0] -> [44, 103, 10, 0], radius 162 -> 178, duration 294 -> 735
+LIGH "Hue_Light_16" from "TestA.esp": color [41, 165, 0, 0] -> [37, 116, 12, 0], radius 169 -> 185
+LIGH "Hue_Light_17" from "TestA.esp": color [24, 183, 0, 0] -> [28, 128, 13, 0], radius 176 -> 193, duration 336 -> 840
+LIGH "Hue_Light_18" from "TestA.esp": color [3, 201, 0, 0] -> [16, 141, 14, 0], radius 183 -> 201, duration 357 -> 892
+LIGH "Hue_Light_19" from "TestA.esp": color [0, 219, 21, 0] -> [15, 153, 29, 0], radius 190 -> 209
+LIGH "Hue_Light_20" from "TestA.esp": color [0, 237, 51, 0] -> [17, 166, 49, 0], radius 197 -> 216, duration 399 -> 997
+LIGH "Hue_Light_21" from "TestA.esp": color [0, 76, 25, 0] -> [5, 53, 21, 0], radius 204 -> 224, duration 420 -> 1050
+LIGH "Hue_Light_22" from "TestA.esp": color [0, 94, 42, 0] -> [7, 66, 33, 0], radius 211 -> 232
+LIGH "Hue_Light_23" from "TestA.esp": color [0, 112, 63, 0] -> [8, 78, 48, 0], radius 218 -> 239, duration 462 -> 1155
+LIGH "Hue_Light_24" from "TestA.esp": color [0, 130, 88, 0] -> [9, 91, 65, 0], radius 225 -> 247, duration 483 -> 1207
+LIGH "Hue_Light_25" from "TestA.esp": color [0, 147, 118, 0] -> [10, 103, 85, 0], radius 232 -> 255
+LIGH "Hue_Light_26" from "TestA.esp": color [0, 165, 151, 0] -> [12, 116, 107, 0], radius 239 -> 262, duration 525 -> 1312
+LIGH "Hue_Light_27" from "TestA.esp": color [0, 177, 183, 0] -> [13, 124, 128, 0], radius 246 -> 270, duration 546 -> 1365
+LIGH "Hue_Light_28" from "TestA.esp": color [0, 171, 201, 0] -> [14, 122, 141, 0], radius 253 -> 278
+LIGH "Hue_Light_29" from "TestA.esp": color [0, 160, 219, 0] -> [15, 116, 153, 0], radius 260 -> 286, duration 588 -> 1470
+LIGH "Hue_Light_30" from "TestA.esp": color [0, 146, 237, 0] -> [17, 109, 166, 0], radius 267 -> 293, duration 609 -> 1522
+LIGH "Hue_Light_31" from "TestA.esp": color [0, 38, 76, 0] -> [5, 29, 53, 0], radius 274 -> 301
+LIGH "Hue_Light_32" from "TestA.esp": color [0, 36, 94, 0] -> [7, 29, 66, 0], radius 281 -> 309, duration 651 -> 1627
+LIGH "Hue_Light_33" from "TestA.esp": color [0, 29, 112, 0] -> [8, 26, 78, 0], radius 288 -> 316, duration 672 -> 1680
+LIGH "Hue_Light_34" from "TestA.esp": color [0, 19, 130, 0] -> [9, 21, 91, 0], radius 295 -> 324
+LIGH "Hue_Light_35" from "TestA.esp": color [0, 4, 147, 0] -> [10, 13, 103, 0], radius 302 -> 332, duration 714 -> 1785
+LIGH "Hue_Light_36" from "TestA.esp": color [13, 0, 165, 0] -> [20, 12, 116, 0], radius 309 -> 339, duration 735 -> 1837
+LIGH "Hue_Light_37" from "TestA.esp": color [36, 0, 183, 0] -> [35, 13, 128, 0], radius 316 -> 347
+LIGH "Hue_Light_38" from "TestA.esp": color [63, 0, 201, 0] -> [54, 14, 141, 0], radius 323 -> 355, duration 777 -> 1942
+LIGH "Hue_Light_39" from "TestA.esp": color [95, 0, 219, 0] -> [75, 15, 153, 0], radius 330 -> 363, duration 798 -> 1995
+LIGH "Hue_Light_40" from "TestA.esp": color [130, 0, 237, 0] -> [98, 17, 166, 0], radius 337 -> 370
+LIGH "Hue_Light_41" from "TestA.esp": color [51, 0, 76, 0] -> [37, 5, 53, 0], radius 344 -> 378, duration 840 -> 2100
+LIGH "Hue_Light_42" from "TestA.esp": color [73, 0, 94, 0] -> [53, 7, 66, 0], radius 351 -> 386, duration 861 -> 2152
+LIGH "Hue_Light_43" from "TestA.esp": color [100, 0, 112, 0] -> [71, 8, 78, 0], radius 358 -> 393
+LIGH "Hue_Light_44" from "TestA.esp": color [130, 0, 127, 0] -> [91, 9, 89, 0], radius 365 -> 401, duration 903 -> 2257
+LIGH "Hue_Light_45" from "TestA.esp": color [147, 0, 128, 0] -> [103, 10, 91, 0], radius 372 -> 409, duration 924 -> 2310
+LIGH "Hue_Light_46" from "TestA.esp": color [165, 0, 124, 0] -> [116, 12, 90, 0], radius 379 -> 416
+LIGH "Hue_Light_47" from "TestA.esp": color [183, 0, 116, 0] -> [128, 13, 86, 0], radius 386 -> 424, duration 966 -> 2415
+LIGH "Hue_Light_48" from "TestA.esp": color [201, 0, 104, 0] -> [141, 14, 80, 0], radius 393 -> 432, duration 987 -> 2467
+LIGH "Hue_Light_49" from "TestA.esp": color [219, 0, 87, 0] -> [153, 15, 70, 0], radius 400 -> 440
+LIGH "Hue_Light_50" from "TestA.esp": color [237, 0, 67, 0] -> [166, 17, 59, 0], radius 407 -> 447, duration 1029 -> 2572
+LIGH "Hue_Light_51" from "TestA.esp": color [76, 0, 12, 0] -> [53, 5, 13, 0], radius 414 -> 455, duration 1050 -> 2625
+LIGH "Hue_Light_52" from "TestA.esp": color [94, 0, 4, 0] -> [66, 7, 9, 0], radius 421 -> 463
+LIGH "Torch_Flicker" from "TestA.esp": color [245, 140, 40, 0] -> [140, 74, 46, 0], radius 256 -> 307, duration 600 -> 1500, flags LightFlags(DYNAMIC | CAN_CARRY | FIRE | FLICKER_SLOW) -> LightFlags(DYNAMIC | CAN_CARRY | FIRE)
+LIGH "Torch_Pulse" from "TestA.esp": color [255, 200, 100, 0] -> [145, 103, 75, 0], radius 128 -> 153, duration 300 -> 750, flags LightFlags(CAN_CARRY | FLICKER | PULSE | PULSE_SLOW) -> LightFlags(CAN_CARRY | PULSE | PULSE_SLOW)
+LIGH "Negative_Dark" from "TestA.esp": color [50, 50, 50, 0] -> [0, 0, 0, 0], radius 200 -> 0, flags LightFlags(NEGATIVE | FLICKER) -> LightFlags(FLICKER)
+LIGH "Black_Light" from "TestA.esp": radius 10 -> 11, duration 10 -> 25
+LIGH "White_Light" from "TestA.esp": color [255, 255, 255, 0] -> [178, 178, 178, 0], radius 1000000 -> 1100000
+LIGH "Grey_Light" from "TestA.esp": color [128, 128, 128, 0] -> [90, 90, 90, 0]
+LIGH "Excluded_Purple_Light" from "TestA.esp": color [200, 0, 200, 0] -> [140, 14, 140, 0], radius 100 -> 110, duration 10 -> 25
+LIGH "Deleted_Light" from "TestA.esp": color [255, 128, 0, 0] -> [145, 65, 29, 0], radius 100 -> 120, duration 10 -> 25
+LIGH "Named_Light" from "TestA.esp": color [255, 64, 32, 0] -> [178, 58, 38, 0], radius 90 -> 99, duration 45 -> 112
