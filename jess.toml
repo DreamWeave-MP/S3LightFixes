@@ -6,7 +6,7 @@ version = "0.1.0"
 jess_api = "1"
 default_target = "s3lightfixes"
 include = ["src"]
-tests = ["tests/run.luau", "tests/cli.luau"]
+tests = ["tests/run.luau", "tests/cli.luau", "tests/style.luau"]
 
 [dependencies]
 "org.dreamweave.tes3" = "0.1"
