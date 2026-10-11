@@ -31,14 +31,15 @@ local function golden(name: string): string
 end
 
 --- A fresh, empty folder under the suite's scratch root: both providers run the suite there, and
---- a lightconfig.toml the first left behind would change what the second does.
+--- a lightconfig.toml the first left behind would change what the second does. Its path is the
+--- resolved one, which is how the tool spells a folder it was pointed at through a link.
 local function fresh(name: string): string
   local scratch = assert(rawget(_G, 'scratchRoot') :: string?, 'the suite needs a scratchRoot')
   local path = jess.fs.join(scratch, 's3lightfixes', name)
   if fs.exists(path) then assert(fs.remove(path, { recursive = true })) end
 
   assert(fs.mkdir(path, { recursive = true }))
-  return path
+  return (assert(fs.canonicalize(path)))
 end
 
 --- A fresh load order: plugins go in `root/data`, the user config is `root/config/openmw.cfg`,
