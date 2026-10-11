@@ -1,0 +1,25 @@
+manifest_version = 1
+
+[package]
+id = "org.dreamweave.s3lightfixes"
+version = "0.1.0"
+jess_api = "1"
+include = ["src"]
+
+[dependencies]
+"org.dreamweave.tes3" = "0.1"
+"org.dreamweave.load-order" = "0.1"
+"org.dreamweave.openmw" = "0.1"
+
+[modules]
+"@s3lightfixes" = "src/init.luau"
+
+# The module is inert API: it does nothing until something requires it, and runs with the
+# authority of whatever calls it. A run reads the load order's content files and lightconfig.toml,
+# and writes the plugin, lightconfig.toml, and lightconfig.log, so its caller needs to read and
+# write files.
+
+[[layer]]
+id = "s3lightfixes.core"
+requires = ["tes3.core", "load-order.core", "openmw.core"]
+exports = ["@s3lightfixes"]
