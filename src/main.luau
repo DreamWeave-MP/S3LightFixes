@@ -1,0 +1,6 @@
+--!strict
+--!native
+-- The `s3lightfixes` command target's entry: the command line's arguments in, the exit status out.
+local cli = require '@s3lightfixes/cli'
+
+return cli.run { ... }

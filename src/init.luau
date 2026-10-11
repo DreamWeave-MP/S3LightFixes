@@ -223,7 +223,7 @@ export type Options = {
   report: Report?,
 }
 
-local Version, PluginName = '0.4.59', 'S3LightFixes.omwaddon'
+local Version, PluginName = require '@self/version', 'S3LightFixes.omwaddon'
 local ConfigName, LogName = 'lightconfig.toml', 'lightconfig.log'
 local U8Max, U32Max, I32Min, I32Max = 255, 4294967295, -2147483648, 2147483647
 
