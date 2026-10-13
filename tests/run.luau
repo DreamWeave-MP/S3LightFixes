@@ -539,10 +539,12 @@ local Patterns = {
   'vault|guild\\\\',
 }
 
--- The same, and two with the character that starts a comment in a pattern that allows them.
+-- The same, and two with the character that starts a comment in a pattern that allows them,
+-- the second followed by a pattern with the line break such a comment ends at.
 local HashPatterns = table.clone(Patterns)
 table.insert(HashPatterns, 2, 'h#7$|r#3$')
-table.insert(HashPatterns, '(?x)lantern _10 # the last of them')
+table.insert(HashPatterns, '(?x)lantern _10 # and a comment')
+table.insert(HashPatterns, 'no such|light\nat all')
 
 local PatternLists = {
   { label = 'plain', patterns = Patterns },
