@@ -1405,7 +1405,11 @@ return function(state: { [string]: unknown }?, context: Context?)
     local union = patterns.union
     if union then return union:isMatch(text) end
 
-    return any[for pattern in patterns.each => pattern:isMatch(text)]
+    for _, pattern in patterns.each do
+      if pattern:isMatch(text) then return true end
+    end
+
+    return false
   end
 
   local function lightOverrideFor(id: string): LightOverride?
@@ -1829,7 +1833,10 @@ return function(state: { [string]: unknown }?, context: Context?)
   end
 
   local function logLines(): { string }
-    local changedCells = #[for log in logs if log.kind == 'CELL' => log]
+    local changedCells = 0
+    for _, log in logs do
+      if log.kind == 'CELL' then changedCells += 1 end
+    end
 
     local lines = {
       `# S3LightFixes {Version}`,
@@ -1868,12 +1875,12 @@ return function(state: { [string]: unknown }?, context: Context?)
 
   -- Lights sorted by id, by bytes, which is how Luau orders strings; then cells in the order they
   -- were made. No two lights share an id: one is taken only when its id, lowered, is new.
-  local byId: { [string]: Light } = {}
-  for _, light in lights do
+  local byId: { [string]: Light }, ids: { string } = {}, table.create(#lights)
+  for index, light in lights do
     byId[light.id] = light
+    ids[index] = light.id
   end
 
-  local ids = [for light in lights => light.id]
   table.sort(ids)
 
   local generated = tes3.new('plugin', { encoding = encoding })
