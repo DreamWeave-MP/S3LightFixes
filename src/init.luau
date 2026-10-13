@@ -101,6 +101,10 @@ type LightConfig = {
 
 type Matcher<T> = { regex: Regex, value: T }
 
+-- Patterns a text is tried against, as they were written, and one pattern for all of them when
+-- one was made: it matches where any of them does.
+type Patterns = { each: { Regex }, sources: { string }, union: Regex? }
+
 type LightValues = { time: number, radius: number, color: { number }, flags: number }
 
 type RecordLog = { kind: string, plugin: string, id: string, changes: { string } }
@@ -1331,14 +1335,17 @@ return function(state: { [string]: unknown }?, context: Context?)
     return nil
   end
 
-  local function compileAll(patterns: { string }, kind: string): { Regex }
-    local compiled: { Regex } = {}
+  local function compileAll(patterns: { string }, kind: string): Patterns
+    local compiled: { Regex }, sources: { string } = {}, {}
     for _, pattern in patterns do
       local regex = compile(pattern, kind)
-      if regex then table.insert(compiled, regex) end
+      if not regex then continue end
+
+      table.insert(compiled, regex)
+      table.insert(sources, pattern)
     end
 
-    return compiled
+    return { each = compiled, sources = sources }
   end
 
   local function compileMatchers<T>(overrides: OrderedMap<T>, kind: string): { Matcher<T> }
@@ -1359,15 +1366,50 @@ return function(state: { [string]: unknown }?, context: Context?)
 
   if #compileErrors > 0 then error(table.concat(compileErrors, '\n')) end
 
-  local function matchesAny(patterns: { Regex }, text: string): boolean
-    for _, pattern in patterns do
-      if pattern:isMatch(text) then return true end
-    end
+  if bools.validate_config then
+    print(`Validated {jess.fs.join(userConfigDir, ConfigName)} successfully`)
+    options.report = { validated = true }
+    return
+  end
 
-    return false
+  -- One pattern that matches where any of `sources` does, each of which compiled: an id is then
+  -- tried once, not once for every pattern. Nil when there is nothing to gain or it can't be
+  -- made, and the patterns are tried one by one.
+  local function anyOf(sources: { string }): Regex?
+    if #sources < 2 then return nil end
+
+    -- Each pattern in a group of its own, so that what it sets, it sets for itself alone.
+    local all = '(?:' .. table.concat(sources, ')|(?:') .. ')'
+
+    -- Where a pattern allows comments, a `#` starts one that would run on into the next pattern.
+    if string.find(all, '#', 1, true) then return nil end
+
+    -- `jess.regex.new` throws on a pattern past the regex crate's limits on size and nesting,
+    -- which the patterns together can be when none is alone, and on a name two of them give a
+    -- group.
+    local compiled, regex = pcall(jess.regex.new, all, CaseInsensitive)
+
+    return if compiled then regex else nil
+  end
+
+  -- Every light and cell is tried against these; a plugin's name is tried once, which is too
+  -- seldom for one pattern of them all to pay for itself.
+  excludedIds.union = anyOf(excludedIds.sources)
+  interiorSunCells.union = anyOf(interiorSunCells.sources)
+
+  local lightOverridden = anyOf(config.lightOverrides.keys)
+  local ambientOverridden = anyOf(config.ambientOverrides.keys)
+
+  local function matchesAny(patterns: Patterns, text: string): boolean
+    local union = patterns.union
+    if union then return union:isMatch(text) end
+
+    return any[for pattern in patterns.each => pattern:isMatch(text)]
   end
 
   local function lightOverrideFor(id: string): LightOverride?
+    if lightOverridden and not lightOverridden:isMatch(id) then return nil end
+
     for _, matcher in lightOverrides do
       if matcher.regex:isMatch(id) then return matcher.value end
     end
@@ -1530,12 +1572,6 @@ return function(state: { [string]: unknown }?, context: Context?)
     return lightChanges(before, light)
   end
 
-  if bools.validate_config then
-    print(`Validated {jess.fs.join(userConfigDir, ConfigName)} successfully`)
-    options.report = { validated = true }
-    return
-  end
-
   local outputDir = config.outputDir :: string
 
   if bools.debug then
@@ -1562,7 +1598,9 @@ return function(state: { [string]: unknown }?, context: Context?)
   end
 
   -- Cells only matter when something can relight them; otherwise they're never read.
-  local needsCells = bools.disable_interior_sun or #interiorSunCells > 0 or #ambientOverrides > 0
+  local needsCells = bools.disable_interior_sun
+    or #interiorSunCells.each > 0
+    or #ambientOverrides > 0
 
   -- A plugin is named by its file, which can differ in case from how openmw.cfg spells it.
   local entries: { loadOrder.Content } = {}
@@ -1635,6 +1673,8 @@ return function(state: { [string]: unknown }?, context: Context?)
       atmosphere.sunlightColor = { 0, 0, 0, 0 }
       replaced = true
     end
+
+    if ambientOverridden and not ambientOverridden:isMatch(id) then return replaced end
 
     for _, matcher in ambientOverrides do
       if not matcher.regex:isMatch(id) then continue end
