@@ -540,9 +540,17 @@ table.insert(HashPatterns, 2, 'h#7$|r#3$')
 table.insert(HashPatterns, '(?x)lantern _10 # and a comment')
 table.insert(HashPatterns, 'no such|light\nat all')
 
+-- The same, and two that give a group the same name, which one pattern can't do twice: among
+-- the exclusions and overrides, and second and third of the three sun cells.
+local NamedPatterns = table.clone(Patterns)
+table.insert(NamedPatterns, 2, '(?P<kind>lantern)_1')
+table.insert(NamedPatterns, '(?P<kind>brazier)|(?P<room>tower)')
+table.insert(NamedPatterns, 'house$')
+
 local PatternLists = {
   { label = 'plain', patterns = Patterns },
   { label = 'with comments', patterns = HashPatterns },
+  { label = 'named groups', patterns = NamedPatterns },
 }
 
 suite.describe('several patterns', function()
