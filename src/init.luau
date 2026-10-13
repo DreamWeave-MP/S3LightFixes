@@ -482,6 +482,21 @@ end
 
 local function integer(value: number): string return string.format('%d', value) end
 
+--- `compute`, which keeps what it gave for each key it is asked for and gives that again. An
+--- error keeps nothing.
+local function remembering<Key, Value>(compute: (key: Key) -> Value): (key: Key) -> Value
+  local known: { [Key]: Value } = {}
+
+  return function(key: Key): Value
+    local value = known[key]
+    if value ~= nil then return value end
+
+    local computed = compute(key)
+    known[key] = computed
+    return computed
+  end
+end
+
 -- Settings are checked as the original reads them, and a bad one stops the run with a message
 -- naming where it came from: lightconfig.toml, or an override in `state.s3lightfixes`.
 local ConfigOrigin = 'Lightconfig.toml couldn\'t be read: '
@@ -1338,6 +1353,11 @@ return function(state: { [string]: unknown }?, context: Context?)
   local Flickers = bit32.bor(FlagBits.FLICKER, FlagBits.FLICKER_SLOW)
   local Pulses = bit32.bor(FlagBits.PULSE, FlagBits.PULSE_SLOW)
 
+  -- A load order's lights share a handful of sets of flags, so each set is read, spelled, and
+  -- shown in the log once a run.
+  local readFlags, spellFlags = remembering(flagsFromJess), remembering(flagsToJess)
+  local showFlags = remembering(flagsDebug)
+
   local function scaledU32(value: number, multiplier: number): number
     return toInteger(fmax(f32(f32(value) * multiplier), 0), 0, U32Max)
   end
@@ -1373,7 +1393,7 @@ return function(state: { [string]: unknown }?, context: Context?)
     end
 
     if before.flags ~= after.flags then
-      table.insert(changes, `flags {flagsDebug(before.flags)} -> {flagsDebug(after.flags)}`)
+      table.insert(changes, `flags {showFlags(before.flags)} -> {showFlags(after.flags)}`)
     end
 
     return changes
@@ -1675,7 +1695,7 @@ return function(state: { [string]: unknown }?, context: Context?)
       time = data.time,
       radius = data.radius,
       color = bytes4(data.color),
-      flags = flagsFromJess(data.flags),
+      flags = readFlags(data.flags),
     }
 
     local changes = processLight(light.id, values)
@@ -1698,7 +1718,7 @@ return function(state: { [string]: unknown }?, context: Context?)
         time = values.time,
         radius = values.radius,
         color = values.color,
-        flags = flagsToJess(values.flags),
+        flags = spellFlags(values.flags),
       },
     }
   end
