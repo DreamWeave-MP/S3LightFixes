@@ -464,7 +464,13 @@ local DebugEscapes: { [string]: string } = {
   ['\0'] = '\\0',
 }
 
+-- The bytes Rust's Debug escapes in a string: the control characters, the quote, and the
+-- backslash. Most ids have none, and are told so in one call.
+local Escaped = jess.regex.new '(?-u)[\\x00-\\x1f\\x7f"\\\\]'
+
 local function debugString(text: string): string
+  if not Escaped:isMatch(text) then return '"' .. text .. '"' end
+
   local escaped = string.gsub(
     text,
     '[%c\\"]',
@@ -1782,14 +1788,7 @@ return function(state: { [string]: unknown }?, context: Context?)
   end
 
   local function logLines(): { string }
-    local changedCells, changedLights = 0, 0
-    for _, log in logs do
-      if log.kind == 'CELL' then
-        changedCells += 1
-      else
-        changedLights += 1
-      end
-    end
+    local changedCells = #[for log in logs if log.kind == 'CELL' => log]
 
     local lines = {
       `# S3LightFixes {Version}`,
@@ -1799,14 +1798,17 @@ return function(state: { [string]: unknown }?, context: Context?)
       `# loaded plugins: {#plugins}`,
       `# masters: {#masters}`,
       `# changed cells: {changedCells}`,
-      `# changed lights: {changedLights}`,
+      `# changed lights: {#logs - changedCells}`,
     }
+
+    -- A plugin is named once for every record of its that changed.
+    local shown = remembering(debugString)
 
     for _, log in logs do
       local changes = table.concat(log.changes, ', ')
       table.insert(
         lines,
-        `{log.kind} {debugString(log.id)} from {debugString(log.plugin)}: {changes}`
+        log.kind .. ' ' .. debugString(log.id) .. ' from ' .. shown(log.plugin) .. ': ' .. changes
       )
     end
 
