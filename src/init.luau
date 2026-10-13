@@ -1474,9 +1474,12 @@ return function(state: { [string]: unknown }?, context: Context?)
 
     local hsv = colorToHsv(light.color)
     local degrees = positiveDegrees(hsv.hue)
-    local kind = if degrees >= 14 and degrees <= 64 then 'standard_' else 'colored_'
-    local radius, hue = floats[kind .. 'radius'], floats[kind .. 'hue']
-    local saturation, value = floats[kind .. 'saturation'], floats[kind .. 'value']
+    local radius, hue = floats.colored_radius, floats.colored_hue
+    local saturation, value = floats.colored_saturation, floats.colored_value
+    if degrees >= 14 and degrees <= 64 then
+      radius, hue = floats.standard_radius, floats.standard_hue
+      saturation, value = floats.standard_saturation, floats.standard_value
+    end
 
     local override = lightOverrideFor(string.lower(id))
     if not override then
