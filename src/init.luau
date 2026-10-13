@@ -476,8 +476,27 @@ local function debugString(text: string): string
   return '"' .. escaped .. '"'
 end
 
-local function debugArray(values: { number }): string
-  return '[' .. table.concat(values, ', ') .. ']'
+-- A color's change as the log shows it, each color as Rust's Debug prints a [u8; 4]. Colors come
+-- four bytes long from `@tes3`, and are made four bytes long here.
+local function colorChange(name: string, before: { number }, after: { number }): string
+  return name
+    .. ' ['
+    .. before[1]
+    .. ', '
+    .. before[2]
+    .. ', '
+    .. before[3]
+    .. ', '
+    .. before[4]
+    .. '] -> ['
+    .. after[1]
+    .. ', '
+    .. after[2]
+    .. ', '
+    .. after[3]
+    .. ', '
+    .. after[4]
+    .. ']'
 end
 
 local function integer(value: number): string return string.format('%d', value) end
@@ -1381,19 +1400,19 @@ return function(state: { [string]: unknown }?, context: Context?)
     local changes = {}
 
     if not sameColor(before.color, after.color) then
-      table.insert(changes, `color {debugArray(before.color)} -> {debugArray(after.color)}`)
+      table.insert(changes, colorChange('color', before.color, after.color))
     end
 
     if before.radius ~= after.radius then
-      table.insert(changes, `radius {integer(before.radius)} -> {integer(after.radius)}`)
+      table.insert(changes, string.format('radius %d -> %d', before.radius, after.radius))
     end
 
     if before.time ~= after.time then
-      table.insert(changes, `duration {integer(before.time)} -> {integer(after.time)}`)
+      table.insert(changes, string.format('duration %d -> %d', before.time, after.time))
     end
 
     if before.flags ~= after.flags then
-      table.insert(changes, `flags {showFlags(before.flags)} -> {showFlags(after.flags)}`)
+      table.insert(changes, 'flags ' .. showFlags(before.flags) .. ' -> ' .. showFlags(after.flags))
     end
 
     return changes
@@ -1571,21 +1590,15 @@ return function(state: { [string]: unknown }?, context: Context?)
     local changes = {}
 
     if not sameColor(before.ambientColor, after.ambientColor) then
-      table.insert(
-        changes,
-        `ambient {debugArray(before.ambientColor)} -> {debugArray(after.ambientColor)}`
-      )
+      table.insert(changes, colorChange('ambient', before.ambientColor, after.ambientColor))
     end
 
     if not sameColor(before.sunlightColor, after.sunlightColor) then
-      table.insert(
-        changes,
-        `sunlight {debugArray(before.sunlightColor)} -> {debugArray(after.sunlightColor)}`
-      )
+      table.insert(changes, colorChange('sunlight', before.sunlightColor, after.sunlightColor))
     end
 
     if not sameColor(before.fogColor, after.fogColor) then
-      table.insert(changes, `fog {debugArray(before.fogColor)} -> {debugArray(after.fogColor)}`)
+      table.insert(changes, colorChange('fog', before.fogColor, after.fogColor))
     end
 
     -- f32::EPSILON
