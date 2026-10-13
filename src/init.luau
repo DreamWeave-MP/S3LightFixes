@@ -330,12 +330,12 @@ local function rgbToHsv(red: number, green: number, blue: number): Hsv
   return { hue = hue, saturation = fclamp(saturation, 0, 1), value = fclamp(max, 0, 1) }
 end
 
-local function hsvToRgb(hsv: Hsv): (number, number, number)
-  local chroma = f32(hsv.value * hsv.saturation)
-  local sector = f32(positiveDegrees(hsv.hue) / 60)
+local function hsvToRgb({hue, saturation, value}: Hsv): (number, number, number)
+  local chroma = f32(value * saturation)
+  local sector = f32(positiveDegrees(hue) / 60)
   local sectorModTwo = f32(sector - f32(math.floor(f32(sector * 0.5)) * 2))
   local secondary = f32(chroma * f32(1 - math.abs(f32(sectorModTwo - 1))))
-  local lift = f32(hsv.value - chroma)
+  local lift = f32(value - chroma)
 
   local zone0, zone1 = sector >= 0 and sector < 1, sector >= 1 and sector < 2
   local zone2, zone3 = sector >= 2 and sector < 3, sector >= 3 and sector < 4
@@ -1032,11 +1032,12 @@ local function configToToml(config: LightConfig): string
   local function putRgb(entry: TomlSection, id: string, name: string, color: Rgb?)
     if not color then return end
 
+    local {red, green, blue} = color
     local child = section { 'ambient_overrides', id, name }
     entry.hasChildren = true
-    tomlPut(child, 'red', integer(color.red))
-    tomlPut(child, 'green', integer(color.green))
-    tomlPut(child, 'blue', integer(color.blue))
+    tomlPut(child, 'red', integer(red))
+    tomlPut(child, 'green', integer(green))
+    tomlPut(child, 'blue', integer(blue))
   end
 
   local root = section(nil)
@@ -1157,7 +1158,7 @@ return function(state: { [string]: unknown }?, context: Context?)
   local config = if configPath
     then configFromToml(jess.fs.read(configPath) :: string)
     else defaultConfig()
-  local bools, floats = config.bools, config.floats
+  local {bools, floats} = config
 
   if options.dryRun ~= nil then
     bools.dry_run = options.dryRun
@@ -1644,7 +1645,7 @@ return function(state: { [string]: unknown }?, context: Context?)
     return string.find(' ' .. flags .. ' ', '[%s|]IS_INTERIOR[%s|]') ~= nil
   end
 
-  local function rgba(color: Rgb): { number } return { color.red, color.green, color.blue, 0 } end
+  local function rgba({red, green, blue}: Rgb): { number } return { red, green, blue, 0 } end
 
   -- Whether anything replaced the cell's lighting.
   local function processCell(atmosphere: AtmosphereData, id: string): boolean
@@ -1767,7 +1768,7 @@ return function(state: { [string]: unknown }?, context: Context?)
   end
 
   for _, loaded in plugins do
-    local plugin = loaded.plugin
+    local {plugin, name, size} = loaded
     local used = 0
 
     if needsCells then
@@ -1781,7 +1782,7 @@ return function(state: { [string]: unknown }?, context: Context?)
         local id = string.lower(cell.name)
         if usedIds[id] or matchesAny(excludedIds, id) then continue end
 
-        local relit = relitCell(cell, atmosphere, id, loaded.name)
+        local relit = relitCell(cell, atmosphere, id, name)
         if not relit then continue end
 
         table.insert(cells, relit)
@@ -1798,13 +1799,13 @@ return function(state: { [string]: unknown }?, context: Context?)
       if usedIds[id] or matchesAny(excludedIds, id) then continue end
 
       usedIds[id] = true
-      table.insert(lights, fixedLight(light, loaded.name))
+      table.insert(lights, fixedLight(light, name))
       used += 1
     end
 
     if used == 0 then continue end
 
-    table.insert(masters, 1, { name = loaded.name, size = loaded.size })
+    table.insert(masters, 1, { name = name, size = size })
     objects += used
   end
 

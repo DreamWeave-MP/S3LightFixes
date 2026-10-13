@@ -585,10 +585,13 @@ end
 --- The openmw.cfg a command runs on: the one `-c`/`--openmw-cfg` names, else `--config`'s, else
 --- `environment`'s, which is what OPENMW_CONFIG holds. Nil and the reason when none names one, or
 --- the one named isn't there.
-local function configuration(command: Command, environment: string?): (string?, string?)
-  if command.openmwCfg then return original(command.openmwCfg) end
+local function configuration(
+  {openmwCfg, config}: Command,
+  environment: string?
+): (string?, string?)
+  if openmwCfg then return original(openmwCfg) end
 
-  local selected = command.config or environment
+  local selected = config or environment
   if selected and selected ~= '' then return shared(selected) end
 
   return nil,
