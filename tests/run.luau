@@ -55,10 +55,7 @@ suite.describe('the fixtures', function()
     expect(jess.fs.size(jess.fs.join(data, 'TestC.esp'))).toBe(370)
 
     local original = tes3.open(buffer.fromstring(orders.golden 'default.omwaddon'))
-    local masters = {}
-    for _, master in original:masters() do
-      table.insert(masters, { name = master.name, size = master.size })
-    end
+    local masters = [for {name, size} in original:masters() => { name = name, size = size }]
 
     expect(masters).toEqual {
       { name = 'TestA.esp', size = 6685 },
@@ -349,10 +346,7 @@ suite.describe('what a run reads', function()
     expect(output).toContain 'LIGH "shared_light" from "TestB.omwaddon"'
 
     local plugin = tes3.open(assert(jess.fs.readBuffer(assert(assert(options.report).output))))
-    local masters = {}
-    for _, master in plugin:masters() do
-      table.insert(masters, { name = master.name, size = master.size })
-    end
+    local masters = [for {name, size} in plugin:masters() => { name = name, size = size }]
 
     expect(masters).toEqual {
       { name = 'TestA.esp', size = 6685 },
@@ -492,13 +486,13 @@ end
 --- Where in `patterns` the ones that match `id` are, each tried on its own as the tool's
 --- settings say a pattern is: against the id in lower case, ignoring case.
 local function matching(patterns: { string }, id: string): { number }
-  local found = {}
-  for index, pattern in patterns do
-    local regex = jess.regex.new(pattern, { caseInsensitive = true })
-    if regex:isMatch(string.lower(id)) then table.insert(found, index) end
-  end
+  local lowered = string.lower(id)
 
-  return found
+  return [
+    for index, pattern in enumerate(patterns)
+    if jess.regex.new(pattern, { caseInsensitive = true }):isMatch(lowered)
+    => index
+  ]
 end
 
 local PatternLights = {
@@ -576,13 +570,13 @@ suite.describe('several patterns', function()
 
     suite.it(`override a light by the first that matches it, a cell by all ({label})`, function()
       local order = orderOf('overridden-' .. string.sub(label, 1, 4), PatternLights, PatternCells)
-      local lightOverrides: { s3lightfixes.LightOverrideOption } = {}
-      local ambientOverrides: { s3lightfixes.AmbientOverrideOption } = {}
+      local lightOverrides: { s3lightfixes.LightOverrideOption } = [
+        for index, pattern in enumerate(patterns) => { id = pattern, radius = 1000 + index }
+      ]
 
-      for index, pattern in patterns do
-        table.insert(lightOverrides, { id = pattern, radius = 1000 + index })
-        table.insert(ambientOverrides, { id = pattern, fogDensity = index / 16 })
-      end
+      local ambientOverrides: { s3lightfixes.AmbientOverrideOption } = [
+        for index, pattern in enumerate(patterns) => { id = pattern, fogDensity = index / 16 }
+      ]
 
       local sun = { patterns[1], patterns[#patterns - 1], patterns[2] }
       local _, options = orders.run(order, {

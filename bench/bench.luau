@@ -296,10 +296,7 @@ local function configured(): string
     'excluded_plugins = ["mod_07\\\\.esp", "^Mod_1[89]"]',
   }
 
-  local excluded = {}
-  for index = 1, 16 do
-    table.insert(excluded, `"_{index + 20}_\\\\d+$"`)
-  end
+  local excluded = [for index in range(1, 16) => `"_{index + 20}_\\\\d+$"`]
 
   table.insert(lines, `excluded_ids = [{table.concat(excluded, ', ')}]`)
 
