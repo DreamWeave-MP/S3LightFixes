@@ -408,12 +408,7 @@ local function flagsFromJess(text: string): number
 end
 
 local function flagNames(bits: number): { string }
-  local names = {}
-  for _, name in FlagNames do
-    if bit32.band(bits, FlagBits[name]) ~= 0 then table.insert(names, name) end
-  end
-
-  return names
+  return [for name in FlagNames if bit32.band(bits, FlagBits[name]) ~= 0 => name]
 end
 
 local function flagsToJess(bits: number): string
@@ -993,13 +988,7 @@ local function tomlArray(strings: { string }): string
 
   if #items < 2 then return '[' .. table.concat(items) .. ']' end
 
-  local lines = { '[' }
-  for _, item in items do
-    table.insert(lines, '    ' .. item .. ',')
-  end
-
-  table.insert(lines, ']')
-  return table.concat(lines, '\n')
+  return '[\n' .. table.concat([for item in items => '    ' .. item .. ','], '\n') .. '\n]'
 end
 
 type TomlSection = { path: { string }?, lines: { string }, hasChildren: boolean }
@@ -1020,14 +1009,7 @@ local function renderSection(section: TomlSection): string
   local text = ''
   local path = section.path
 
-  if path then
-    local keys = {}
-    for _, part in path do
-      table.insert(keys, tomlKey(part))
-    end
-
-    text = '[' .. table.concat(keys, '.') .. ']\n'
-  end
+  if path then text = '[' .. table.concat([for part in path => tomlKey(part)], '.') .. ']\n' end
 
   for _, line in section.lines do
     text ..= line .. '\n'
@@ -1131,12 +1113,11 @@ local function configToToml(config: LightConfig): string
   if config.outputDir then tomlPut(root, 'output_dir', tomlQuoted(config.outputDir)) end
   tomlPut(root, 'save_config', tostring(config.bools.save_config))
 
-  local rendered = {}
-  for _, current in sections do
-    if #current.lines == 0 and (not current.path or current.hasChildren) then continue end
-
-    table.insert(rendered, renderSection(current))
-  end
+  local rendered = [
+    for current in sections
+    if #current.lines > 0 or (current.path and not current.hasChildren)
+    => renderSection(current)
+  ]
 
   return table.concat(rendered, '\n')
 end
