@@ -412,6 +412,230 @@ suite.describe('what a run reads', function()
   end)
 end)
 
+local Bright = { 255, 160, 60, 0 }
+
+--- A load order of one plugin, `Patterns.esp`, of a light under each of `lights` and an interior
+--- under each of `cells`.
+local function orderOf(name: string, lights: { string }, cells: { string }): orders.Order
+  local order = orders.empty(name, 'content=Patterns.esp\n')
+  local plugin = tes3.new()
+
+  for index, id in lights do
+    plugin:insertValue(plugin:count(), {
+      type = 'Light',
+      id = id,
+      data = {
+        weight = 1,
+        value = 5,
+        time = 10 + index,
+        radius = 100 + index,
+        color = Bright,
+        flags = 'DYNAMIC',
+      },
+    })
+  end
+
+  for _, cell in cells do
+    plugin:insertValue(plugin:count(), {
+      type = 'Cell',
+      name = cell,
+      data = { flags = 'IS_INTERIOR', grid = { 0, 0 } },
+      atmosphereData = {
+        ambientColor = { 10, 20, 30, 0 },
+        sunlightColor = { 40, 50, 60, 0 },
+        fogColor = { 70, 80, 90, 0 },
+        fogDensity = 0.5,
+      },
+    })
+  end
+
+  plugin:updateRecordCount()
+  jess.fs.write(jess.fs.join(order.root, 'data', 'Patterns.esp'), plugin:save())
+
+  return order
+end
+
+type Relit = { sunless: boolean, density: number }
+
+type Written = { lights: { [string]: number }, cells: { [string]: Relit } }
+
+type LightRecord = { id: string, data: { radius: number } }
+
+type CellRecord = {
+  name: string,
+  atmosphereData: { sunlightColor: { number }, fogDensity: number },
+}
+
+--- What the plugin a run wrote holds: each light's radius by its id, and for each cell whether it
+--- lost its sunlight and how dense its fog is.
+local function writtenBy(options: s3lightfixes.Options): Written
+  local plugin = tes3.open(assert(jess.fs.readBuffer(assert(assert(options.report).output))))
+  local written: Written = { lights = {}, cells = {} }
+
+  for index = 0, plugin:count() - 1 do
+    if plugin:tag(index) == 'LIGH' then
+      local light = (plugin:decode(index) :: unknown) :: LightRecord
+      written.lights[light.id] = light.data.radius
+    elseif plugin:tag(index) == 'CELL' then
+      local cell = (plugin:decode(index) :: unknown) :: CellRecord
+      local sunlight = cell.atmosphereData.sunlightColor
+      written.cells[cell.name] = {
+        sunless = sunlight[1] + sunlight[2] + sunlight[3] == 0,
+        density = cell.atmosphereData.fogDensity,
+      }
+    end
+  end
+
+  return written
+end
+
+--- Where in `patterns` the ones that match `id` are, each tried on its own as the tool's
+--- settings say a pattern is: against the id in lower case, ignoring case.
+local function matching(patterns: { string }, id: string): { number }
+  local found = {}
+  for index, pattern in patterns do
+    local regex = jess.regex.new(pattern, { caseInsensitive = true })
+    if regex:isMatch(string.lower(id)) then table.insert(found, index) end
+  end
+
+  return found
+end
+
+local PatternLights = {
+  'Lamp_A_1',
+  'lamp_b_2',
+  'UPPER_3',
+  'paren)4',
+  'back\\slash_5',
+  'Torch_6',
+  'hash#7',
+  'candle_8',
+  'Candle_9',
+  'lantern_10',
+  'sconce(11)',
+  'brazier_12',
+}
+
+local PatternCells = {
+  'Dark Cave',
+  'Light House',
+  'Upper Hall',
+  'Cellar (East)',
+  'Tower#3',
+  'Guild\\Vault',
+  'Plain Room',
+}
+
+-- Patterns that only mean what they say when each stands alone: alternatives at the top, flags
+-- set for the rest of a pattern, a parenthesis in a class, and a pattern ending in a backslash.
+local Patterns = {
+  '^lamp_a_1$|^torch',
+  '(?-i)UPPER|(?-i)Hall',
+  'PAREN[)]4$',
+  'slash_5|back\\\\',
+  '(?i)CANDLE_8',
+  '\\(1+\\)',
+  'CAVE$|^Plain',
+  'vault|guild\\\\',
+}
+
+-- The same, and two with the character that starts a comment in a pattern that allows them.
+local HashPatterns = table.clone(Patterns)
+table.insert(HashPatterns, 2, 'h#7$|r#3$')
+table.insert(HashPatterns, '(?x)lantern _10 # the last of them')
+
+local PatternLists = {
+  { label = 'plain', patterns = Patterns },
+  { label = 'with comments', patterns = HashPatterns },
+}
+
+suite.describe('several patterns', function()
+  for _, list in PatternLists do
+    local label, patterns = list.label, list.patterns
+
+    suite.it(`exclude what any one of them matches ({label})`, function()
+      local order = orderOf('excluded-' .. string.sub(label, 1, 4), PatternLights, PatternCells)
+      local _, options = orders.run(order, { excludedIds = patterns, disableInteriorSun = true })
+      local written = writtenBy(options)
+
+      for _, id in PatternLights do
+        local kept = #matching(patterns, id) == 0
+        expect({ id = id, written = written.lights[id] ~= nil }).toEqual { id = id, written = kept }
+      end
+
+      for _, cell in PatternCells do
+        local kept = #matching(patterns, cell) == 0
+        expect({ id = cell, written = written.cells[cell] ~= nil }).toEqual {
+          id = cell,
+          written = kept,
+        }
+      end
+    end)
+
+    suite.it(`override a light by the first that matches it, a cell by all ({label})`, function()
+      local order = orderOf('overridden-' .. string.sub(label, 1, 4), PatternLights, PatternCells)
+      local lightOverrides: { s3lightfixes.LightOverrideOption } = {}
+      local ambientOverrides: { s3lightfixes.AmbientOverrideOption } = {}
+
+      for index, pattern in patterns do
+        table.insert(lightOverrides, { id = pattern, radius = 1000 + index })
+        table.insert(ambientOverrides, { id = pattern, fogDensity = index / 16 })
+      end
+
+      local sun = { patterns[1], patterns[#patterns - 1], patterns[2] }
+      local _, options = orders.run(order, {
+        lightOverrides = lightOverrides,
+        ambientOverrides = ambientOverrides,
+        disableInteriorSun = sun,
+      })
+      local written = writtenBy(options)
+
+      -- A light no pattern matches is written with its radius scaled, which leaves it under 1000.
+      for _, id in PatternLights do
+        local first = matching(patterns, id)[1]
+        local radius = assert(written.lights[id], `{id} wasn't written`)
+        expect({ id = id, override = if radius > 1000 then radius - 1000 else nil }).toEqual {
+          id = id,
+          override = first,
+        }
+      end
+
+      for _, cell in PatternCells do
+        local found = matching(patterns, cell)
+        local last = found[#found]
+        local sunless = #matching(sun, cell) > 0
+        local expected = if last or sunless
+          then { sunless = sunless, density = if last then last / 16 else 0.5 }
+          else nil
+        expect({ id = cell, relit = written.cells[cell] }).toEqual { id = cell, relit = expected }
+      end
+    end)
+  end
+end)
+
+suite.describe('the log', function()
+  suite.it('names a record as Rust shows a string, escapes and all', function()
+    local order = orderOf(
+      'escapes',
+      { 'Quote"Light', 'Tab\tLight', 'Back\\Slash', 'Bell\7Light', 'Rub\127out', 'Caf\u{e9}_Light' },
+      { 'A "Quoted" Cellar\r' }
+    )
+    local output = orders.run(order, { disableInteriorSun = true })
+
+    for _, expected in {
+      'LIGH "Quote\\"Light" from',
+      'LIGH "Tab\\tLight" from',
+      'LIGH "Back\\\\Slash" from',
+      'LIGH "Bell\\u{7}Light" from',
+      'LIGH "Rub\\u{7f}out" from',
+      'LIGH "Caf\u{e9}_Light" from',
+      'CELL "a \\"quoted\\" cellar\\r" from "Patterns.esp": sunlight',
+    } do
+      expect(output).toContain(expected)
+    end
+  end)
+end)
+
 -- Not here: the harness's comparison with the original binary over a real load order, which
 -- needs that binary and a real openmw.cfg (JESS_S3LIGHTFIXES_BIN, JESS_S3LIGHTFIXES_CFG).
 
