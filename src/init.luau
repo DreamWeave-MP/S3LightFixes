@@ -1875,7 +1875,7 @@ return function(state: { [string]: unknown }?, context: Context?)
 
   -- Lights sorted by id, by bytes, which is how Luau orders strings; then cells in the order they
   -- were made. No two lights share an id: one is taken only when its id, lowered, is new.
-  local byId: { [string]: Light }, ids: { string } = {}, table.create(#lights)
+  local byId: { [string]: Light }, ids = {}, table.create(#lights) :: { string }
   for index, light in lights do
     byId[light.id] = light
     ids[index] = light.id
