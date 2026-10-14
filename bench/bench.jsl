@@ -10,7 +10,7 @@
 -- tool wrote before anything here was changed, so a path that stopped doing the work, or does it
 -- differently, fails here. Run on a release build:
 --   jess run --package . --package-path .. --capability filesystem.read
---     --capability filesystem.write --capability process.environment bench/bench.luau
+--     --capability filesystem.write --capability process.environment bench/bench.jsl
 --     <scratch folder> [filter]
 local bytes = require '@dream/bytes'
 local cli = require '@s3lightfixes/cli'

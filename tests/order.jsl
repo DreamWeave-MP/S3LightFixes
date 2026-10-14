@@ -1,5 +1,5 @@
 --!strict
--- What the suites share: a load order of `build.luau`'s plugins in a scratch folder, laid out as
+-- What the suites share: a load order of `build.jsl`'s plugins in a scratch folder, laid out as
 -- the original's harness laid one out; a run of the tool over it that keeps what the tool printed;
 -- and the comparison of what a run wrote against what S3LightFixes 0.4.59 wrote for the same
 -- plugins (`golden/`), in which the run's folder is spelled `<root>`.
@@ -59,7 +59,7 @@ local function empty(name: string, content: string): Order
   return { root = root, config = config, out = out, cfg = cfg }
 end
 
---- A load order of `build.luau`'s plugins, and one content file no data folder has.
+--- A load order of `build.jsl`'s plugins, and one content file no data folder has.
 local function new(name: string): Order
   local order = empty(
     name,

@@ -4,7 +4,7 @@
 -- command line over a small install (a master of 60 lights and 20 cells and two plugins of 12
 -- lights), once for the lights and once more with the cells. Run by `jess run --capability
 -- filesystem.read --capability filesystem.write --capability process.environment --package .
--- --package-path .. bench/cold.luau <scratch>`, on a release build. Each line is one sample of
+-- --package-path .. bench/cold.jsl <scratch>`, on a release build. Each line is one sample of
 -- something a process does once, so compare medians over many runs. This file uses none of the
 -- l3i dialect, so that whatever the modules' first use of it costs is paid inside the `require`
 -- timed here.

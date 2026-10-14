@@ -1,6 +1,6 @@
 --!strict
 -- @s3lightfixes over load orders built in scratch, checked against S3LightFixes 0.4.59's own
--- output: the goldens in `golden/` are what the original wrote for the plugins `build.luau`
+-- output: the goldens in `golden/` are what the original wrote for the plugins `build.jsl`
 -- makes, with the run's folder written as `<root>`. The `configured` goldens differ from the
 -- original's only in listing ambient overrides in the order `lightConfig.toml` does and in
 -- leaving `CAN_CARRY` alone under flag overrides.

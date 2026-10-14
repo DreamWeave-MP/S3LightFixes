@@ -6,7 +6,7 @@ version = "0.1.0"
 jess_api = "1"
 default_target = "s3lightfixes"
 include = ["src"]
-tests = ["tests/run.luau", "tests/cli.luau", "tests/style.luau"]
+tests = ["tests/run.jsl", "tests/cli.jsl", "tests/style.jsl"]
 
 [dependencies]
 "org.dreamweave.tes3" = "0.1"
@@ -14,8 +14,8 @@ tests = ["tests/run.luau", "tests/cli.luau", "tests/style.luau"]
 "org.dreamweave.openmw" = "0.1"
 
 [modules]
-"@s3lightfixes" = "src/init.luau"
-"@s3lightfixes/cli" = "src/cli.luau"
+"@s3lightfixes" = "src/init.jsl"
+"@s3lightfixes/cli" = "src/cli.jsl"
 
 # Every module here is inert API: it does nothing until something requires it, and runs with the
 # authority of whatever calls it. A run reads the load order's content files and lightconfig.toml,
@@ -27,7 +27,7 @@ id = "s3lightfixes.core"
 requires = ["tes3.core", "load-order.core", "openmw.core"]
 exports = ["@s3lightfixes", "@s3lightfixes/cli"]
 
-# The command line: `src/main.luau` hands its arguments to `@s3lightfixes/cli`. A run reads the
+# The command line: `src/main.jsl` hands its arguments to `@s3lightfixes/cli`. A run reads the
 # configuration, the data folders' listings, the content files, and lightconfig.toml
 # (filesystem.read); writes S3LightFixes.omwaddon, lightconfig.toml, and lightconfig.log, removes
 # the plugin it replaces, and with --auto-enable backs up and rewrites openmw.cfg
@@ -37,5 +37,5 @@ exports = ["@s3lightfixes", "@s3lightfixes/cli"]
 [targets.s3lightfixes]
 kind = "command"
 command = "s3lightfixes"
-entry = "src/main.luau"
+entry = "src/main.jsl"
 capabilities = ["filesystem.read", "filesystem.write", "process.environment"]

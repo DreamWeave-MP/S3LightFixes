@@ -1,6 +1,6 @@
 # S3LightFixes benchmarks
 
-`bench/bench.luau` times the tool the way a caller reaches it: `@s3lightfixes` over an `@openmw`
+`bench/bench.jsl` times the tool the way a caller reaches it: `@s3lightfixes` over an `@openmw`
 Context, and `@s3lightfixes/cli`, for an install the bench writes. The install is a master of
 1,200 lights and 1,500 cells (and 300 statics the tool is told to leave out) and 24 plugins of 60
 lights and 40 cells each, a third of which override an earlier record under an id in another
@@ -14,7 +14,7 @@ log, and saved configuration are held to the SHA-256 of what the tool wrote befo
 was changed. The tool prints its log, as it does from the command line, so the rows are the lines
 with a tab in them.
 
-`bench/cold.luau` times what one process pays once: the `require` of this package's two modules
+`bench/cold.jsl` times what one process pays once: the `require` of this package's two modules
 with the modules below them loaded first, then the first run of the command over a small install
 (72 lights fixed), and a second with its 20 cells. Each line is a single sample, so it is run many
 times and the medians are compared.
@@ -22,11 +22,11 @@ times and the medians are compared.
 ```sh
 jess run --package jpk/s3lightfixes --package-path jpk \
   --capability filesystem.read --capability filesystem.write --capability process.environment \
-  jpk/s3lightfixes/bench/bench.luau <scratch folder> [filter] | grep -P '\t'
+  jpk/s3lightfixes/bench/bench.jsl <scratch folder> [filter] | grep -P '\t'
 
 jess run --package jpk/s3lightfixes --package-path jpk \
   --capability filesystem.read --capability filesystem.write --capability process.environment \
-  jpk/s3lightfixes/bench/cold.luau <scratch folder> | grep -P '\t'
+  jpk/s3lightfixes/bench/cold.jsl <scratch folder> | grep -P '\t'
 ```
 
 ## The move onto l3i 2.0, base against head
@@ -39,8 +39,8 @@ jess run --package jpk/s3lightfixes --package-path jpk \
   `openmw` at `515f5b5`).
 - Base: `2e36314`, the package before the move, run with the benches as they are now. Head:
   `31bc4bf`.
-- Protocol: the whole of `bench.luau` against an export of base, then head, five times over,
-  back to back under one lock; each cell is the median of its five runs. `cold.luau` the same
+- Protocol: the whole of `bench.jsl` against an export of base, then head, five times over,
+  back to back under one lock; each cell is the median of its five runs. `cold.jsl` the same
   way, thirty-one times over. A difference under 5 percent is called no change.
 - The table is the first of three sessions. The second, the same protocol a minute later, had
   1.32x, 1.20x, 1.38x, 1.43x, no change, no change and 1.34x down the warm rows, and 0.97x,
@@ -103,13 +103,13 @@ The cold rows say what a small install gets: the modules take 0.4 to 0.9 ms long
 (under what the protocol can show on that row, but the same sign in all three sessions), the
 first run over 72 lights is 0.5 ms shorter, and the two together don't move. `--!native` has no
 part in it: Jess compiles every module natively whatever the file says, and the two modules load
-and run in the same time without the directive. Of the 24 ms, 21 are `src/init.luau`. Next to
+and run in the same time without the directive. Of the 24 ms, 21 are `src/init.jsl`. Next to
 them, the modules below this package take 250 ms.
 
 ### A change at a time
 
-Each commit that touches the payload against the one before it: `bench.luau` five times and
-`cold.luau` forty-five times over the eleven sources in turn, under one lock a round (warm) or
+Each commit that touches the payload against the one before it: `bench.jsl` five times and
+`cold.jsl` forty-five times over the eleven sources in turn, under one lock a round (warm) or
 fifteen rounds (cold), medians, in µs. Ratios are before / after; a blank is no change. The cold
 column's three ratios are under 5 percent, and are given because the next section is about them.
 
@@ -157,7 +157,7 @@ one row shows alone, and 1.05x together.
 
 ### Measured and left alone
 
-- **A comprehension in the command line.** `fieldsIn` in `src/cli.luau` is a filter of
+- **A comprehension in the command line.** `fieldsIn` in `src/cli.jsl` is a filter of
   `string.split`'s list, and exact as one. It would be that module's first construct: the
   reading of 46 arguments didn't move (172.4 µs against 171.7), and the `require` was 0.25 ms
   longer over forty-five runs (26204.1 against 26457.2), no change over twenty-one. Not taken.
