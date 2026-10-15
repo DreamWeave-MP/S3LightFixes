@@ -5,7 +5,7 @@ id = "org.dreamweave.s3lightfixes"
 version = "0.1.0"
 jess_api = "1"
 default_target = "s3lightfixes"
-include = ["src"]
+include = ["src", "tests"]
 tests = ["tests/run.jsl", "tests/cli.jsl", "tests/style.jsl"]
 
 [dependencies]
@@ -38,4 +38,4 @@ exports = ["@s3lightfixes", "@s3lightfixes/cli"]
 kind = "command"
 command = "s3lightfixes"
 entry = "src/main.jsl"
-capabilities = ["filesystem.read", "filesystem.write", "process.environment"]
+capabilities = ["filesystem.read", "filesystem.write", "process.environment", "process.stdio"]
