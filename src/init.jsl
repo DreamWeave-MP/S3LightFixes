@@ -54,9 +54,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ]]
 
+local bytes = require '@dream/bytes'
+local fs = require '@dream/fs'
 local loadOrder = require '@load-order'
 local openmwPackage = require '@openmw'
 local tes3 = require '@tes3'
+local toml = require '@jess/data/toml'
+
+type Regex = dream_bytes_Regex
 
 type Context = openmwPackage.Context
 
@@ -470,7 +475,7 @@ local DebugEscapes: { [string]: string } = {
 
 -- The bytes Rust's Debug escapes in a string: the control characters, the quote, and the
 -- backslash. Most ids have none, and are told so in one call.
-local Escaped = jess.regex.new '(?-u)[\\x00-\\x1f\\x7f"\\\\]'
+local Escaped = bytes.regex '(?-u)[\\x00-\\x1f\\x7f"\\\\]'
 
 local function debugString(text: string): string
   if not Escaped:isMatch(text) then return '"' .. text .. '"' end
@@ -870,8 +875,8 @@ local function ambientOverrideFromToml(
 end
 
 local function configFromToml(text: string): LightConfig
-  -- `jess.toml.decode` throws on text that isn't TOML, which reads as a broken lightconfig.toml.
-  local decoded, raw, layout = pcall(jess.toml.decode, text)
+  -- `toml.decode` throws on text that isn't TOML, which reads as a broken lightconfig.toml.
+  local decoded, raw, layout = pcall(toml.decode, text)
   if not decoded then return invalid(ConfigOrigin, problem(raw)) end
 
   local config = defaultConfig()
@@ -1157,16 +1162,19 @@ return function(state: { [string]: unknown }?, context: Context?)
   end
 
   local userConfigDir = openmw.userConfigDir
-  local configFile = jess.fs.join(userConfigDir, 'openmw.cfg')
+  local configFile = fs.join(userConfigDir, 'openmw.cfg')
   -- Plugins are read, and the output written, in the encoding OpenMW reads them in.
   local encoding: string = openmw.encoding or 'win1252'
 
   -- The original finds lightconfig.toml ignoring case, but always saves it lowercase.
   local function findLightConfig(): string?
-    if not jess.fs.isDir(userConfigDir) then return nil end
+    if not fs.isDir(userConfigDir) then return nil end
 
-    for _, name in jess.fs.list(userConfigDir) do
-      if string.lower(name) == ConfigName then return jess.fs.join(userConfigDir, name) end
+    local names, failure = fs.list(userConfigDir)
+    if not names then error(failure, 0) end
+
+    for _, name in names do
+      if string.lower(name) == ConfigName then return fs.join(userConfigDir, name) end
     end
 
     return nil
@@ -1175,7 +1183,7 @@ return function(state: { [string]: unknown }?, context: Context?)
   local configPath = findLightConfig()
   local configMissing = not configPath
   local config = if configPath
-    then configFromToml(jess.fs.read(configPath) :: string)
+    then configFromToml(fs.readFileString(configPath) :: string)
     else defaultConfig()
   local {bools, floats} = config
 
@@ -1223,13 +1231,19 @@ return function(state: { [string]: unknown }?, context: Context?)
     local output = options.output
 
     if output then
-      if not jess.fs.isDir(output) then
+      if not fs.isDir(output) then
         error(`WARNING: The requested output path {output} does not exist! Terminating.`)
       end
 
       config.outputDir = output
     elseif not config.outputDir then
-      config.outputDir = openmw.dataLocal or jess.fs.cwd()
+      config.outputDir = openmw.dataLocal
+      if not config.outputDir then
+        local current, problem = fs.cwd()
+        if not current then error(problem, 0) end
+
+        config.outputDir = current
+      end
     end
   end
 
@@ -1317,17 +1331,18 @@ return function(state: { [string]: unknown }?, context: Context?)
 
   local writesConfig = configMissing or bools.save_config or options.updateLightConfig == true
   if writesConfig and not bools.dry_run and not bools.validate_config then
-    jess.fs.write(jess.fs.join(userConfigDir, ConfigName), configToToml(config))
+    local done, failure = fs.writeFile(fs.join(userConfigDir, ConfigName), configToToml(config), { atomic = true, createParents = true })
+    if not done then error(failure, 0) end
   end
 
-  local CaseInsensitive: RegexOptions = { caseInsensitive = true }
+  local CaseInsensitive = { caseInsensitive = true }
 
   local compileErrors: { string } = {}
 
-  -- `jess.regex.new` throws on a pattern Rust's regex crate rejects. The original reports every bad
+  -- `bytes.regex` throws on a pattern Rust's regex crate rejects. The original reports every bad
   -- pattern before it stops, so each is caught here and collected.
   local function compile(pattern: string, kind: string): Regex?
-    local compiled, regex = pcall(jess.regex.new, pattern, CaseInsensitive)
+    local compiled, regex = pcall(bytes.regex, pattern, CaseInsensitive)
     if compiled then return regex end
 
     local message = `Couldn't compile {kind} regex: {pattern}: {regex}`
@@ -1368,7 +1383,7 @@ return function(state: { [string]: unknown }?, context: Context?)
   if #compileErrors > 0 then error(table.concat(compileErrors, '\n')) end
 
   if bools.validate_config then
-    print(`Validated {jess.fs.join(userConfigDir, ConfigName)} successfully`)
+    print(`Validated {fs.join(userConfigDir, ConfigName)} successfully`)
     options.report = { validated = true }
     return
   end
@@ -1385,10 +1400,10 @@ return function(state: { [string]: unknown }?, context: Context?)
     -- Where a pattern allows comments, a `#` starts one that would run on into the next pattern.
     if string.find(all, '#', 1, true) then return nil end
 
-    -- `jess.regex.new` throws on a pattern past the regex crate's limits on size and nesting,
+    -- `bytes.regex` throws on a pattern past the regex crate's limits on size and nesting,
     -- which the patterns together can be when none is alone, and on a name two of them give a
     -- group.
-    local compiled, regex = pcall(jess.regex.new, all, CaseInsensitive)
+    local compiled, regex = pcall(bytes.regex, all, CaseInsensitive)
 
     return if compiled then regex else nil
   end
@@ -1595,8 +1610,8 @@ return function(state: { [string]: unknown }?, context: Context?)
     { esp = true, esm = true, omwaddon = true, omwgame = true }
 
   local function isFixablePlugin(path: string): boolean
-    local stem, extension = string.match(jess.fs.fileName(path) or '', '^(.*)%.([^%.]*)$')
-    if not jess.fs.exists(path) or not stem or not extension then return false end
+    local stem, extension = string.match(fs.fileName(path) or '', '^(.*)%.([^%.]*)$')
+    if not fs.exists(path) or not stem or not extension then return false end
     if stem == '' or string.lower(stem) == 's3lightfixes' then return false end
 
     return FixableExtensions[string.lower(extension)] or false
@@ -1612,9 +1627,9 @@ return function(state: { [string]: unknown }?, context: Context?)
   for index = #content, 1, -1 do
     local path = content[index].path
     if not path or not isFixablePlugin(path) then continue end
-    if matchesAny(excludedPlugins, jess.fs.fileName(path) or '') then continue end
+    if matchesAny(excludedPlugins, fs.fileName(path) or '') then continue end
 
-    table.insert(entries, { name = jess.fs.fileName(path) or path, path = path })
+    table.insert(entries, { name = fs.fileName(path) or path, path = path })
   end
 
   -- Cells are only relit, so their references are never read.
@@ -1841,7 +1856,7 @@ return function(state: { [string]: unknown }?, context: Context?)
     local lines = {
       `# S3LightFixes {Version}`,
       `# config: {configFile}`,
-      `# output: {jess.fs.join(outputDir, PluginName)}`,
+      `# output: {fs.join(outputDir, PluginName)}`,
       `# content files: {#content}`,
       `# loaded plugins: {#plugins}`,
       `# masters: {#masters}`,
@@ -1902,24 +1917,27 @@ return function(state: { [string]: unknown }?, context: Context?)
 
   local dataLocal = openmw.dataLocal
   if dataLocal then
-    local old = jess.fs.join(dataLocal, PluginName)
-    -- `jess.fs.remove` throws when the file can't be removed; like the original, the run goes on and
-    -- writes the new plugin.
-    if jess.fs.isFile(old) then pcall(jess.fs.remove, old) end
+    local old = fs.join(dataLocal, PluginName)
+    -- Like the original, a file that can't be removed leaves the run going, and it writes the new
+    -- plugin.
+    if fs.isFile(old) then fs.remove(old) end
   end
 
-  local output = jess.fs.join(outputDir, PluginName)
-  if jess.fs.exists(outputDir) and not jess.fs.isDir(outputDir) then
-    local cwd = jess.fs.cwd()
+  local output = fs.join(outputDir, PluginName)
+  if fs.exists(outputDir) and not fs.isDir(outputDir) then
+    local cwd, failure = fs.cwd()
+    if not cwd then error(failure, 0) end
     print(
       `WARNING: Couldn't use {outputDir} as an output directory, as it isn't a directory. Using the current working directory, {cwd}, instead!`
     )
-    output = jess.fs.join(cwd, PluginName)
-  elseif not jess.fs.exists(outputDir) then
-    jess.fs.createDir(outputDir)
+    output = fs.join(cwd, PluginName)
+  elseif not fs.exists(outputDir) then
+    local done, failure = fs.mkdir(outputDir, { recursive = true })
+    if not done then error(failure, 0) end
   end
 
-  jess.fs.write(output, generated:save())
+  local written, failure = fs.writeFile(output, generated:save(), { atomic = true, createParents = true })
+  if not written then error(failure, 0) end
 
   local function autoEnable(): boolean
     for _, entry in content do
@@ -1950,7 +1968,8 @@ return function(state: { [string]: unknown }?, context: Context?)
 
   local log = table.concat(logLines(), '\n')
   print(log)
-  jess.fs.write(jess.fs.join(userConfigDir, LogName), log .. '\n')
+  local done, failure = fs.writeFile(fs.join(userConfigDir, LogName), log .. '\n', { atomic = true, createParents = true })
+  if not done then error(failure, 0) end
 
   if enabled then
     notify(`S3LightFixes.omwaddon generated, enabled, and saved in {outputDir}`)

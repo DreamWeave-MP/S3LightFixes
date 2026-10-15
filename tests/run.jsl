@@ -4,6 +4,8 @@
 -- makes, with the run's folder written as `<root>`. The `configured` goldens differ from the
 -- original's only in listing ambient overrides in the order `lightConfig.toml` does and in
 -- leaving `CAN_CARRY` alone under flag overrides.
+local bytes = require '@dream/bytes'
+local fs = require '@dream/fs'
 local orders = require './order'
 local s3lightfixes = require '@s3lightfixes'
 local tes3 = require '@tes3'
@@ -12,7 +14,7 @@ local test = require '@jess/test'
 local expect = test.expect
 local suite = test.new()
 
-local function read(path: string): string return (assert(jess.fs.read(path), `no {path}`)) end
+local function read(path: string): string return ((fs.readFileString(path) or error(`no {path}`, 0))) end
 
 --- The first line of `output` that starts with `prefix`.
 local function line(output: string, prefix: string): string
@@ -49,10 +51,16 @@ end
 suite.describe('the fixtures', function()
   suite.it('are the plugins the original recorded as its masters', function()
     local order = orders.new 'fixtures'
-    local data = jess.fs.join(order.root, 'data')
-    expect(jess.fs.size(jess.fs.join(data, 'TestA.esp'))).toBe(6685)
-    expect(jess.fs.size(jess.fs.join(data, 'TestB.omwaddon'))).toBe(628)
-    expect(jess.fs.size(jess.fs.join(data, 'TestC.esp'))).toBe(370)
+    local data = fs.join(order.root, 'data')
+    local fileStat, problem = fs.stat(fs.join(data, 'TestA.esp'))
+    if not fileStat then error(problem, 0) end
+    expect(fileStat.size).toBe(6685)
+    local fileStat, problem = fs.stat(fs.join(data, 'TestB.omwaddon'))
+    if not fileStat then error(problem, 0) end
+    expect(fileStat.size).toBe(628)
+    local fileStat, problem = fs.stat(fs.join(data, 'TestC.esp'))
+    if not fileStat then error(problem, 0) end
+    expect(fileStat.size).toBe(370)
 
     local original = tes3.open(buffer.fromstring(orders.golden 'default.omwaddon'))
     local masters = [for {name, size} in original:masters() => { name = name, size = size }]
@@ -75,7 +83,7 @@ suite.describe('against the original', function()
     expect(string.find(read(order.cfg), 'S3LightFixes', 1, true)).toBeNil()
 
     local report = assert(options.report)
-    expect(report.output).toBe(jess.fs.join(order.out, orders.PluginName))
+    expect(report.output).toBe(fs.join(order.out, orders.PluginName))
     expect(report.masters).toBe(2)
     expect(report.objects).toBe(63)
     expect(report.lights).toBe(63)
@@ -97,7 +105,8 @@ suite.describe('against the original', function()
   suite.it('matches it with a config and options', function()
     local order = orders.new 'configured'
     local input = orders.golden 'lightConfig.toml'
-    jess.fs.write(jess.fs.join(order.config, 'lightConfig.toml'), input)
+    local done, problem = fs.writeFile(fs.join(order.config, 'lightConfig.toml'), input, { atomic = true, createParents = true })
+    if not done then error(problem, 0) end
 
     orders.run(order, {
       updateLightConfig = true,
@@ -109,8 +118,8 @@ suite.describe('against the original', function()
 
     -- The original saves lightconfig.toml lowercase, beside the file it read. A case-insensitive
     -- file system (Windows, and macOS by default) makes those one file.
-    if not jess.fs.exists(jess.fs.join(order.config, 'OPENMW.CFG')) then
-      expect(read(jess.fs.join(order.config, 'lightConfig.toml'))).toBe(input)
+    if not fs.exists(fs.join(order.config, 'OPENMW.CFG')) then
+      expect(read(fs.join(order.config, 'lightConfig.toml'))).toBe(input)
     end
   end)
 end)
@@ -156,10 +165,12 @@ suite.describe('overrides', function()
 
   suite.it('apply in the order they are listed', function()
     local order = orders.new 'order'
-    jess.fs.write(
-      jess.fs.join(order.config, 'lightconfig.toml'),
-      '[light_overrides."torch_.*"]\nradius = 100\n\n[light_overrides."^torch"]\nradius = 200\n'
+    local done, problem = fs.writeFile(
+      fs.join(order.config, 'lightconfig.toml'),
+      '[light_overrides."torch_.*"]\nradius = 100\n\n[light_overrides."^torch"]\nradius = 200\n',
+      { atomic = true, createParents = true }
     )
+    if not done then error(problem, 0) end
 
     local output = orders.run(order, {
       updateLightConfig = true,
@@ -178,7 +189,7 @@ suite.describe('overrides', function()
     expect(radius 'Torch_Flicker').toBe 'radius 256 -> 100'
     expect(radius 'Torch_Pulse').toBe 'radius 128 -> 100'
 
-    local saved = read(jess.fs.join(order.config, 'lightconfig.toml'))
+    local saved = read(fs.join(order.config, 'lightconfig.toml'))
 
     local function position(key: string): number
       return (assert(string.find(saved, key, 1, true), `{key} in {saved}`))
@@ -190,10 +201,12 @@ suite.describe('overrides', function()
 
   suite.it('match their patterns ignoring case', function()
     local order = orders.new 'override-case'
-    jess.fs.write(
-      jess.fs.join(order.config, 'lightconfig.toml'),
-      '[light_overrides.Torch_Flicker]\nradius = 7\n\n[ambient_overrides."^Dark Cave$"]\nfog_density = 0.5\n'
+    local done, problem = fs.writeFile(
+      fs.join(order.config, 'lightconfig.toml'),
+      '[light_overrides.Torch_Flicker]\nradius = 7\n\n[ambient_overrides."^Dark Cave$"]\nfog_density = 0.5\n',
+      { atomic = true, createParents = true }
     )
+    if not done then error(problem, 0) end
 
     local output = orders.run(order, {})
     expect(line(output, 'LIGH "Torch_Flicker"')).toContain 'radius 256 -> 7'
@@ -204,8 +217,9 @@ end)
 suite.describe('interior sun', function()
   suite.it('is disabled in the cells lightconfig.toml lists', function()
     local order = orders.new 'sun-cells'
-    local config = jess.fs.join(order.config, 'lightconfig.toml')
-    jess.fs.write(config, 'disable_interior_sun = ["^Caius"]\n')
+    local config = fs.join(order.config, 'lightconfig.toml')
+    local done, problem = fs.writeFile(config, 'disable_interior_sun = ["^Caius"]\n', { atomic = true, createParents = true })
+    if not done then error(problem, 0) end
 
     local output = orders.run(order, { updateLightConfig = true })
     expect(sunless(output)).toEqual { 'caius cosades\' house' }
@@ -228,8 +242,12 @@ suite.describe('what a run writes', function()
     local output, options = orders.run(order, { dryRun = true })
     expect(output).toContain 'Dry run: no files written'
     expect(output).toContain '# changed lights: 63'
-    expect(jess.fs.list(order.out)).toEqual {}
-    expect(jess.fs.list(order.config)).toEqual { 'openmw.cfg' }
+    local listed, problem = fs.list(order.out)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual {}
+    local listed, problem = fs.list(order.config)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual { 'openmw.cfg' }
 
     local report = assert(options.report)
     expect(report.dryRun).toBe(true)
@@ -240,15 +258,19 @@ suite.describe('what a run writes', function()
 
   suite.it('is nothing on a validation', function()
     local order = orders.new 'validate'
-    jess.fs.write(
-      jess.fs.join(order.config, 'lightconfig.toml'),
-      orders.golden 'lightConfig.toml'
+    local done, problem = fs.writeFile(
+      fs.join(order.config, 'lightconfig.toml'),
+      orders.golden 'lightConfig.toml',
+      { atomic = true, createParents = true }
     )
+    if not done then error(problem, 0) end
 
     local output, options = orders.run(order, { validateConfig = true })
     expect(output).toContain 'successfully'
-    expect(jess.fs.list(order.out)).toEqual {}
-    expect(jess.fs.exists(jess.fs.join(order.config, 'lightconfig.log'))).toBe(false)
+    local listed, problem = fs.list(order.out)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual {}
+    expect(fs.exists(fs.join(order.config, 'lightconfig.log'))).toBe(false)
     expect(options.report).toEqual { validated = true }
   end)
 
@@ -262,27 +284,32 @@ suite.describe('what a run writes', function()
   end)
 
   suite.it('leaves a plugin outside the data folders disabled', function()
-    local elsewhere = jess.fs.join(orders.fresh 'elsewhere-output', 'elsewhere')
-    jess.fs.createDir(elsewhere)
+    local elsewhere = fs.join(orders.fresh 'elsewhere-output', 'elsewhere')
+    local done, problem = fs.mkdir(elsewhere, { recursive = true })
+    if not done then error(problem, 0) end
 
     local order = orders.new 'elsewhere'
     local before = read(order.cfg)
     local output, options = orders.run(order, { autoEnable = true, output = elsewhere })
-    expect(jess.fs.isFile(jess.fs.join(elsewhere, orders.PluginName))).toBe(true)
+    expect(fs.isFile(fs.join(elsewhere, orders.PluginName))).toBe(true)
     expect(output).toContain 'Refusing to auto-enable'
     expect(read(order.cfg)).toBe(before)
-    expect(jess.fs.exists(`{order.cfg}.bak`)).toBe(false)
+    expect(fs.exists(`{order.cfg}.bak`)).toBe(false)
     expect(assert(options.report).enabled).toBe(false)
-    expect(jess.fs.list(order.out)).toEqual {}
+    local listed, problem = fs.list(order.out)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual {}
   end)
 
   suite.it('lists each exclusion once, however often it is saved', function()
     local order = orders.new 'exclusions'
-    local config = jess.fs.join(order.config, 'lightconfig.toml')
-    jess.fs.write(
+    local config = fs.join(order.config, 'lightconfig.toml')
+    local done, problem = fs.writeFile(
       config,
-      'excluded_ids = ["purple", "glow$", "glow$"]\nexcluded_plugins = ["TestC.*"]\n'
+      'excluded_ids = ["purple", "glow$", "glow$"]\nexcluded_plugins = ["TestC.*"]\n',
+      { atomic = true, createParents = true }
     )
+    if not done then error(problem, 0) end
 
     for _ = 1, 2 do
       orders.run(order, {
@@ -299,17 +326,23 @@ suite.describe('what a run writes', function()
 
   suite.it('goes to data-local, or else the working folder, never another data folder', function()
     local order = orders.new 'no-data-local'
-    local data = jess.fs.join(order.root, 'data')
-    jess.fs.write(
+    local data = fs.join(order.root, 'data')
+    local done, problem = fs.writeFile(
       order.cfg,
-      `data="{data}"\ncontent=TestA.esp\ncontent=TestB.omwaddon\ncontent=TestC.esp\n`
+      `data="{data}"\ncontent=TestA.esp\ncontent=TestB.omwaddon\ncontent=TestC.esp\n`,
+      { atomic = true, createParents = true }
     )
+    if not done then error(problem, 0) end
 
     -- A dry run says where the plugin would go without writing it there.
     local output = orders.run(order, { dryRun = true })
-    local working = jess.fs.join(jess.fs.cwd(), orders.PluginName)
+    local current, problem = fs.cwd()
+    if not current then error(problem, 0) end
+    local working = fs.join(current, orders.PluginName)
     expect(line(output, '# output: ')).toBe(`# output: {working}`)
-    expect(sorted(jess.fs.list(data))).toEqual { 'TestA.esp', 'TestB.omwaddon', 'TestC.esp' }
+    local listed, problem = fs.list(data)
+    if not listed then error(problem, 0) end
+    expect(sorted(listed)).toEqual { 'TestA.esp', 'TestB.omwaddon', 'TestC.esp' }
   end)
 end)
 
@@ -321,7 +354,7 @@ suite.describe('what a run reads', function()
   suite.it('stops at a pattern that does not compile', function()
     local order = orders.new 'bad'
     expect(function() orders.run(order, { excludedIds = { '(' } }) end).toThrow 'Couldn\'t compile excluded id regex'
-    expect(jess.fs.exists(jess.fs.join(order.out, orders.PluginName))).toBe(false)
+    expect(fs.exists(fs.join(order.out, orders.PluginName))).toBe(false)
   end)
 
   suite.it('stops at an override that sets a value and its multiplier', function()
@@ -335,17 +368,21 @@ suite.describe('what a run reads', function()
 
   suite.it('names each plugin by its file, however openmw.cfg spells it', function()
     local order = orders.new 'spelling'
-    local data, out = jess.fs.join(order.root, 'data'), order.out
-    jess.fs.write(
+    local data, out = fs.join(order.root, 'data'), order.out
+    local done, problem = fs.writeFile(
       order.cfg,
-      `data="{data}"\ndata-local="{out}"\ncontent=testa.ESP\ncontent=TESTB.omwaddon\n`
+      `data="{data}"\ndata-local="{out}"\ncontent=testa.ESP\ncontent=TESTB.omwaddon\n`,
+      { atomic = true, createParents = true }
     )
+    if not done then error(problem, 0) end
 
     local output, options = orders.run(order, { noNotifications = true })
     expect(output).toContain 'LIGH "Hue_Light_1" from "TestA.esp"'
     expect(output).toContain 'LIGH "shared_light" from "TestB.omwaddon"'
 
-    local plugin = tes3.open(assert(jess.fs.readBuffer(assert(assert(options.report).output))))
+    local fileBytes, problem = fs.readFile(assert(assert(options.report).output))
+    if not fileBytes then error(problem, 0) end
+    local plugin = tes3.open(fileBytes)
     local masters = [for {name, size} in plugin:masters() => { name = name, size = size }]
 
     expect(masters).toEqual {
@@ -356,9 +393,11 @@ suite.describe('what a run reads', function()
 
   suite.it('reads plugins last to first, and warns of one it cannot open', function()
     local order = orders.new 'unreadable'
-    local broken = jess.fs.join(order.root, 'data', 'Broken.esp')
-    jess.fs.write(broken, 'not a plugin')
-    jess.fs.write(order.cfg, read(order.cfg) .. 'content=Broken.esp\n')
+    local broken = fs.join(order.root, 'data', 'Broken.esp')
+    local written, problem = fs.writeFile(broken, 'not a plugin', { atomic = true, createParents = true })
+    if not written then error(problem, 0) end
+    local done, problem = fs.writeFile(order.cfg, read(order.cfg) .. 'content=Broken.esp\n', { atomic = true, createParents = true })
+    if not done then error(problem, 0) end
 
     local output, options = orders.run(order, { noNotifications = true })
     expect(output).toContain(
@@ -389,13 +428,15 @@ suite.describe('what a run reads', function()
       },
     })
     russian:updateRecordCount()
-    jess.fs.write(jess.fs.join(order.root, 'data', 'Russian.esp'), russian:save())
+    local written, problem = fs.writeFile(fs.join(order.root, 'data', 'Russian.esp'), russian:save(), { atomic = true, createParents = true })
+    if not written then error(problem, 0) end
 
     -- Ids read in the wrong encoding would log as mojibake.
     local output = orders.run(order, {})
     expect(output).toContain 'LIGH "Факел" from "Russian.esp"'
 
-    local written = assert(jess.fs.readBuffer(jess.fs.join(order.out, orders.PluginName)))
+    local written, problem = fs.readFile(fs.join(order.out, orders.PluginName))
+    if not written then error(problem, 0) end
     local plugin = tes3.open(written, { encoding = 'win1251' })
     local ids = {}
     for index = 0, plugin:count() - 1 do
@@ -444,7 +485,8 @@ local function orderOf(name: string, lights: { string }, cells: { string }): ord
   end
 
   plugin:updateRecordCount()
-  jess.fs.write(jess.fs.join(order.root, 'data', 'Patterns.esp'), plugin:save())
+  local done, problem = fs.writeFile(fs.join(order.root, 'data', 'Patterns.esp'), plugin:save(), { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
 
   return order
 end
@@ -463,7 +505,9 @@ type CellRecord = {
 --- What the plugin a run wrote holds: each light's radius by its id, and for each cell whether it
 --- lost its sunlight and how dense its fog is.
 local function writtenBy(options: s3lightfixes.Options): Written
-  local plugin = tes3.open(assert(jess.fs.readBuffer(assert(assert(options.report).output))))
+  local fileBytes, problem = fs.readFile(assert(assert(options.report).output))
+  if not fileBytes then error(problem, 0) end
+  local plugin = tes3.open(fileBytes)
   local written: Written = { lights = {}, cells = {} }
 
   for index = 0, plugin:count() - 1 do
@@ -490,7 +534,7 @@ local function matching(patterns: { string }, id: string): { number }
 
   return [
     for index, pattern in enumerate(patterns)
-    if jess.regex.new(pattern, { caseInsensitive = true }):isMatch(lowered)
+    if bytes.regex(pattern, { caseInsensitive = true }):isMatch(lowered)
     => index
   ]
 end

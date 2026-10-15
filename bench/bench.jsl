@@ -177,13 +177,13 @@ end
 
 -- openmw.cfg reads a relative data folder from its own folder, not from where the run started.
 local root: string = made(fs.canonicalize(made(fs.absolute(scratch))))
-local install = jess.fs.join(root, 's3lightfixes-bench')
+local install = fs.join(root, 's3lightfixes-bench')
 local data, config, out =
-  jess.fs.join(install, 'data'), jess.fs.join(install, 'config'), jess.fs.join(install, 'out')
-local configFile = jess.fs.join(config, 'openmw.cfg')
+  fs.join(install, 'data'), fs.join(install, 'config'), fs.join(install, 'out')
+local configFile = fs.join(config, 'openmw.cfg')
 
 -- The install starts from nothing, whatever an earlier run left in the folder.
-if jess.fs.isDir(install) then made(fs.remove(install, { recursive = true })) end
+if fs.isDir(install) then made(fs.remove(install, { recursive = true })) end
 
 for _, directory in { data, config, out } do
   made(fs.mkdir(directory, { recursive = true }))
@@ -191,7 +191,8 @@ end
 
 local function save(plugin: tes3.Plugin, name: string)
   plugin:updateRecordCount()
-  jess.fs.write(jess.fs.join(data, name), plugin:save())
+  local done, problem = fs.writeFile(fs.join(data, name), plugin:save(), { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
 end
 
 local function insert(plugin: tes3.Plugin, record: Fields)
@@ -215,8 +216,10 @@ end
 
 save(base, 'Base.esm')
 
-local overBase: { Master } =
-  { { name = 'Base.esm', size = made(jess.fs.size(jess.fs.join(data, 'Base.esm'))) } }
+local baseStat, problem = fs.stat(fs.join(data, 'Base.esm'))
+if not baseStat then error(problem, 0) end
+
+local overBase: { Master } = { { name = 'Base.esm', size = made(baseStat.size) } }
 
 for number = 1, Plugins do
   local plugin = tes3.new 'plugin'
@@ -247,7 +250,8 @@ end
 -- One content file no data folder has, and one that isn't a plugin.
 table.insert(content, 'Missing.esp')
 table.insert(content, 'Scripts.omwscripts')
-jess.fs.write(jess.fs.join(data, 'Scripts.omwscripts'), 'PLAYER: scripts/bench.lua\n')
+local done, problem = fs.writeFile(fs.join(data, 'Scripts.omwscripts'), 'PLAYER: scripts/bench.lua\n', { atomic = true, createParents = true })
+if not done then error(problem, 0) end
 
 do
   local lines = { `data="{data}"`, `data-local="{out}"` }
@@ -255,7 +259,8 @@ do
     table.insert(lines, `content={name}`)
   end
 
-  jess.fs.write(configFile, table.concat(lines, '\n') .. '\n')
+  local done, problem = fs.writeFile(configFile, table.concat(lines, '\n') .. '\n', { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
 end
 
 -- The settings a run with no lightconfig.toml saves, less the folder it wrote to: every run of a
@@ -356,13 +361,13 @@ local function digestOf(report: s3lightfixes.Report?, files: { string }): string
   end
 
   for _, name in files do
-    local path = jess.fs.join(if name == PluginName then out else config, name)
+    local path = fs.join(if name == PluginName then out else config, name)
     hasher:update(`{name}\n`)
 
     if name == PluginName then
-      hasher:update(made(jess.fs.readBuffer(path), `the run wrote no {name}`))
+      hasher:update(made(fs.readFile(path), `the run wrote no {name}`))
     else
-      hasher:update(rootless(made(jess.fs.read(path), `the run wrote no {name}`)))
+      hasher:update(rootless(made(fs.readFileString(path), `the run wrote no {name}`)))
     end
   end
 
@@ -398,7 +403,8 @@ local function workload(name: string, lightConfig: string, body: () -> string)
 
   made(fs.remove(out, { recursive = true }))
   made(fs.mkdir(out))
-  jess.fs.write(jess.fs.join(config, ConfigName), lightConfig)
+  local done, problem = fs.writeFile(fs.join(config, ConfigName), lightConfig, { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
 
   local function verify(digest: string)
     if digest ~= Digests[name] then

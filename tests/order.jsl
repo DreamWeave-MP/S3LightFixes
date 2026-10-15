@@ -27,7 +27,7 @@ local function here(): string
 end
 
 local function golden(name: string): string
-  return (assert(jess.fs.read(`{here()}/golden/{name}`), `no golden {name}`))
+  return ((fs.readFileString(`{here()}/golden/{name}`) or error(`no golden {name}`, 0)))
 end
 
 --- A fresh, empty folder under the suite's scratch root: both providers run the suite there, and
@@ -35,11 +35,18 @@ end
 --- resolved one, which is how the tool spells a folder it was pointed at through a link.
 local function fresh(name: string): string
   local scratch = assert(rawget(_G, 'scratchRoot') :: string?, 'the suite needs a scratchRoot')
-  local path = jess.fs.join(scratch, 's3lightfixes', name)
-  if fs.exists(path) then assert(fs.remove(path, { recursive = true })) end
+  local path = fs.join(scratch, 's3lightfixes', name)
+  if fs.exists(path) then
+    local done, problem = fs.remove(path, { recursive = true })
+    if not done then error(problem, 0) end
+  end
 
-  assert(fs.mkdir(path, { recursive = true }))
-  return (assert(fs.canonicalize(path)))
+  local done, problem = fs.mkdir(path, { recursive = true })
+  if not done then error(problem, 0) end
+  local canonical, problem = fs.canonicalize(path)
+  if not canonical then error(problem, 0) end
+
+  return (canonical)
 end
 
 --- A fresh load order: plugins go in `root/data`, the user config is `root/config/openmw.cfg`,
@@ -47,14 +54,16 @@ end
 local function empty(name: string, content: string): Order
   local root = fresh(name)
   local data, config, out =
-    jess.fs.join(root, 'data'), jess.fs.join(root, 'config'), jess.fs.join(root, 'out')
+    fs.join(root, 'data'), fs.join(root, 'config'), fs.join(root, 'out')
 
   for _, folder in { data, config, out } do
-    jess.fs.createDir(folder)
+    local done, problem = fs.mkdir(folder, { recursive = true })
+    if not done then error(problem, 0) end
   end
 
-  local cfg = jess.fs.join(config, 'openmw.cfg')
-  jess.fs.write(cfg, `data="{data}"\ndata-local="{out}"\n{content}`)
+  local cfg = fs.join(config, 'openmw.cfg')
+  local done, problem = fs.writeFile(cfg, `data="{data}"\ndata-local="{out}"\n{content}`, { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
 
   return { root = root, config = config, out = out, cfg = cfg }
 end
@@ -65,7 +74,7 @@ local function new(name: string): Order
     name,
     'content=TestA.esp\ncontent=TestB.omwaddon\ncontent=TestC.esp\ncontent=Missing.esp\n'
   )
-  build(jess.fs.join(order.root, 'data'))
+  build(fs.join(order.root, 'data'))
 
   return order
 end
@@ -122,7 +131,7 @@ end
 --- paths under it spelled with slashes, as the goldens spell them. TOML escapes backslashes, so a
 --- Windows root appears doubled there. Nothing else is changed.
 local function written(order: Order, name: string): string
-  local text = assert(jess.fs.read(jess.fs.join(order.config, name)), `the run wrote no {name}`)
+  local text = (fs.readFileString(fs.join(order.config, name)) or error(`the run wrote no {name}`, 0))
   text = replaced(text, replaced(order.root, '\\', '\\\\'), '<root>')
   text = replaced(text, order.root, '<root>')
 
@@ -139,8 +148,8 @@ end
 --- Holds the plugin, lightconfig.toml, and lightconfig.log a run wrote to the original's, byte
 --- for byte. A plugin that differs fails on its length and digest first, which a report can show.
 local function expectOriginal(order: Order, name: string)
-  local plugin = assert(jess.fs.readBuffer(jess.fs.join(order.out, PluginName)), 'no plugin')
-  local original = assert(jess.fs.readBuffer(`{here()}/golden/{name}.omwaddon`), 'no golden')
+  local plugin = (fs.readFile(fs.join(order.out, PluginName)) or error('no plugin', 0))
+  local original = (fs.readFile(`{here()}/golden/{name}.omwaddon`) or error('no golden', 0))
 
   expect(buffer.len(plugin)).toBe(buffer.len(original))
   expect(bytes.sha256(plugin)).toBe(bytes.sha256(original))

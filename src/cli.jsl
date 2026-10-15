@@ -536,12 +536,12 @@ end
 --- openmw.cfg, whose folder is resolved when it is relative, or a folder holding one, resolved
 --- either way.
 local function original(path: string): (string?, string?)
-  if jess.fs.isFile(path) then
-    if jess.fs.fileName(path) ~= 'openmw.cfg' then
+  if fs.isFile(path) then
+    if fs.fileName(path) ~= 'openmw.cfg' then
       return nil, `Explicit --openmw-cfg file {path} must be named openmw.cfg`
     end
 
-    local parent = jess.fs.parent(path)
+    local parent = fs.parent(path)
     if not parent or parent == '' then parent = '.' end
     if fs.absolute(parent) == parent then return path, nil end
 
@@ -550,7 +550,7 @@ local function original(path: string): (string?, string?)
       return nil, `Explicit --openmw-cfg path {parent} could not be resolved: {unresolved}`
     end
 
-    return jess.fs.join(folder, 'openmw.cfg'), nil
+    return fs.join(folder, 'openmw.cfg'), nil
   end
 
   local folder, unresolved = resolved(path)
@@ -558,8 +558,8 @@ local function original(path: string): (string?, string?)
     return nil, `Explicit --openmw-cfg path {path} could not be resolved: {unresolved}`
   end
 
-  if jess.fs.isDir(folder) and jess.fs.isFile(jess.fs.join(folder, 'openmw.cfg')) then
-    return jess.fs.join(folder, 'openmw.cfg'), nil
+  if fs.isDir(folder) and fs.isFile(fs.join(folder, 'openmw.cfg')) then
+    return fs.join(folder, 'openmw.cfg'), nil
   end
 
   return nil, `Explicit --openmw-cfg path {path} must be a directory containing openmw.cfg`
@@ -568,14 +568,17 @@ end
 --- The openmw.cfg `--config` or OPENMW_CONFIG names, as Jess's other tools resolve it: the file,
 --- or the openmw.cfg in the folder, found without regard to case.
 local function shared(path: string): (string?, string?)
-  if jess.fs.isFile(path) then return path, nil end
+  if fs.isFile(path) then return path, nil end
 
-  if not jess.fs.isDir(path) then
+  if not fs.isDir(path) then
     return nil, `The requested OpenMW config '{path}' does not exist or is not a file or directory.`
   end
 
-  for _, name in jess.fs.list(path) do
-    if string.lower(name) == 'openmw.cfg' then return jess.fs.join(path, name), nil end
+  local names, problem = fs.list(path)
+  if not names then error(problem, 0) end
+
+  for _, name in names do
+    if string.lower(name) == 'openmw.cfg' then return fs.join(path, name), nil end
   end
 
   return nil, `No openmw.cfg found in '{path}'.`

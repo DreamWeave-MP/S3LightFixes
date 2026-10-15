@@ -66,12 +66,12 @@ local function cell(index: number): { [string]: unknown }
   }
 end
 
-local root = jess.fs.join(made(fs.canonicalize(made(fs.absolute(given)))), 's3lightfixes-cold')
+local root = fs.join(made(fs.canonicalize(made(fs.absolute(given)))), 's3lightfixes-cold')
 local data, config, out =
-  jess.fs.join(root, 'data'), jess.fs.join(root, 'config'), jess.fs.join(root, 'out')
-local configFile = jess.fs.join(config, 'openmw.cfg')
+  fs.join(root, 'data'), fs.join(root, 'config'), fs.join(root, 'out')
+local configFile = fs.join(config, 'openmw.cfg')
 
-if jess.fs.isDir(root) then made(fs.remove(root, { recursive = true })) end
+if fs.isDir(root) then made(fs.remove(root, { recursive = true })) end
 
 for _, directory in { data, config, out } do
   made(fs.mkdir(directory, { recursive = true }))
@@ -79,7 +79,8 @@ end
 
 local function save(plugin: tes3.Plugin, name: string)
   plugin:updateRecordCount()
-  jess.fs.write(jess.fs.join(data, name), plugin:save())
+  local done, problem = fs.writeFile(fs.join(data, name), plugin:save(), { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
 end
 
 local base = tes3.new 'master'
@@ -108,10 +109,12 @@ for number = 1, 2 do
   save(plugin, `Mod_{number}.esp`)
 end
 
-jess.fs.write(
+local done, problem = fs.writeFile(
   configFile,
-  `data="{data}"\ndata-local="{out}"\ncontent=Base.esm\ncontent=Mod_1.esp\ncontent=Mod_2.esp\n`
+  `data="{data}"\ndata-local="{out}"\ncontent=Base.esm\ncontent=Mod_1.esp\ncontent=Mod_2.esp\n`,
+  { atomic = true, createParents = true }
 )
+if not done then error(problem, 0) end
 
 started = os.clock()
 local cli = require '@s3lightfixes/cli'
@@ -120,12 +123,12 @@ local required = os.clock() - started
 started = os.clock()
 local first = cli.run { '--config', configFile, '-n' }
 local ran = os.clock() - started
-local lights = bytes.sha256(made(jess.fs.readBuffer(jess.fs.join(out, PluginName))))
+local lights = bytes.sha256(made(fs.readFile(fs.join(out, PluginName))))
 
 started = os.clock()
 local second = cli.run { '--config', configFile, '-n', '--classic' }
 local relit = os.clock() - started
-local cells = bytes.sha256(made(jess.fs.readBuffer(jess.fs.join(out, PluginName))))
+local cells = bytes.sha256(made(fs.readFile(fs.join(out, PluginName))))
 
 made(fs.remove(root, { recursive = true }))
 

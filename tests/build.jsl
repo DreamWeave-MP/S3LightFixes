@@ -2,6 +2,7 @@
 -- The plugins the S3LightFixes goldens were made from, built with @tes3: a function of the data
 -- folder to write TestA.esp, TestB.omwaddon, and TestC.esp into. S3LightFixes 0.4.59 recorded
 -- the first two as masters at 6685 and 628 bytes, which is what these come to.
+local fs = require '@dream/fs'
 local tes3 = require '@tes3'
 
 type Fields = { [string]: unknown }
@@ -87,7 +88,8 @@ local function insert(built: tes3.Plugin, record: Fields) built:insertValue(buil
 --- Writes the plugin into the data folder, its header counting the records it holds.
 local function save(built: tes3.Plugin, dataFolder: string, name: string)
   built:updateRecordCount()
-  jess.fs.write(dataFolder .. '/' .. name, built:save())
+  local done, problem = fs.writeFile(dataFolder .. '/' .. name, built:save(), { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
 end
 
 return function(dataFolder: string)

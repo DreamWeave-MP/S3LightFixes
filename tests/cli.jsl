@@ -4,6 +4,7 @@
 -- each way a command can end, and whole runs against the original's own output. Its messages go
 -- to the suite's own standard error.
 local cli = require '@s3lightfixes/cli'
+local fs = require '@dream/fs'
 local orders = require './order'
 local test = require '@jess/test'
 
@@ -197,7 +198,7 @@ local Refused: { { argv: { string }, message: string } } = {
   },
 }
 
-local function read(path: string): string return (assert(jess.fs.read(path), `no {path}`)) end
+local function read(path: string): string return ((fs.readFileString(path) or error(`no {path}`, 0))) end
 
 suite.describe('parse', function()
   suite.it('reads every flag, under each spelling, onto its option', function()
@@ -344,10 +345,11 @@ suite.describe('configuration', function()
     expect(named { '-c', order.config }).toBe(order.cfg)
     expect(named { '--openmw-cfg', order.cfg }).toBe(order.cfg)
     -- A flag wins over the environment.
-    expect(named({ '-c', order.config }, jess.fs.join(order.root, 'elsewhere'))).toBe(order.cfg)
+    expect(named({ '-c', order.config }, fs.join(order.root, 'elsewhere'))).toBe(order.cfg)
 
-    local other = jess.fs.join(order.config, 'other.cfg')
-    jess.fs.write(other, read(order.cfg))
+    local other = fs.join(order.config, 'other.cfg')
+    local done, problem = fs.writeFile(other, read(order.cfg), { atomic = true, createParents = true })
+    if not done then error(problem, 0) end
 
     local _, misnamed = named { '-c', other }
     expect(misnamed).toBe(`Explicit --openmw-cfg file {other} must be named openmw.cfg`)
@@ -358,21 +360,22 @@ suite.describe('configuration', function()
     )
 
     -- What follows is the operating system's reason, in its own words.
-    local missing = jess.fs.join(order.root, 'missing')
+    local missing = fs.join(order.root, 'missing')
     local _, unresolved = named { '-c', missing }
     expect(unresolved).toContain(`Explicit --openmw-cfg path {missing} could not be resolved: `)
   end)
 
   suite.it('resolves the folder --openmw-cfg names, as the original does', function()
     local order = orders.new 'cli-resolved'
-    local upAndBack = jess.fs.join(order.out, '..', 'config')
+    local upAndBack = fs.join(order.out, '..', 'config')
     expect(named { '-c', upAndBack }).toBe(order.cfg)
   end)
 
   suite.it('takes any file or its folder for --config, and for the environment', function()
     local order = orders.new 'cli-config'
-    local other = jess.fs.join(order.out, 'Other.CFG')
-    jess.fs.write(other, read(order.cfg))
+    local other = fs.join(order.out, 'Other.CFG')
+    local done, problem = fs.writeFile(other, read(order.cfg), { atomic = true, createParents = true })
+    if not done then error(problem, 0) end
 
     expect(named { '--config', order.cfg }).toBe(order.cfg)
     expect(named { '--config', order.config }).toBe(order.cfg)
@@ -381,21 +384,22 @@ suite.describe('configuration', function()
     expect(named({}, other)).toBe(other)
     expect(named({ '--config', other }, order.cfg)).toBe(other)
 
-    local missing = jess.fs.join(order.root, 'missing')
+    local missing = fs.join(order.root, 'missing')
     local _, absent = named { '--config', missing }
     expect(absent).toBe(
       `The requested OpenMW config '{missing}' does not exist or is not a file or directory.`
     )
 
-    local data = jess.fs.join(order.root, 'data')
+    local data = fs.join(order.root, 'data')
     local _, empty = named({}, data)
     expect(empty).toBe(`No openmw.cfg found in '{data}'.`)
   end)
 
   suite.it('finds the openmw.cfg in --config\'s folder whatever its case', function()
     local order = orders.new 'cli-config-case'
-    local shouted = jess.fs.join(order.out, 'OpenMW.cfg')
-    jess.fs.write(shouted, read(order.cfg))
+    local shouted = fs.join(order.out, 'OpenMW.cfg')
+    local done, problem = fs.writeFile(shouted, read(order.cfg), { atomic = true, createParents = true })
+    if not done then error(problem, 0) end
 
     -- A file system that ignores case finds it under either spelling.
     local found = named { '--config', order.out }
@@ -438,21 +442,29 @@ suite.describe('run', function()
 
   suite.it('returns 8 for a configuration that isn\'t there, and writes nothing', function()
     local order = orders.new 'cli-missing'
-    local missing = jess.fs.join(order.root, 'missing')
+    local missing = fs.join(order.root, 'missing')
     expect(cli.run { '--config', missing }).toBe(8)
     expect(cli.run { '--openmw-cfg', missing }).toBe(8)
     expect(cli.run { '-c', order.out }).toBe(8)
-    expect(cli.run { '-c', jess.fs.join(order.root, 'data', 'TestA.esp') }).toBe(8)
-    expect(jess.fs.exists(missing)).toBe(false)
-    expect(jess.fs.list(order.out)).toEqual {}
-    expect(jess.fs.list(order.config)).toEqual { 'openmw.cfg' }
+    expect(cli.run { '-c', fs.join(order.root, 'data', 'TestA.esp') }).toBe(8)
+    expect(fs.exists(missing)).toBe(false)
+    local listed, problem = fs.list(order.out)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual {}
+    local listed, problem = fs.list(order.config)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual { 'openmw.cfg' }
   end)
 
   suite.it('returns 9 for a configuration that can\'t be loaded', function()
     local order = orders.empty('cli-unloadable', 'encoding=klingon\ncontent=TestA.esp\n')
     expect(cli.run { '-c', order.config }).toBe(9)
-    expect(jess.fs.list(order.out)).toEqual {}
-    expect(jess.fs.list(order.config)).toEqual { 'openmw.cfg' }
+    local listed, problem = fs.list(order.out)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual {}
+    local listed, problem = fs.list(order.config)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual { 'openmw.cfg' }
   end)
 
   suite.it('returns 9 when the run raises, as it does for a bad pattern', function()
@@ -472,7 +484,9 @@ suite.describe('run', function()
       table.move(flags, 1, #flags, #argv + 1, argv)
 
       expect({ argv = flags, status = cli.run(argv) }).toEqual { argv = flags, status = 9 }
-      expect(jess.fs.list(order.out)).toEqual {}
+      local listed, problem = fs.list(order.out)
+      if not listed then error(problem, 0) end
+      expect(listed).toEqual {}
     end
   end)
 
@@ -483,8 +497,12 @@ suite.describe('run', function()
     expect(orders.output()).toContain 'Dry run: no files written'
     expect(cli.run { '--config', order.cfg, '--validate-config' }).toBe(0)
     expect(orders.output()).toContain 'successfully'
-    expect(jess.fs.list(order.out)).toEqual {}
-    expect(jess.fs.list(order.config)).toEqual { 'openmw.cfg' }
+    local listed, problem = fs.list(order.out)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual {}
+    local listed, problem = fs.list(order.config)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual { 'openmw.cfg' }
   end)
 
   suite.it('matches the original by default', function()
@@ -498,10 +516,12 @@ suite.describe('run', function()
 
   suite.it('matches the original with a config and flags', function()
     local order = orders.new 'cli-configured'
-    jess.fs.write(
-      jess.fs.join(order.config, 'lightConfig.toml'),
-      orders.golden 'lightConfig.toml'
+    local done, problem = fs.writeFile(
+      fs.join(order.config, 'lightConfig.toml'),
+      orders.golden 'lightConfig.toml',
+      { atomic = true, createParents = true }
     )
+    if not done then error(problem, 0) end
 
     local status = cli.run {
       '-c',
