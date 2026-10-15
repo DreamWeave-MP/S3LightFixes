@@ -1,12 +1,13 @@
 --!strict
--- The package's own Luau, held to what Jess holds its own to: the payload (src/) is strict,
--- native, and never `any`; everything else follows the style every file follows.
+-- The package's own Luau: the payload (src/) is strict and never `any`, and native only where
+-- BENCHMARKS.md names the bench row that earned it; everything else follows the style every file
+-- follows.
 local style = require '@jess/style'
 local test = require '@jess/test'
 
 local suite, expect = test.new(), test.expect
 
-local Payload: style.Options = { directives = { 'strict', 'native' }, noAny = true }
+local Payload: style.Options = { directives = { 'strict' }, noAny = true }
 
 --- The package's folder, from this file's chunk name: `jess package test` runs the suite from
 --- whatever folder it was called in.
