@@ -1,5 +1,4 @@
 --!strict
---!native
 --[[
 @s3lightfixes/cli: S3LightFixes' command line, over @s3lightfixes.
 
