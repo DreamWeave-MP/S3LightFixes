@@ -176,3 +176,44 @@ one row shows alone, and 1.05x together.
   to learn that (480 of the bench's 2,640 lights). `tes3.records.id` reads it without decoding,
   but a record that doesn't decode and whose id is taken would then be passed over where it
   stops the run today. Not taken.
+
+## Which modules are native, and why
+
+Jess compiles to machine code only what is marked (`--!native` on a module, `@native` on one
+function), and every load pays for what is marked. A module carries `--!native` when a row below
+spends its time there and the module is small (12 KB or less); a larger module carries `@native`
+on the functions the row spends its time in, and nothing else.
+
+Measured 2026-10-14 with `jess 0.1.0`, the verified release build of jess `07c38cb` on l3i
+2.0.3, on the i7-10870H, the one-minute load 1.26 and 1.21 at the start of the two
+sessions. In each session the bench ran alternately on this package and on a copy of it with
+every module marked, three fresh runs of `bench/bench.jsl` each, every run's row the median of
+its batches; a column is the median of the three, and a ratio is against the all-marked runs of
+the same session. Which functions a row spends its time in comes from `jess run --profile` of
+that row alone, unmarked. The load cost is a fresh `jess run --package <this package>
+--package-path jpk` of a script that only requires `@s3lightfixes`, the two sides alternating, the
+median of five each after one warm-up.
+
+| Requiring `@s3lightfixes` | All marked | This state |
+| --- | ---: | ---: |
+| Unmarked | 0.136 s | 0.119 s |
+| Final | 0.142 s | 0.140 s |
+
+| Row | All marked (ms) | Unmarked / all marked | Final (ms) | Final / all marked |
+| --- | ---: | ---: | ---: | ---: |
+| run: the lights of 25 plugins | 48.87 | **1.139×** | 47.52 | 0.972× |
+| run: the lights and cells, no sun in any interior | 81.70 | **1.223×** | 85.10 | 1.042× |
+| run: a dry run of the lights | 23.91 | **1.319×** | 24.01 | 1.004× |
+| run: a lightconfig.toml of 24 light and 12 cell overrides, saved | 74.74 | **1.189×** | 72.77 | 0.974× |
+| validate: a lightconfig.toml of 24 light and 12 cell overrides | 4.676 | 1.024× | 4.620 | 0.988× |
+| cli: parse 46 arguments, 15 overrides among them | 0.1901 | **1.198×** | 0.2231 | **1.174×** |
+| cli: run the lights of 25 plugins | 44.88 | **1.064×** | 45.90 | 1.023× |
+
+What carries the directive: `init`, whole. `cli`, `main`, and `version` are never marked, so
+`cli: parse 46 arguments, 15 overrides among them` is the one row more than 5% slower than all
+marked (1.17x, of a 0.19 ms call).
+
+Marking only the functions of `init` the rows' profiles name cost 0.012 s less a load than all
+marked, in a session of its own, and left 6 rows more than 5% slower, the runs among them at
+1.05x to 1.22x. Whole, `init` saves 0.002 s a load and every run is within 5% of all marked; a
+run is what the tool does, so that is the state kept.
