@@ -541,8 +541,8 @@ local function original(path: string): (string?, string?)
       return nil, `Explicit --openmw-cfg file {path} must be named openmw.cfg`
     end
 
-    local parent = fs.parent(path)
-    if not parent or parent == '' then parent = '.' end
+    local parent = fs.parent(path) or ''
+    if parent == '' then parent = '.' end
     if fs.absolute(parent) == parent then return path, nil end
 
     local folder, unresolved = resolved(parent)
@@ -630,7 +630,7 @@ local function run(argv: { string }): number
   if not path then return usage(missing :: string) end
 
   -- `openmw.new` raises on an openmw.cfg, or one it includes, that can't be read or isn't one.
-  local loaded, context = pcall(openmw.new, path)
+  local loaded, context = pcall(openmw.new, path, nil)
   if not loaded then return failed(context) end
 
   -- The tool raises where the original shows its message and exits non-zero.

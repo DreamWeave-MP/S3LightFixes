@@ -46,7 +46,8 @@ local function sunless(output: string): { string }
     if string.sub(candidate, 1, 5) ~= 'CELL ' then continue end
     if not string.find(candidate, '-> [0, 0, 0, 0]', 1, true) then continue end
 
-    table.insert(cells, (string.match(candidate, '"([^"]*)"')))
+    local name = string.match(candidate, '"([^"]*)"')
+    if name then table.insert(cells, name) end
   end
 
   return cells
@@ -632,11 +633,13 @@ suite.describe('several patterns', function()
     suite.it(`override a light by the first that matches it, a cell by all ({label})`, function()
       local order = orderOf('overridden-' .. string.sub(label, 1, 4), PatternLights, PatternCells)
       local lightOverrides: { s3lightfixes.LightOverrideOption } = [
-        for index, pattern in enumerate(patterns) => { id = pattern, radius = 1000 + index }
+        for index, pattern in enumerate(patterns)
+          => { id = pattern, radius = 1000 + index } :: s3lightfixes.LightOverrideOption
       ]
 
       local ambientOverrides: { s3lightfixes.AmbientOverrideOption } = [
-        for index, pattern in enumerate(patterns) => { id = pattern, fogDensity = index / 16 }
+        for index, pattern in enumerate(patterns)
+          => { id = pattern, fogDensity = index / 16 } :: s3lightfixes.AmbientOverrideOption
       ]
 
       local sun = { patterns[1], patterns[#patterns - 1], patterns[2] }

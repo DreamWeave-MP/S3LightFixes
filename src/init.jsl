@@ -650,13 +650,13 @@ local function insertOrdered<T>(map: OrderedMap<T>, key: string, value: T)
 end
 
 -- A TOML false is a value, so these tell a missing field from one set to false.
-local function tomlBool(origin: string, value: TomlValue, key: string): boolean
+local function tomlBool(origin: string, value: toml.Value, key: string): boolean
   if type(value) == 'boolean' then return value end
 
   return invalid(origin, `invalid type for \`{key}\`: expected a boolean`)
 end
 
-local function tomlF32(origin: string, value: TomlValue?, key: string): number?
+local function tomlF32(origin: string, value: toml.Value?, key: string): number?
   if value == nil then return nil end
   if type(value) == 'number' then return f32(value) end
 
@@ -665,7 +665,7 @@ end
 
 local function tomlUint(
   origin: string,
-  value: TomlValue?,
+  value: toml.Value?,
   isFloat: boolean,
   max: number,
   key: string
@@ -684,13 +684,13 @@ local function tomlUint(
   return value
 end
 
-local function tomlStrings(origin: string, value: TomlValue, key: string): { string }
+local function tomlStrings(origin: string, value: toml.Value, key: string): { string }
   if type(value) ~= 'table' then
     return invalid(origin, `invalid type for \`{key}\`: expected a sequence`)
   end
 
   local strings = {}
-  for _, item in ipairs(value :: { TomlValue }) do
+  for _, item in ipairs(value :: { toml.Value }) do
     if type(item) ~= 'string' then
       return invalid(origin, `invalid type for \`{key}\`: expected a string`)
     end
@@ -703,20 +703,20 @@ end
 
 -- The original reads overrides sorted by pattern (its toml tables are BTreeMaps); these apply in
 -- the order the file lists them.
-local function keysIn(layout: TomlLayout, value: TomlTable): { string }
+local function keysIn(layout: toml.Layout, value: toml.Table): { string }
   local entry = layout[value]
   return if entry and entry.keys then entry.keys else {}
 end
 
-local function floatsIn(layout: TomlLayout, value: TomlTable): { [string | number]: boolean }
+local function floatsIn(layout: toml.Layout, value: toml.Table): { [toml.Value]: boolean }
   local entry = layout[value]
   return if entry then entry.floats else {}
 end
 
 local function lightOverrideFromToml(
   origin: string,
-  value: TomlValue,
-  layout: TomlLayout,
+  value: toml.Value,
+  layout: toml.Layout,
   id: string
 ): LightOverride
   if type(value) ~= 'table' then
@@ -726,7 +726,7 @@ local function lightOverrideFromToml(
     )
   end
 
-  local raw = value :: TomlTable
+  local raw = value :: toml.Table
   local floats = floatsIn(layout, raw)
 
   local function uint(key: string, max: number): number?
@@ -805,14 +805,14 @@ local function lightOverrideFromToml(
 end
 
 -- Older configs give ambient colors as HSV, converted to RGB as they're read.
-local function rgbFromToml(origin: string, value: TomlValue?, layout: TomlLayout, key: string): Rgb?
+local function rgbFromToml(origin: string, value: toml.Value?, layout: toml.Layout, key: string): Rgb?
   if value == nil then return nil end
 
   if type(value) ~= 'table' then
     return invalid(origin, `invalid type for \`{key}\`: expected struct RawTypedLightColor`)
   end
 
-  local raw = value :: TomlTable
+  local raw = value :: toml.Table
   local floats = floatsIn(layout, raw)
 
   local function uint(name: string, max: number): number?
@@ -853,8 +853,8 @@ end
 
 local function ambientOverrideFromToml(
   origin: string,
-  value: TomlValue,
-  layout: TomlLayout,
+  value: toml.Value,
+  layout: toml.Layout,
   id: string
 ): AmbientOverride
   if type(value) ~= 'table' then
@@ -864,7 +864,7 @@ local function ambientOverrideFromToml(
     )
   end
 
-  local raw = value :: TomlTable
+  local raw = value :: toml.Table
 
   return {
     ambient = rgbFromToml(origin, raw.ambient, layout, 'ambient'),
@@ -876,7 +876,7 @@ end
 
 local function configFromToml(text: string): LightConfig
   -- `toml.decode` throws on text that isn't TOML, which reads as a broken lightconfig.toml.
-  local decoded, raw, layout = pcall(toml.decode, text)
+  local decoded, raw, layout = pcall(toml.decode, text, nil)
   if not decoded then return invalid(ConfigOrigin, problem(raw)) end
 
   local config = defaultConfig()
@@ -915,7 +915,7 @@ local function configFromToml(text: string): LightConfig
 
   local lights = raw.light_overrides
   if type(lights) == 'table' then
-    local overrides = lights :: TomlTable
+    local overrides = lights :: toml.Table
     for _, id in keysIn(layout, overrides) do
       local override = lightOverrideFromToml(ConfigOrigin, overrides[id], layout, id)
       insertOrdered(config.lightOverrides, id, override)
@@ -926,7 +926,7 @@ local function configFromToml(text: string): LightConfig
 
   local ambients = raw.ambient_overrides
   if type(ambients) == 'table' then
-    local overrides = ambients :: TomlTable
+    local overrides = ambients :: toml.Table
     for _, id in keysIn(layout, overrides) do
       local override = ambientOverrideFromToml(ConfigOrigin, overrides[id], layout, id)
       insertOrdered(config.ambientOverrides, id, override)
@@ -1276,12 +1276,12 @@ return function(state: { [string]: unknown }?, context: Context?)
     withoutRepeats(config.excludedPlugins, options.excludedPlugins, string.lower)
 
   -- Option overrides are checked as lightconfig.toml's are, under their snake_case names.
-  local function asToml(value: unknown): TomlValue
-    if type(value) ~= 'table' then return value :: TomlValue end
+  local function asToml(value: unknown): toml.Value
+    if type(value) ~= 'table' then return value :: toml.Value end
 
-    local result: TomlTable = {}
+    local result: toml.Table = {}
     for key, item in value :: { [unknown]: unknown } do
-      if type(key) == 'number' then return value :: TomlValue end
+      if type(key) == 'number' then return value :: toml.Value end
 
       local name = string.gsub(
         tostring(key),
@@ -1298,9 +1298,9 @@ return function(state: { [string]: unknown }?, context: Context?)
   local function overrideOption<T>(
     option: { id: string },
     kind: string,
-    read: (string, TomlValue, TomlLayout, string) -> T
+    read: (string, toml.Value, toml.Layout, string) -> T
   ): (string, T)
-    local fields = asToml(option) :: TomlTable
+    local fields = asToml(option) :: toml.Table
     fields.id = nil
 
     return option.id, read(`s3lightfixes: {kind} {option.id}: `, fields, {}, option.id)
@@ -1335,7 +1335,8 @@ return function(state: { [string]: unknown }?, context: Context?)
     if not done then error(failure, 0) end
   end
 
-  local CaseInsensitive = { caseInsensitive = true }
+  local CaseInsensitive: { caseInsensitive: boolean?, unicode: boolean?, multiLine: boolean?, dotAll: boolean? } =
+    { caseInsensitive = true }
 
   local compileErrors: { string } = {}
 

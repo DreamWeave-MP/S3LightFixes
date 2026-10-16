@@ -298,19 +298,19 @@ suite.describe('parse', function()
   end)
 
   suite.it('keeps the configuration each spelling names apart from the options', function()
-    expect(cli.parse { '-c', 'folder', '-n' }).toEqual {
+    expect((cli.parse { '-c', 'folder', '-n' })).toEqual {
       action = 'run',
       options = { noNotifications = true },
       openmwCfg = 'folder',
     }
 
-    expect(cli.parse { '--openmw-cfg=folder/openmw.cfg' }).toEqual {
+    expect((cli.parse { '--openmw-cfg=folder/openmw.cfg' })).toEqual {
       action = 'run',
       options = {},
       openmwCfg = 'folder/openmw.cfg',
     }
 
-    expect(cli.parse { '--config', 'some.cfg', '--dry-run' }).toEqual {
+    expect((cli.parse { '--config', 'some.cfg', '--dry-run' })).toEqual {
       action = 'run',
       options = { dryRun = true },
       config = 'some.cfg',
@@ -319,11 +319,11 @@ suite.describe('parse', function()
 
   suite.it('reads help and version wherever they are, before anything after them', function()
     for _, argv in { { '--help' }, { '-h' }, { '-eh', '--bogus' }, { '--help', '--bogus' } } do
-      expect(cli.parse(argv)).toEqual { action = 'help', options = {} }
+      expect((cli.parse(argv))).toEqual { action = 'help', options = {} }
     end
 
     for _, argv in { { '--version' }, { '-V' }, { '-nV', 'stray' } } do
-      expect(cli.parse(argv)).toEqual { action = 'version', options = {} }
+      expect((cli.parse(argv))).toEqual { action = 'version', options = {} }
     end
   end)
 
@@ -351,10 +351,10 @@ suite.describe('configuration', function()
 
   suite.it('takes the folder or the openmw.cfg that --openmw-cfg names, as the original does', function()
     local order = orders.new 'cli-openmw-cfg'
-    expect(named { '-c', order.config }).toBe(order.cfg)
-    expect(named { '--openmw-cfg', order.cfg }).toBe(order.cfg)
+    expect((named { '-c', order.config })).toBe(order.cfg)
+    expect((named { '--openmw-cfg', order.cfg })).toBe(order.cfg)
     -- A flag wins over the environment.
-    expect(named({ '-c', order.config }, fs.join(order.root, 'elsewhere'))).toBe(order.cfg)
+    expect((named({ '-c', order.config }, fs.join(order.root, 'elsewhere')))).toBe(order.cfg)
 
     local other = fs.join(order.config, 'other.cfg')
     local done, problem = fs.writeFile(other, read(order.cfg), { atomic = true, createParents = true })
@@ -377,7 +377,7 @@ suite.describe('configuration', function()
   suite.it('resolves the folder --openmw-cfg names, as the original does', function()
     local order = orders.new 'cli-resolved'
     local upAndBack = fs.join(order.out, '..', 'config')
-    expect(named { '-c', upAndBack }).toBe(order.cfg)
+    expect((named { '-c', upAndBack })).toBe(order.cfg)
   end)
 
   suite.it('takes any file or its folder for --config, and for the environment', function()
@@ -386,12 +386,12 @@ suite.describe('configuration', function()
     local done, problem = fs.writeFile(other, read(order.cfg), { atomic = true, createParents = true })
     if not done then error(problem, 0) end
 
-    expect(named { '--config', order.cfg }).toBe(order.cfg)
-    expect(named { '--config', order.config }).toBe(order.cfg)
-    expect(named { '--config', other }).toBe(other)
-    expect(named({}, order.config)).toBe(order.cfg)
-    expect(named({}, other)).toBe(other)
-    expect(named({ '--config', other }, order.cfg)).toBe(other)
+    expect((named { '--config', order.cfg })).toBe(order.cfg)
+    expect((named { '--config', order.config })).toBe(order.cfg)
+    expect((named { '--config', other })).toBe(other)
+    expect((named({}, order.config))).toBe(order.cfg)
+    expect((named({}, other))).toBe(other)
+    expect((named({ '--config', other }, order.cfg))).toBe(other)
 
     local missing = fs.join(order.root, 'missing')
     local _, absent = named { '--config', missing }
