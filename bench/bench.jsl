@@ -19,6 +19,15 @@ local openmw = require '@openmw'
 local s3lightfixes = require '@s3lightfixes'
 local tes3 = require '@tes3'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 -- A build without the verified toolchain runs Luau slower than a release does, so a number from
 -- one says nothing about what ships.
 if not jess.bench.verified then
@@ -367,7 +376,7 @@ local function digestOf(report: s3lightfixes.Report?, files: { string }): string
     if name == PluginName then
       hasher:update(made(fs.readFile(path), `the run wrote no {name}`))
     else
-      hasher:update(rootless(made(fs.readFileString(path), `the run wrote no {name}`)))
+      hasher:update(rootless(made(readText(path), `the run wrote no {name}`)))
     end
   end
 

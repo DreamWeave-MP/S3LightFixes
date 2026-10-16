@@ -8,6 +8,15 @@ local fs = require '@dream/fs'
 local orders = require './order'
 local test = require '@jess/test'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 local expect = test.expect
 local suite = test.new()
 
@@ -198,7 +207,7 @@ local Refused: { { argv: { string }, message: string } } = {
   },
 }
 
-local function read(path: string): string return ((fs.readFileString(path) or error(`no {path}`, 0))) end
+local function read(path: string): string return ((readText(path) or error(`no {path}`, 0))) end
 
 suite.describe('parse', function()
   suite.it('reads every flag, under each spelling, onto its option', function()

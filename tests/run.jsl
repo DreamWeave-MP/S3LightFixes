@@ -11,10 +11,19 @@ local s3lightfixes = require '@s3lightfixes'
 local tes3 = require '@tes3'
 local test = require '@jess/test'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 local expect = test.expect
 local suite = test.new()
 
-local function read(path: string): string return ((fs.readFileString(path) or error(`no {path}`, 0))) end
+local function read(path: string): string return ((readText(path) or error(`no {path}`, 0))) end
 
 --- The first line of `output` that starts with `prefix`.
 local function line(output: string, prefix: string): string

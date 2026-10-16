@@ -10,6 +10,15 @@ local openmw = require '@openmw'
 local s3lightfixes = require '@s3lightfixes'
 local test = require '@jess/test'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 local expect = test.expect
 
 --- A load order's folder, the folder of its openmw.cfg, its data-local, and the openmw.cfg.
@@ -27,7 +36,7 @@ local function here(): string
 end
 
 local function golden(name: string): string
-  return ((fs.readFileString(`{here()}/golden/{name}`) or error(`no golden {name}`, 0)))
+  return ((readText(`{here()}/golden/{name}`) or error(`no golden {name}`, 0)))
 end
 
 --- A fresh, empty folder under the suite's scratch root: both providers run the suite there, and
@@ -131,7 +140,7 @@ end
 --- paths under it spelled with slashes, as the goldens spell them. TOML escapes backslashes, so a
 --- Windows root appears doubled there. Nothing else is changed.
 local function written(order: Order, name: string): string
-  local text = (fs.readFileString(fs.join(order.config, name)) or error(`the run wrote no {name}`, 0))
+  local text = (readText(fs.join(order.config, name)) or error(`the run wrote no {name}`, 0))
   text = replaced(text, replaced(order.root, '\\', '\\\\'), '<root>')
   text = replaced(text, order.root, '<root>')
 
