@@ -89,7 +89,7 @@ suite.describe('against the original', function()
     -- Infinite (-1) durations stay infinite.
     expect(output).toContain 'LIGH "Hue_Light_1" from "TestA.esp": color [76, 0, 0, 0] -> [53, 5, 5, 0], radius 64 -> 70\n'
     orders.expectOriginal(order, 'default')
-    expect(string.find(read(order.cfg), 'S3LightFixes', 1, true)).toBeNil()
+    expect((string.find(read(order.cfg), 'S3LightFixes', 1, true))).toBeNil()
 
     local report = assert(options.report)
     expect(report.output).toBe(fs.join(order.out, orders.PluginName))
@@ -279,7 +279,7 @@ suite.describe('what a run writes', function()
     local listed, problem = fs.list(order.out)
     if not listed then error(problem, 0) end
     expect(listed).toEqual {}
-    expect(fs.exists(fs.join(order.config, 'lightconfig.log'))).toBe(false)
+    expect((fs.exists(fs.join(order.config, 'lightconfig.log')))).toBe(false)
     expect(options.report).toEqual { validated = true }
   end)
 
@@ -300,10 +300,10 @@ suite.describe('what a run writes', function()
     local order = orders.new 'elsewhere'
     local before = read(order.cfg)
     local output, options = orders.run(order, { autoEnable = true, output = elsewhere })
-    expect(fs.isFile(fs.join(elsewhere, orders.PluginName))).toBe(true)
+    expect((fs.isFile(fs.join(elsewhere, orders.PluginName)))).toBe(true)
     expect(output).toContain 'Refusing to auto-enable'
     expect(read(order.cfg)).toBe(before)
-    expect(fs.exists(`{order.cfg}.bak`)).toBe(false)
+    expect((fs.exists(`{order.cfg}.bak`))).toBe(false)
     expect(assert(options.report).enabled).toBe(false)
     local listed, problem = fs.list(order.out)
     if not listed then error(problem, 0) end
@@ -363,7 +363,7 @@ suite.describe('what a run reads', function()
   suite.it('stops at a pattern that does not compile', function()
     local order = orders.new 'bad'
     expect(function() orders.run(order, { excludedIds = { '(' } }) end).toThrow 'Couldn\'t compile excluded id regex'
-    expect(fs.exists(fs.join(order.out, orders.PluginName))).toBe(false)
+    expect((fs.exists(fs.join(order.out, orders.PluginName)))).toBe(false)
   end)
 
   suite.it('stops at an override that sets a value and its multiplier', function()

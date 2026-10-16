@@ -456,7 +456,7 @@ suite.describe('run', function()
     expect(cli.run { '--openmw-cfg', missing }).toBe(8)
     expect(cli.run { '-c', order.out }).toBe(8)
     expect(cli.run { '-c', fs.join(order.root, 'data', 'TestA.esp') }).toBe(8)
-    expect(fs.exists(missing)).toBe(false)
+    expect((fs.exists(missing))).toBe(false)
     local listed, problem = fs.list(order.out)
     if not listed then error(problem, 0) end
     expect(listed).toEqual {}
@@ -520,7 +520,7 @@ suite.describe('run', function()
     expect(cli.run { '--openmw-cfg', order.config, '--no-notifications' }).toBe(0)
     expect(orders.output()).toContain '# changed lights: 63'
     orders.expectOriginal(order, 'default')
-    expect(string.find(read(order.cfg), 'S3LightFixes', 1, true)).toBeNil()
+    expect((string.find(read(order.cfg), 'S3LightFixes', 1, true))).toBeNil()
   end)
 
   suite.it('matches the original with a config and flags', function()
