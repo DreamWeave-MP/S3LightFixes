@@ -33,5 +33,5 @@ jobs:
       contents: write # releases, and the mod.lock commit
       id-token: write # Sigstore and Pages
       pages: write
-    uses: DreamWeave-MP/StroggForge/.github/workflows/modGlobalBuild.yml@v58
+    uses: DreamWeave-MP/StroggForge/.github/workflows/modGlobalBuild.yml@v61
     secrets: inherit
