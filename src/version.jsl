@@ -1,3 +1,4 @@
 --!strict
--- The version of S3LightFixes this ports: what its log names and its command line prints.
-return '0.4.59'
+-- The package's version, the one jess.toml and the release tag carry: what the log names and the
+-- command line prints. The behavior is S3LightFixes 0.4.59's, the Rust release this ports.
+return '1.0.0'

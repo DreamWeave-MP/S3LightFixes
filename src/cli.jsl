@@ -140,8 +140,7 @@ local LightFields: { [string]: 'integer' | 'float' | 'flag' } = {
   flag = 'flag',
 }
 
-local Usage = [[
-S3LightFixes 0.4.59 for Jess: modifies light values globally across an OpenMW installation, and
+local Usage = 'S3LightFixes ' .. Version .. [[: modifies light values globally across an OpenMW installation, and
 writes them to S3LightFixes.omwaddon. Arguments given here that lightconfig.toml also has override
 its values, and a lightconfig.toml that doesn't exist yet is saved with the values the run used.
 

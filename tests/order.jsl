@@ -164,7 +164,12 @@ local function expectOriginal(order: Order, name: string)
   expect(bytes.sha256(plugin)).toBe(bytes.sha256(original))
   expect(bytes.equals(plugin, original)).toBe(true)
   expect(written(order, 'lightconfig.toml')).toBe(golden(`{name}.toml`))
-  expect(written(order, 'lightconfig.log')).toBe(golden(`{name}.log`))
+  -- The log's first line names the program and its version: the package's own, where the
+  -- original's named 0.4.59. Everything after it is held byte for byte.
+  local function afterHeader(log: string): string
+    return (string.gsub(log, '^# S3LightFixes [^\n]*', '# S3LightFixes', 1))
+  end
+  expect(afterHeader(written(order, 'lightconfig.log'))).toBe(afterHeader(golden(`{name}.log`)))
 end
 
 return table.freeze {
