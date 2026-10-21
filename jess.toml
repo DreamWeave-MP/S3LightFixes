@@ -2,7 +2,7 @@ manifest_version = 1
 
 [package]
 id = "org.dreamweave.s3lightfixes"
-version = "0.1.0"
+version = "1.0.0"
 jess_api = "1"
 default_target = "s3lightfixes"
 include = ["src", "tests"]

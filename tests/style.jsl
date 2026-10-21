@@ -24,7 +24,8 @@ suite.it('passes @jess/style', function()
   local payload = `{package}/src/`
   local findings: { string } = {}
 
-  for _, path in style.files { package } do
+  -- The package's own folders: the repository also holds its site.
+  for _, path in style.files { `{package}/src`, `{package}/tests`, `{package}/bench` } do
     local options = if string.sub(path, 1, #payload) == payload then Payload else nil
 
     for _, finding in style.checkFile(path, options) do
