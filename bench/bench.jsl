@@ -1,0 +1,579 @@
+--!strict
+--!native
+-- The tool, timed through `@s3lightfixes` and `@s3lightfixes/cli` the way a caller reaches them:
+-- an install on disk in, its plugin, log, and lightconfig.toml on disk out. The install is
+-- synthetic and the same every run: a master of 1,200 lights and 1,500 cells, and 24 plugins of
+-- 60 lights and 40 cells each, a third of which override an earlier record under an id in
+-- another case. One line per workload, `name<TAB>seconds per call`, the median of seven batches,
+-- after the tool's own lines (it prints its log, as it does from the command line). Every
+-- workload's report, plugin, log, and saved configuration are held to the SHA-256 of what the
+-- tool wrote before anything here was changed, so a path that stopped doing the work, or does it
+-- differently, fails here. Run on a release build:
+--   jess run --package . --package-path .. --capability filesystem.read
+--     --capability filesystem.write --capability process.environment bench/bench.jsl
+--     <scratch folder> [filter]
+local bytes = require '@dream/bytes'
+local cli = require '@s3lightfixes/cli'
+local fs = require '@dream/fs'
+local openmw = require '@openmw-install'
+local s3lightfixes = require '@s3lightfixes'
+local tes3 = require '@esm'
+
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
+-- A build without the verified toolchain runs Luau slower than a release does, so a number from
+-- one says nothing about what ships.
+if not jess.bench.verified then
+  error(
+    's3lightfixes bench: this jess was built without the verified toolchain: measure on a release build',
+    0
+  )
+end
+
+local scratch: string?, filter: string? = ...
+local only = if filter and filter ~= '' then filter else nil
+
+if not scratch then error('s3lightfixes bench: name a scratch folder to build the install in', 0) end
+
+type Fields = { [string]: unknown }
+
+type Master = { name: string, size: number }
+
+local PluginName, LogName, ConfigName = 'S3LightFixes.omwaddon', 'lightconfig.log', 'lightconfig.toml'
+local BaseLights, BaseCells, Plugins, PluginLights, PluginCells = 1200, 1500, 24, 60, 40
+
+local LightFamilies = {
+  'light_com_candle',
+  'Light_De_Lantern',
+  'torch',
+  'T_Imp_Lamp',
+  'ab_light_Paper',
+  'light_dwrv_ceiling',
+  'Light_Fire',
+  'light_sconce',
+}
+
+local LightFlags = {
+  'DYNAMIC',
+  'DYNAMIC | CAN_CARRY | FIRE | FLICKER_SLOW',
+  'CAN_CARRY | PULSE',
+  'DYNAMIC | FLICKER',
+  'FIRE | OFF_BY_DEFAULT',
+  'NEGATIVE | DYNAMIC',
+  'DYNAMIC | PULSE_SLOW',
+  '',
+}
+
+local CellFamilies = {
+  'Balmora, Guild of Mages',
+  'Vivec, Arena Pit',
+  'Ald-ruhn, Manor District',
+  'Sadrith Mora, Wolverine Hall',
+  'Addamasartus',
+  'Arkngthand, Hall of Centrifuge',
+}
+
+local function median(samples: { number }): number
+  table.sort(samples)
+  return samples[(#samples + 1) // 2]
+end
+
+--- Seconds per call of `body`: warmed up, then the median of seven batches of a size that takes
+--- about a tenth of a second, a full collection between batches. `verify` is given the result of
+--- the first call and of one more after the last batch, outside the time.
+local function measure(body: () -> string, verify: (digest: string) -> ()): number
+  jess.bench.collect()
+  verify(body())
+  local start = os.clock()
+  body()
+  local once = math.max(os.clock() - start, 1e-7)
+  local iterations = math.max(1, math.floor(0.1 / once))
+  local samples = table.create(7, 0)
+
+  for batch = 1, 7 do
+    jess.bench.collect()
+    start = os.clock()
+
+    for _ = 1, iterations do
+      body()
+    end
+
+    samples[batch] = (os.clock() - start) / iterations
+  end
+
+  verify(body())
+  return median(samples)
+end
+
+local function made<Value>(value: Value?, message: string?, kind: dream_fs_ErrorKind?): Value
+  if not value then error(message or tostring(kind), 0) end
+
+  return value
+end
+
+local random = 0x2545f491
+
+local function nextRandom(): number
+  random = bit32.bxor(random, bit32.lshift(random, 13))
+  random = bit32.bxor(random, bit32.rshift(random, 17))
+  random = bit32.bxor(random, bit32.lshift(random, 5))
+  return random
+end
+
+--- A light under `id`: three in five are the orange of a flame, the rest any color; a third burn
+--- forever; one in eight is a negative light.
+local function light(id: string): Fields
+  local warm = nextRandom() % 5 < 3
+  local red = if warm then 200 + nextRandom() % 56 else nextRandom() % 256
+  local green = if warm then 90 + nextRandom() % 110 else nextRandom() % 256
+  local blue = if warm then 20 + nextRandom() % 80 else nextRandom() % 256
+  local carried = nextRandom() % 4 == 0
+
+  return {
+    type = 'Light',
+    id = id,
+    name = if carried then `Lamp {nextRandom() % 100}` else nil,
+    icon = if carried then 'm\\lamp.dds' else nil,
+    script = if nextRandom() % 16 == 0 then 'LightScript' else nil,
+    sound = if nextRandom() % 6 == 0 then 'Fire' else nil,
+    mesh = `l\\{id}.nif`,
+    data = {
+      weight = nextRandom() % 10,
+      value = nextRandom() % 200,
+      time = if nextRandom() % 3 == 0 then -1 else nextRandom() % 5000,
+      radius = 16 + nextRandom() % 1000,
+      color = { red, green, blue, 0 },
+      flags = LightFlags[nextRandom() % #LightFlags + 1],
+    },
+  }
+end
+
+--- A cell under `name`: four in five are interiors, which are the ones the tool relights.
+local function cell(name: string): Fields
+  local interior = nextRandom() % 5 ~= 0
+
+  local function color(): { number }
+    return { nextRandom() % 256, nextRandom() % 256, nextRandom() % 256, 0 }
+  end
+
+  return {
+    type = 'Cell',
+    name = name,
+    data = { flags = if interior then 'IS_INTERIOR' else '', grid = { nextRandom() % 40, 0 } },
+    atmosphereData = {
+      ambientColor = color(),
+      sunlightColor = color(),
+      fogColor = color(),
+      fogDensity = (nextRandom() % 100) / 100,
+    },
+  }
+end
+
+local function lightId(index: number): string
+  return `{LightFamilies[index % #LightFamilies + 1]}_{index % 97}_{index}`
+end
+
+local function cellName(index: number): string
+  return `{CellFamilies[index % #CellFamilies + 1]} {index}`
+end
+
+-- openmw.cfg reads a relative data folder from its own folder, not from where the run started.
+local root: string = made(fs.canonicalize(made(fs.absolute(scratch))))
+local install = fs.join(root, 's3lightfixes-bench')
+local data, config, out =
+  fs.join(install, 'data'), fs.join(install, 'config'), fs.join(install, 'out')
+local configFile = fs.join(config, 'openmw.cfg')
+
+-- The install starts from nothing, whatever an earlier run left in the folder.
+if fs.isDir(install) then made(fs.remove(install, { recursive = true })) end
+
+for _, directory in { data, config, out } do
+  made(fs.mkdir(directory, { recursive = true }))
+end
+
+local function save(plugin: tes3.Plugin, name: string)
+  plugin:updateRecordCount()
+  local done, problem = fs.writeFile(fs.join(data, name), plugin:save(), { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
+end
+
+local function insert(plugin: tes3.Plugin, record: Fields)
+  plugin:insertValue(plugin:count(), record)
+end
+
+local content = { 'Base.esm' }
+local base = tes3.new 'master'
+base:setAuthor 'bench'
+
+for index = 1, BaseLights do
+  insert(base, light(lightId(index)))
+
+  -- What the tool is told to leave out of every plugin it reads.
+  if index % 4 == 0 then insert(base, { type = 'Static', id = `rock_{index}`, mesh = 'rock.nif' }) end
+end
+
+for index = 1, BaseCells do
+  insert(base, cell(cellName(index)))
+end
+
+save(base, 'Base.esm')
+
+local baseStat, problem = fs.stat(fs.join(data, 'Base.esm'))
+if not baseStat then error(problem, 0) end
+
+local overBase: { Master } = { { name = 'Base.esm', size = made(baseStat.size) } }
+
+for number = 1, Plugins do
+  local plugin = tes3.new 'plugin'
+  local name = string.format('Mod_%02d.esp', number)
+  plugin:setAuthor 'bench'
+  plugin:setMasters(overBase)
+
+  for index = 1, PluginLights do
+    local overridden = (number * 37 + index * 11) % BaseLights + 1
+    local id = if index % 3 == 0
+      then string.upper(lightId(overridden))
+      else `{lightId(index)}_mod{number}`
+    insert(plugin, light(id))
+  end
+
+  for index = 1, PluginCells do
+    local overridden = (number * 53 + index * 7) % BaseCells + 1
+    local id = if index % 3 == 0
+      then string.lower(cellName(overridden))
+      else `{cellName(index)}, Mod {number}`
+    insert(plugin, cell(id))
+  end
+
+  save(plugin, name)
+  table.insert(content, name)
+end
+
+-- One content file no data folder has, and one that isn't a plugin.
+table.insert(content, 'Missing.esp')
+table.insert(content, 'Scripts.omwscripts')
+local done, problem = fs.writeFile(fs.join(data, 'Scripts.omwscripts'), 'PLAYER: scripts/bench.lua\n', { atomic = true, createParents = true })
+if not done then error(problem, 0) end
+
+do
+  local lines = { `data="{data}"`, `data-local="{out}"` }
+  for _, name in content do
+    table.insert(lines, `content={name}`)
+  end
+
+  local done, problem = fs.writeFile(configFile, table.concat(lines, '\n') .. '\n', { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
+end
+
+-- The settings a run with no lightconfig.toml saves, less the folder it wrote to: every run of a
+-- workload then reads the same file, and none but the configured one writes it.
+local DefaultConfig = [[
+disable_interior_sun = false
+disable_flickering = true
+disable_pulse = false
+disable_negative_lights = true
+auto_enable = false
+no_notifications = false
+debug = false
+dry_run = false
+validate_config = false
+standard_hue = 0.62
+standard_saturation = 0.8
+standard_value = 0.57
+standard_radius = 1.2
+colored_hue = 1.0
+colored_saturation = 0.9
+colored_value = 0.7
+colored_radius = 1.1
+duration_mult = 2.5
+excluded_plugins = []
+excluded_ids = []
+save_config = false
+]]
+
+--- A lightconfig.toml of the size a long-kept one comes to: exclusions, cells to darken, and
+--- overrides for lights and cells, each a pattern every id is tried against.
+local function configured(): string
+  local lines = {
+    'disable_interior_sun = ["^vivec, arena", "hall of centrifuge 1\\\\d\\\\d$", "addamasartus 7"]',
+    'disable_flickering = true',
+    'disable_pulse = true',
+    'standard_hue = 0.6',
+    'colored_radius = 1.3',
+    'excluded_plugins = ["mod_07\\\\.esp", "^Mod_1[89]"]',
+  }
+
+  local excluded = [for index in range(1, 16) => `"_{index + 20}_\\\\d+$"`]
+
+  table.insert(lines, `excluded_ids = [{table.concat(excluded, ', ')}]`)
+
+  for index, family in LightFamilies do
+    local pattern = string.lower(family)
+    table.insert(lines, `\n[light_overrides."^{pattern}_{index}_"]`)
+    table.insert(lines, `radius = {100 + index}\nred = 250\ngreen = {index * 20}\nblue = 40`)
+    table.insert(lines, `\n[light_overrides."{pattern}_\\\\d*{index}$"]`)
+    table.insert(lines, `radius_mult = 1.{index}\nhue_mult = 0.9\nflag = "FIRE | DYNAMIC"`)
+    table.insert(lines, `\n[light_overrides."^{pattern}_.*_mod{index}$"]`)
+    table.insert(lines, `duration_mult = 3.5\nsaturation = 0.{index}\nblue_mult = 1.25`)
+  end
+
+  for index, family in CellFamilies do
+    local pattern = string.lower(family)
+    table.insert(lines, `\n[ambient_overrides."^{pattern} \\\\d*{index}$"]`)
+    table.insert(lines, `fog_density = 0.{index}5`)
+    table.insert(lines, `\n[ambient_overrides."^{pattern} \\\\d*{index}$".ambient]`)
+    table.insert(lines, `red = {index * 30}\ngreen = 90\nblue = 120`)
+    table.insert(lines, `\n[ambient_overrides."{pattern} .*, mod {index}$".fog]`)
+    table.insert(lines, `red = 10\ngreen = {index * 40}\nblue = 30`)
+  end
+
+  return table.concat(lines, '\n') .. '\n'
+end
+
+--- `text` with the install's folder spelled `<root>`, as nothing else in it depends on where the
+--- bench was run.
+local function rootless(text: string): string
+  local parts, start = {}, 1
+
+  while true do
+    local found, last = string.find(text, install, start, true)
+    if not found or not last then break end
+
+    table.insert(parts, string.sub(text, start, found - 1))
+    start = last + 1
+  end
+
+  table.insert(parts, string.sub(text, start))
+  return table.concat(parts, '<root>')
+end
+
+--- What a run left: its report's counts and every change it logged, then the files it wrote,
+--- as one SHA-256.
+local function digestOf(report: s3lightfixes.Report?, files: { string }): string
+  local hasher = bytes.hasher 'sha256'
+
+  if report then
+    hasher:update(
+      `{report.masters} {report.objects} {report.lights} {report.cells} {report.enabled} {report.validated} {report.dryRun}\n`
+    )
+
+    for _, log in report.logs or {} do
+      hasher:update(`{log.kind} {log.plugin} {log.id} {table.concat(log.changes, ', ')}\n`)
+    end
+  end
+
+  for _, name in files do
+    local path = fs.join(if name == PluginName then out else config, name)
+    hasher:update(`{name}\n`)
+
+    if name == PluginName then
+      hasher:update(made(fs.readFile(path), `the run wrote no {name}`))
+    else
+      hasher:update(rootless(made(readText(path), `the run wrote no {name}`)))
+    end
+  end
+
+  return hasher:finish()
+end
+
+-- What each workload's run comes to, as the tool wrote it before anything here was changed.
+local Digests: { [string]: string } = {
+  ['run: the lights of 25 plugins'] =
+    'bfc9e54e79607bb09d44236ca27c2f80a595df1a5ec23e6ed78b08e831fe58ad',
+  ['run: the lights and cells, no sun in any interior'] =
+    '83c6b7acd33bb2434366e7f05431235f9f64acab67cb07538853ce46383e2d69',
+  ['run: a dry run of the lights'] =
+    '66444a38eb120e743f3ae972f565d1dcddf20e3fff38ccaa6283059c87f818ca',
+  ['run: a lightconfig.toml of 24 light and 12 cell overrides, saved'] =
+    '7fef6ca44f88193fddd70c7e24445ba9885a64a62cd3ab7f0219ae391b0f62da',
+  ['validate: a lightconfig.toml of 24 light and 12 cell overrides'] =
+    'eba2d4a6c84cc32a8b7b6e9d660b14a54e891d07f9586fab0c4c821a72430e95',
+  ['cli: parse 46 arguments, 15 overrides among them'] =
+    '5b0a5b884411f2dbcd38111ca656478dc53175f6a36865acdd269fcb02c6bcf6',
+  ['cli: run the lights of 25 plugins'] =
+    '782c55d3623ec7847b7807224fe1bd5097a6ef8109ab676f70cb9252924c6744',
+}
+
+type Row = { name: string, seconds: number }
+
+local rows: { Row } = {}
+
+--- Times `body` over the install with `lightConfig` as its lightconfig.toml and nothing in its
+--- output folder. Every call must come to the digest the workload is held to.
+local function workload(name: string, lightConfig: string, body: () -> string)
+  if only and not string.find(name, only, 1, true) then return end
+
+  made(fs.remove(out, { recursive = true }))
+  made(fs.mkdir(out))
+  local done, problem = fs.writeFile(fs.join(config, ConfigName), lightConfig, { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
+
+  local function verify(digest: string)
+    if digest ~= Digests[name] then
+      error(`s3lightfixes bench: {name} came to {digest}, not {Digests[name]}`, 0)
+    end
+  end
+
+  table.insert(rows, { name = name, seconds = measure(body, verify) })
+end
+
+--- A run of the tool with `options`, as a caller that already has the load order makes one.
+local function run(options: s3lightfixes.Options, files: { string }): () -> string
+  local context = openmw.new(configFile)
+
+  return function(): string
+    local given = table.clone(options)
+    s3lightfixes({ s3lightfixes = given }, context)
+
+    return digestOf(given.report, files)
+  end
+end
+
+local Written = { PluginName, LogName }
+
+workload(
+  'run: the lights of 25 plugins',
+  DefaultConfig,
+  run({ noNotifications = true }, Written)
+)
+
+workload(
+  'run: the lights and cells, no sun in any interior',
+  DefaultConfig,
+  run({ noNotifications = true, disableInteriorSun = true }, Written)
+)
+
+workload(
+  'run: a dry run of the lights',
+  DefaultConfig,
+  run({ noNotifications = true, dryRun = true }, {})
+)
+
+workload(
+  'run: a lightconfig.toml of 24 light and 12 cell overrides, saved',
+  configured(),
+  run({
+    noNotifications = true,
+    updateLightConfig = true,
+    excludedIds = { '^torch_9\\d_' },
+    lightOverrides = { { id = '^light_fire_1\\d_', radius = 64, durationMult = 4 } },
+    ambientOverrides = { { id = '^balmora.* 2\\d\\d$', fogDensity = 0.125 } },
+  }, { PluginName, LogName, ConfigName })
+)
+
+workload(
+  'validate: a lightconfig.toml of 24 light and 12 cell overrides',
+  configured(),
+  run({ noNotifications = true, validateConfig = true }, {})
+)
+
+--- A command line as long as one gets: every kind of flag, and overrides for lights and cells.
+local function commandLine(): { string }
+  local argv = {
+    '--config',
+    configFile,
+    '-end',
+    '--dry-run',
+    'true',
+    '-f',
+    'false',
+    '--no-pulse=true',
+    '--disable-negative-lights',
+    'true',
+    '--standard-hue',
+    '0.6',
+    '-s0.75',
+    '-v=0.5',
+    '-r',
+    '1.25',
+    '-H',
+    '1e0',
+    '-S',
+    '.9',
+    '--colored-value=0.7',
+    '-R',
+    '1.1',
+    '-M',
+    '2.5',
+    '-o',
+    out,
+    '-U',
+  }
+
+  for index = 1, 3 do
+    table.insert(argv, '-x')
+    table.insert(argv, `^excluded_{index}$,glow_{index},_unlit$`)
+  end
+
+  for index = 1, 3 do
+    table.insert(argv, '--light')
+    table.insert(
+      argv,
+      `torch_{index}=radius=255,red=255,green=128,blue=64,flag=FIRE|DYNAMIC:^lantern_{index}=radius_mult=2.0,hue_mult=0.9:candle_{index}=duration_mult=5.0,saturation=0.5`
+    )
+  end
+
+  for index = 1, 3 do
+    table.insert(argv, '--ambient')
+    table.insert(
+      argv,
+      `caius.*{index}=sunlight=red=255,green=255,blue=255;fog_density=0.5:^vivec {index}=ambient=red=1,green=2,blue=3;fog=red=4,green=5,blue=6`
+    )
+  end
+
+  return argv
+end
+
+--- Everything `value` holds, keys in order, as text: what a parsed command line is held to.
+local function described(value: unknown): string
+  if type(value) ~= 'table' then return tostring(value) end
+
+  local fields = value :: { [unknown]: unknown }
+  local keys = {}
+  for key in fields do
+    table.insert(keys, tostring(key))
+  end
+
+  table.sort(keys)
+
+  local parts = {}
+  for _, key in keys do
+    local item = fields[key]
+    if item == nil then item = fields[tonumber(key)] end
+
+    table.insert(parts, `{key}={described(item)}`)
+  end
+
+  return `\{{table.concat(parts, ',')}}`
+end
+
+do
+  local argv = commandLine()
+
+  workload('cli: parse 46 arguments, 15 overrides among them', DefaultConfig, function(): string
+    local command, refusal = cli.parse(argv)
+    if not command then error(`s3lightfixes bench: the command line was refused: {refusal}`, 0) end
+
+    return bytes.sha256(rootless(described(command)))
+  end)
+end
+
+workload('cli: run the lights of 25 plugins', DefaultConfig, function(): string
+  local status = cli.run { '--config', configFile, '-n' }
+  if status ~= cli.Exit.ok then error(`s3lightfixes bench: the command exited {status}`, 0) end
+
+  return digestOf(nil, Written)
+end)
+
+made(fs.remove(install, { recursive = true }))
+
+for _, row in rows do
+  print(`{row.name}\t{string.format('%.9f', row.seconds)}`)
+end

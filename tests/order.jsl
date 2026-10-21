@@ -1,0 +1,180 @@
+--!strict
+-- What the suites share: a load order of `build.jsl`'s plugins in a scratch folder, laid out as
+-- the original's harness laid one out; a run of the tool over it that keeps what the tool printed;
+-- and the comparison of what a run wrote against what S3LightFixes 0.4.59 wrote for the same
+-- plugins (`golden/`), in which the run's folder is spelled `<root>`.
+local build = require './build'
+local bytes = require '@dream/bytes'
+local fs = require '@dream/fs'
+local openmw = require '@openmw-install'
+local s3lightfixes = require '@s3lightfixes'
+local test = require '@jess/test'
+
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
+local expect = test.expect
+
+--- A load order's folder, the folder of its openmw.cfg, its data-local, and the openmw.cfg.
+export type Order = { root: string, config: string, out: string, cfg: string }
+
+local PluginName = 'S3LightFixes.omwaddon'
+
+--- Where this file is, from its chunk name: the folder the suites and their goldens are in.
+local function here(): string
+  local source = debug.info(1, 's')
+  local first = string.sub(source, 1, 1)
+  local path = if first == '@' or first == '=' then string.sub(source, 2) else source
+
+  return string.match(path, '^(.*)/[^/]*$') or '.'
+end
+
+local function golden(name: string): string
+  return ((readText(`{here()}/golden/{name}`) or error(`no golden {name}`, 0)))
+end
+
+--- A fresh, empty folder under the suite's scratch root: both providers run the suite there, and
+--- a lightconfig.toml the first left behind would change what the second does. Its path is the
+--- resolved one, which is how the tool spells a folder it was pointed at through a link.
+local function fresh(name: string): string
+  local scratch = assert(rawget(_G, 'scratchRoot') :: string?, 'the suite needs a scratchRoot')
+  local path = fs.join(scratch, 's3lightfixes', name)
+  if fs.exists(path) then
+    local done, problem = fs.remove(path, { recursive = true })
+    if not done then error(problem, 0) end
+  end
+
+  local done, problem = fs.mkdir(path, { recursive = true })
+  if not done then error(problem, 0) end
+  local canonical, problem = fs.canonicalize(path)
+  if not canonical then error(problem, 0) end
+
+  return (canonical)
+end
+
+--- A fresh load order: plugins go in `root/data`, the user config is `root/config/openmw.cfg`,
+--- holding `content` after its data folders, and data-local is `root/out`.
+local function empty(name: string, content: string): Order
+  local root = fresh(name)
+  local data, config, out =
+    fs.join(root, 'data'), fs.join(root, 'config'), fs.join(root, 'out')
+
+  for _, folder in { data, config, out } do
+    local done, problem = fs.mkdir(folder, { recursive = true })
+    if not done then error(problem, 0) end
+  end
+
+  local cfg = fs.join(config, 'openmw.cfg')
+  local done, problem = fs.writeFile(cfg, `data="{data}"\ndata-local="{out}"\n{content}`, { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
+
+  return { root = root, config = config, out = out, cfg = cfg }
+end
+
+--- A load order of `build.jsl`'s plugins, and one content file no data folder has.
+local function new(name: string): Order
+  local order = empty(
+    name,
+    'content=TestA.esp\ncontent=TestB.omwaddon\ncontent=TestC.esp\ncontent=Missing.esp\n'
+  )
+  build(fs.join(order.root, 'data'))
+
+  return order
+end
+
+-- The tool prints what the original printed, so the cases read it: its function runs with a
+-- `print` that keeps the lines instead of writing them.
+local printed: { string } = {}
+
+local function keep(...: unknown)
+  local parts = {}
+  for index = 1, select('#', ...) do
+    parts[index] = tostring((select(index, ...)))
+  end
+
+  table.insert(printed, table.concat(parts, '\t'))
+end
+
+setfenv(s3lightfixes, setmetatable({ print = keep }, { __index = getfenv(s3lightfixes) }))
+
+--- What the tool has printed since this was last called, each `print` ending in a newline.
+local function output(): string
+  local text = table.concat(printed, '\n')
+  if #printed > 0 then text ..= '\n' end
+
+  table.clear(printed)
+  return text
+end
+
+--- Runs the tool over the load order with `options` as its `state.s3lightfixes`: what it
+--- printed, and the options with its report in them.
+local function run(order: Order, options: s3lightfixes.Options): (string, s3lightfixes.Options)
+  output()
+  s3lightfixes({ s3lightfixes = options }, openmw.new(order.cfg))
+
+  return output(), options
+end
+
+local function replaced(text: string, from: string, to: string): string
+  local parts, start = {}, 1
+
+  while true do
+    local found, last = string.find(text, from, start, true)
+    if not found or not last then break end
+
+    table.insert(parts, string.sub(text, start, found - 1))
+    start = last + 1
+  end
+
+  table.insert(parts, string.sub(text, start))
+  return table.concat(parts, to)
+end
+
+--- A file the run wrote beside openmw.cfg, with the load order's root spelled `<root>` and the
+--- paths under it spelled with slashes, as the goldens spell them. TOML escapes backslashes, so a
+--- Windows root appears doubled there. Nothing else is changed.
+local function written(order: Order, name: string): string
+  local text = (readText(fs.join(order.config, name)) or error(`the run wrote no {name}`, 0))
+  text = replaced(text, replaced(order.root, '\\', '\\\\'), '<root>')
+  text = replaced(text, order.root, '<root>')
+
+  local lines = string.split(text, '\n')
+  for index, line in lines do
+    if string.find(line, '<root>', 1, true) then
+      lines[index] = replaced(replaced(line, '\\\\', '/'), '\\', '/')
+    end
+  end
+
+  return table.concat(lines, '\n')
+end
+
+--- Holds the plugin, lightconfig.toml, and lightconfig.log a run wrote to the original's, byte
+--- for byte. A plugin that differs fails on its length and digest first, which a report can show.
+local function expectOriginal(order: Order, name: string)
+  local plugin = (fs.readFile(fs.join(order.out, PluginName)) or error('no plugin', 0))
+  local original = (fs.readFile(`{here()}/golden/{name}.omwaddon`) or error('no golden', 0))
+
+  expect(buffer.len(plugin)).toBe(buffer.len(original))
+  expect(bytes.sha256(plugin)).toBe(bytes.sha256(original))
+  expect(bytes.equals(plugin, original)).toBe(true)
+  expect(written(order, 'lightconfig.toml')).toBe(golden(`{name}.toml`))
+  expect(written(order, 'lightconfig.log')).toBe(golden(`{name}.log`))
+end
+
+return table.freeze {
+  PluginName = PluginName,
+  empty = empty,
+  expectOriginal = expectOriginal,
+  fresh = fresh,
+  golden = golden,
+  new = new,
+  output = output,
+  run = run,
+  written = written,
+}

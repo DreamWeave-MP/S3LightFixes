@@ -1,0 +1,643 @@
+--!strict
+--[[
+@s3lightfixes/cli: S3LightFixes' command line, over @s3lightfixes.
+
+  run(argv) -> exit status
+  parse(argv) -> (command, nil) | (nil, message)
+  configuration(command, environment) -> (openmw.cfg, nil) | (nil, message)
+
+  s3lightfixes [OPTIONS]
+
+The flags are S3LightFixes 0.4.59's, each set on the `state.s3lightfixes` option it stands for:
+`parse` reads an argument list into those options without running anything, or says what it
+couldn't read. A flag is spelled `--name value`, `--name=value`, `-n value`, `-nvalue`, or
+`-n=value`, and flags that take no value can share a dash (`-end`). Only --excluded-ids,
+--excluded-plugins, --light, and --ambient can be given more than once.
+
+The configuration is named explicitly. `-c`/`--openmw-cfg` is the original's flag and keeps its
+rules: the folder holding openmw.cfg, or the file itself, which must be named exactly openmw.cfg.
+`--config` is the spelling Jess's other tools share: an openmw.cfg under any name, or its folder,
+in which the file is found ignoring case. With neither, the OPENMW_CONFIG environment variable is
+read as `--config` is. With none of the three the run is refused: the original then looks for
+OpenMW's own configuration, which this port can't do.
+
+Two of the original's flags stand for things this port doesn't do, --generate-completion and
+--generate-manpage, and are refused by name. Without --no-notifications the original shows its
+messages in dialog boxes; here they are printed either way, and the flag silences them.
+
+Exit statuses: 0 when the run did what it was asked, 8 when the command line can't be used (an
+unknown or repeated flag, a missing or unreadable value, no configuration, or one that isn't
+there), 9 when the configuration can't be loaded or the run raised. Messages go to standard error
+as `s3lightfixes: <message>`; what the tool itself prints goes to standard output.
+]]
+
+local fs = require '@dream/fs'
+local openmw = require '@openmw-install'
+local process = require '@dream/process'
+local s3lightfixes = require '@s3lightfixes'
+
+local Version = require './version'
+
+export type Command = {
+  action: 'run' | 'help' | 'version',
+  --- The run's `state.s3lightfixes`.
+  options: s3lightfixes.Options,
+  --- The configuration `-c`/`--openmw-cfg` names, under the original's rules.
+  openmwCfg: string?,
+  --- The configuration `--config` names: an openmw.cfg under any name, or its folder.
+  config: string?,
+}
+
+--- What a flag takes: nothing (`switch`), true or false (`boolean`), that or nothing (`toggle`), a
+--- number, text, a comma-separated list of patterns, or a colon-separated list of overrides.
+type Kind =
+  'switch'
+  | 'toggle'
+  | 'boolean'
+  | 'number'
+  | 'text'
+  | 'patterns'
+  | 'lights'
+  | 'ambients'
+  | 'help'
+  | 'version'
+  | 'absent'
+
+--- A flag: its spellings, and the option (or the Command field) its value goes to.
+type Flag = { long: string, short: string?, kind: Kind, sets: string?, why: string? }
+
+local Exit = table.freeze { ok = 0, invalidInput = 8, runtime = 9 }
+
+local Flags: { Flag } = {
+  { long = 'openmw-cfg', short = 'c', kind = 'text', sets = 'openmwCfg' },
+  { long = 'config', kind = 'text', sets = 'config' },
+  { long = 'classic', short = '7', kind = 'switch', sets = 'disableInteriorSun' },
+  { long = 'output', short = 'o', kind = 'text', sets = 'output' },
+  { long = 'auto-enable', short = 'e', kind = 'switch', sets = 'autoEnable' },
+  { long = 'no-notifications', short = 'n', kind = 'switch', sets = 'noNotifications' },
+  { long = 'debug', short = 'd', kind = 'switch', sets = 'debug' },
+  { long = 'dry-run', kind = 'toggle', sets = 'dryRun' },
+  { long = 'validate-config', kind = 'toggle', sets = 'validateConfig' },
+  {
+    long = 'generate-completion',
+    kind = 'absent',
+    why = 'it has no shell completion scripts to generate',
+  },
+  { long = 'generate-manpage', kind = 'absent', why = 'it has no manpage to generate' },
+  { long = 'no-flicker', short = 'f', kind = 'boolean', sets = 'disableFlickering' },
+  { long = 'no-pulse', short = 'p', kind = 'boolean', sets = 'disablePulse' },
+  { long = 'disable-negative-lights', kind = 'boolean', sets = 'disableNegativeLights' },
+  { long = 'standard-hue', kind = 'number', sets = 'standardHue' },
+  { long = 'standard-saturation', short = 's', kind = 'number', sets = 'standardSaturation' },
+  { long = 'standard-value', short = 'v', kind = 'number', sets = 'standardValue' },
+  { long = 'standard-radius', short = 'r', kind = 'number', sets = 'standardRadius' },
+  { long = 'colored-hue', short = 'H', kind = 'number', sets = 'coloredHue' },
+  { long = 'colored-saturation', short = 'S', kind = 'number', sets = 'coloredSaturation' },
+  { long = 'colored-value', kind = 'number', sets = 'coloredValue' },
+  { long = 'colored-radius', short = 'R', kind = 'number', sets = 'coloredRadius' },
+  { long = 'duration-mult', short = 'M', kind = 'number', sets = 'durationMult' },
+  { long = 'excluded-ids', short = 'x', kind = 'patterns', sets = 'excludedIds' },
+  { long = 'excluded-plugins', short = 'X', kind = 'patterns', sets = 'excludedPlugins' },
+  { long = 'light', kind = 'lights', sets = 'lightOverrides' },
+  { long = 'ambient', kind = 'ambients', sets = 'ambientOverrides' },
+  { long = 'update-light-config', short = 'U', kind = 'switch', sets = 'updateLightConfig' },
+  { long = 'help', short = 'h', kind = 'help' },
+  { long = 'version', short = 'V', kind = 'version' },
+}
+
+local Long: { [string]: Flag }, Short: { [string]: Flag } = {}, {}
+
+for _, flag in Flags do
+  Long[flag.long] = flag
+  if flag.short then Short[flag.short] = flag end
+end
+
+--- The flags that add to a list each time they are given.
+local Repeats: { [Kind]: boolean } = { patterns = true, lights = true, ambients = true }
+
+--- The flags that take no value, or needn't.
+local Bare: { [Kind]: boolean } =
+  { switch = true, toggle = true, help = true, version = true, absent = true }
+
+--- A light override's fields as the command line spells them, and what each one's value is.
+local LightFields: { [string]: 'integer' | 'float' | 'flag' } = {
+  red = 'integer',
+  green = 'integer',
+  blue = 'integer',
+  red_mult = 'float',
+  green_mult = 'float',
+  blue_mult = 'float',
+  hue = 'integer',
+  saturation = 'float',
+  value = 'float',
+  hue_mult = 'float',
+  saturation_mult = 'float',
+  value_mult = 'float',
+  radius = 'integer',
+  radius_mult = 'float',
+  duration = 'float',
+  duration_mult = 'float',
+  flag = 'flag',
+}
+
+local Usage = [[
+S3LightFixes 0.4.59 for Jess: modifies light values globally across an OpenMW installation, and
+writes them to S3LightFixes.omwaddon. Arguments given here that lightconfig.toml also has override
+its values, and a lightconfig.toml that doesn't exist yet is saved with the values the run used.
+
+Usage: s3lightfixes [OPTIONS]
+
+The configuration, which must be named: this port can't find OpenMW's own.
+  -c, --openmw-cfg <PATH>  The folder holding openmw.cfg, or the file itself, which must be
+                           named exactly openmw.cfg
+      --config <PATH>      An openmw.cfg under any name, or the folder holding it
+  With neither, the OPENMW_CONFIG environment variable is read as --config is.
+
+Options:
+  -7, --classic            Disable sunlight in every interior, for vtastek's shaders on OpenMW
+                           0.47 (sets disable_interior_sun)
+  -o, --output <DIR>       The folder to write S3LightFixes.omwaddon to; it must exist. By
+                           default lightconfig.toml's output_dir, else data-local, else the
+                           current folder
+  -e, --auto-enable        Enable the plugin in openmw.cfg, backing the file up first
+  -n, --no-notifications   Don't print the status messages; the log is still printed
+  -d, --debug              Print the output folder and how many overrides are in effect
+      --dry-run [<BOOL>]   Print what would change, and write nothing
+      --validate-config [<BOOL>]
+                           Check lightconfig.toml, these options, and every pattern, then stop
+  -f, --no-flicker <BOOL>  Whether to remove flickering from lights
+  -p, --no-pulse <BOOL>    Whether to remove pulsing from lights
+      --disable-negative-lights <BOOL>
+                           Whether to null negative lights
+      --standard-hue <NUMBER>           (no short form: -h is help)
+  -s, --standard-saturation <NUMBER>
+  -v, --standard-value <NUMBER>
+  -r, --standard-radius <NUMBER>
+                           For lights in the orange range, multiply their HSV hue, saturation,
+                           and value, and their radius, by these. Defaults: lightconfig.toml's,
+                           else 0.62, 0.8, 0.57, and 1.2
+  -H, --colored-hue <NUMBER>
+  -S, --colored-saturation <NUMBER>
+      --colored-value <NUMBER>
+  -R, --colored-radius <NUMBER>
+                           The same for lights that are red, purple, blue, green, or yellow.
+                           Defaults: lightconfig.toml's, else 1, 0.9, 0.7, and 1.1
+  -M, --duration-mult <NUMBER>
+                           Multiply the duration of every carryable light. Default:
+                           lightconfig.toml's, else 2.5
+  -x, --excluded-ids <PATTERNS>
+                           Comma-separated regexes of light and cell ids to leave alone, added
+                           to lightconfig.toml's
+  -X, --excluded-plugins <PATTERNS>
+                           Comma-separated regexes of plugins to skip, added to lightconfig.toml's
+      --light <OVERRIDES>  Colon-separated light overrides, each a regex of light ids and its
+                           values:
+                             --light "torch_001=radius=255,red=255,green=128,blue=64,flag=FIRE"
+                             --light "^lantern=radius_mult=2.0:candle=duration_mult=5.0"
+                           Values are lightconfig.toml's: red, green, blue, hue, saturation,
+                           value, radius, duration, their multipliers (red_mult, hue_mult,
+                           radius_mult, ...), and flag, which names light flags joined by |
+      --ambient <OVERRIDES>
+                           Colon-separated cell overrides, each a regex of cell ids and its
+                           fields, separated by semicolons: ambient, sunlight, and fog as
+                           red, green, and blue, and fog_density:
+                             --ambient "caius.*=sunlight=red=255,green=255,blue=255;fog_density=0.5"
+  -U, --update-light-config
+                           Save lightconfig.toml on this run, with these options in it
+  -h, --help               Print help
+  -V, --version            Print version
+
+--excluded-ids, --excluded-plugins, --light, and --ambient can be given more than once. Not part
+of this port: --generate-completion and --generate-manpage.
+
+Exit status: 0 done, 8 the command line can't be used, 9 the run failed.]]
+
+local function out(text: string) process.write('stdout', `{text}\n`) end
+
+local function err(text: string) process.write('stderr', `{text}\n`) end
+
+local function usage(message: string): number
+  err(`s3lightfixes: {message}`)
+  return Exit.invalidInput
+end
+
+local function trim(text: string): string return (string.gsub(text, '^%s*(.-)%s*$', '%1')) end
+
+--- `text` before and after its first `=`, or nil when it has none.
+local function pair(text: string): (string?, string?)
+  local found = string.find(text, '=', 1, true)
+  if not found then return nil, nil end
+
+  return string.sub(text, 1, found - 1), string.sub(text, found + 1)
+end
+
+--- A number as the original reads one: decimal digits with an optional sign, fraction, and
+--- exponent, or `inf`, `infinity`, or `nan` in any case. Hexadecimal and padding aren't numbers.
+local function float(text: string): number?
+  local sign, magnitude = string.match(text, '^([+-]?)(.*)$')
+  local name = string.lower(magnitude or '')
+
+  if name == 'inf' or name == 'infinity' then
+    return if sign == '-' then -math.huge else math.huge
+  end
+
+  if name == 'nan' then return 0 / 0 end
+
+  local mantissa = string.match(text, '^(.-)[eE][+-]?%d+$') or text
+  local digits = string.match(mantissa, '^[+-]?%d+%.?%d*$') or string.match(mantissa, '^[+-]?%.%d+$')
+  if not digits then return nil end
+
+  return tonumber(text)
+end
+
+--- A whole number that isn't negative, as the original reads a color channel, a hue, or a radius.
+local function integer(text: string): number?
+  if not string.match(text, '^%+?%d+$') then return nil end
+
+  return tonumber(text)
+end
+
+--- An option's name from a field's: `radius_mult` is `radiusMult`.
+local function optionName(field: string): string
+  return (string.gsub(field, '_(%l)', string.upper))
+end
+
+--- The fields of `text`, which `separator` separates, without the blank ones.
+local function fieldsIn(text: string, separator: string): { string }
+  local fields = {}
+  for _, field in string.split(text, separator) do
+    if trim(field) ~= '' then table.insert(fields, field) end
+  end
+
+  return fields
+end
+
+--- One `--light` override, `pattern=field=value,field=value,...`, as the option it is; or why it
+--- can't be read. Whether the values make sense together is the tool's to say.
+local function lightOverride(text: string): ({ [string]: unknown }?, string?)
+  local id, settings = pair(text)
+  if not id or not settings then return nil, `Expected key=value pair, got: \`{text}\`` end
+
+  local override: { [string]: unknown } = { id = id }
+
+  for _, setting in fieldsIn(settings, ',') do
+    local key, value = pair(setting)
+    if not key or not value then return nil, `Expected key=value pair, got: \`{setting}\`` end
+
+    local field, given = trim(key), trim(value)
+    local kind = LightFields[field]
+    if not kind then return nil, `Unknown field: \`{field}\`` end
+
+    if kind == 'flag' then
+      override.flag = given
+      continue
+    end
+
+    local number = if kind == 'integer' then integer(given) else float(given)
+    if not number then return nil, `Invalid number for \`{field}\`: \`{given}\`` end
+
+    override[optionName(field)] = number
+  end
+
+  return override, nil
+end
+
+--- An ambient override's color, `red=1,green=2,blue=3`.
+local function color(text: string): ({ [string]: unknown }?, string?)
+  local channels: { [string]: unknown } = {}
+
+  for _, setting in fieldsIn(text, ',') do
+    local key, value = pair(setting)
+    if not key or not value then return nil, `Expected key=value pair, got: \`{setting}\`` end
+
+    local channel, given = trim(key), trim(value)
+    if channel ~= 'red' and channel ~= 'green' and channel ~= 'blue' then
+      return nil, `Unknown field: \`{channel}\``
+    end
+
+    local number = integer(given)
+    if not number then return nil, `Invalid value for \`{channel}\`: \`{given}\`` end
+
+    channels[channel] = number
+  end
+
+  return channels, nil
+end
+
+--- One `--ambient` override, `pattern=field=...;field=...`, as the option it is; or why it can't
+--- be read.
+local function ambientOverride(text: string): ({ [string]: unknown }?, string?)
+  local id, settings = pair(text)
+  if not id or not settings then return nil, `Expected key=value pair, got: \`{text}\`` end
+
+  local override: { [string]: unknown } = { id = id }
+
+  for _, setting in fieldsIn(settings, ';') do
+    local key, value = pair(setting)
+    if not key or not value then return nil, `Expected key=value pair, got: \`{setting}\`` end
+
+    local field = trim(key)
+    if field == 'fog_density' then
+      local density = float(value)
+      if not density then return nil, `Invalid color for \`{field}\`: \`{value}\`` end
+
+      override.fogDensity = density
+      continue
+    end
+
+    if field ~= 'ambient' and field ~= 'sunlight' and field ~= 'fog' then
+      return nil, `Unknown field: \`{field}\``
+    end
+
+    local channels, problem = color(value)
+    if not channels then return nil, `Invalid color for \`{field}\`: {problem}` end
+
+    override[field] = channels
+  end
+
+  return override, nil
+end
+
+--- The list an option holds, started when the option has none yet.
+local function listIn(options: { [string]: unknown }, option: string): { unknown }
+  local list = options[option]
+  if type(list) == 'table' then return list :: { unknown } end
+
+  local started: { unknown } = {}
+  options[option] = started
+  return started
+end
+
+--- Sets what one flag stands for from the value it was given, or says why the value won't do.
+local function set(
+  options: { [string]: unknown },
+  flag: Flag,
+  spelling: string,
+  value: string
+): string?
+  local option = flag.sets :: string
+
+  if flag.kind == 'boolean' or flag.kind == 'toggle' then
+    if value ~= 'true' and value ~= 'false' then
+      return `{spelling} takes true or false, not '{value}'`
+    end
+
+    options[option] = value == 'true'
+  elseif flag.kind == 'number' then
+    local number = float(value)
+    if not number then return `{spelling} takes a number, not '{value}'` end
+
+    options[option] = number
+  elseif flag.kind == 'patterns' then
+    local patterns = listIn(options, option)
+    for _, pattern in string.split(value, ',') do
+      table.insert(patterns, pattern)
+    end
+  elseif flag.kind == 'lights' or flag.kind == 'ambients' then
+    local read = if flag.kind == 'lights' then lightOverride else ambientOverride
+    local overrides = listIn(options, option)
+
+    for _, text in string.split(value, ':') do
+      local override, problem = read(text)
+      if not override then return `invalid value '{text}' for {spelling}: {problem}` end
+
+      table.insert(overrides, override)
+    end
+  else
+    options[option] = value
+  end
+
+  return nil
+end
+
+local function parse(argv: { string }): (Command?, string?)
+  local options: { [string]: unknown }, named: { [string]: unknown } = {}, {}
+  local given: { [string]: string } = {}
+  local index = 1
+
+  --- Takes one flag as `spelling` gave it, with the value attached to it if one was, reading the
+  --- next argument when it needs one. A refusal comes back as its message.
+  local function take(flag: Flag, spelling: string, attached: string?): string?
+    if flag.kind == 'absent' then return `{spelling} is not part of this port: {flag.why}` end
+
+    local slot = flag.sets :: string
+    if given[slot] and not Repeats[flag.kind] then return `{spelling} can be given only once` end
+
+    given[slot] = spelling
+
+    if flag.kind == 'switch' then
+      if attached then return `{spelling} takes no value` end
+
+      options[slot] = true
+      return nil
+    end
+
+    local value = attached
+    if not value and flag.kind == 'toggle' then
+      local following = argv[index + 1]
+      if following ~= 'true' and following ~= 'false' then
+        options[slot] = true
+        return nil
+      end
+    end
+
+    if not value then
+      index += 1
+      value = argv[index]
+    end
+
+    if not value then return `{spelling} requires a value` end
+
+    -- The two configuration flags name a file for the run, not an option of the tool's.
+    local target = if slot == 'openmwCfg' or slot == 'config' then named else options
+    return set(target, flag, spelling, value)
+  end
+
+  while index <= #argv do
+    local argument = argv[index]
+
+    if string.sub(argument, 1, 2) == '--' then
+      local name, attached = pair(string.sub(argument, 3))
+      local flag = Long[name or string.sub(argument, 3)]
+      if not flag then return nil, `unknown option '{argument}'` end
+
+      if flag.kind == 'help' or flag.kind == 'version' then
+        return { action = flag.kind :: 'help' | 'version', options = {} }, nil
+      end
+
+      local refusal = take(flag, `--{flag.long}`, attached)
+      if refusal then return nil, refusal end
+    elseif string.sub(argument, 1, 1) == '-' and #argument > 1 then
+      -- Flags that share a dash, the last of which may take what follows it as its value.
+      local position = 2
+
+      while position <= #argument do
+        local letter = string.sub(argument, position, position)
+        local flag = Short[letter]
+        if not flag then return nil, `unknown option '-{letter}'` end
+
+        if flag.kind == 'help' or flag.kind == 'version' then
+          return { action = flag.kind :: 'help' | 'version', options = {} }, nil
+        end
+
+        local attached: string? = nil
+        if not Bare[flag.kind] then
+          local rest = string.sub(argument, position + 1)
+          if string.sub(rest, 1, 1) == '=' then rest = string.sub(rest, 2) end
+          if position < #argument then attached = rest end
+
+          position = #argument
+        end
+
+        local refusal = take(flag, `-{letter}`, attached)
+        if refusal then return nil, refusal end
+
+        position += 1
+      end
+    else
+      return nil, `unexpected argument '{argument}'`
+    end
+
+    index += 1
+  end
+
+  if given.dryRun and given.validateConfig then
+    return nil, '--dry-run can\'t be used with --validate-config'
+  end
+
+  if given.openmwCfg and given.config then
+    return nil, `{given.openmwCfg} and --config both name the configuration; give one`
+  end
+
+  return {
+    action = 'run' :: 'run',
+    -- Each value was read as the kind its option takes, so the options are the tool's.
+    options = (options :: unknown) :: s3lightfixes.Options,
+    openmwCfg = named.openmwCfg :: string?,
+    config = named.config :: string?,
+  },
+    nil
+end
+
+--- The folder `path` with its links and relative parts resolved, or why it can't be: the
+--- operating system's words, without the function and path `@dream/fs` puts in front of them.
+local function resolved(path: string): (string?, string?)
+  local folder, message = fs.canonicalize(path)
+  if folder then return folder, nil end
+
+  local text = message or 'unknown error'
+  local prefix = `dream.fs.canonicalize: {path}: `
+  if string.sub(text, 1, #prefix) == prefix then text = string.sub(text, #prefix + 1) end
+
+  return nil, text
+end
+
+--- The openmw.cfg `-c`/`--openmw-cfg` names, as the original resolves it: a file named exactly
+--- openmw.cfg, whose folder is resolved when it is relative, or a folder holding one, resolved
+--- either way.
+local function original(path: string): (string?, string?)
+  if fs.isFile(path) then
+    if fs.fileName(path) ~= 'openmw.cfg' then
+      return nil, `Explicit --openmw-cfg file {path} must be named openmw.cfg`
+    end
+
+    local parent = fs.parent(path) or ''
+    if parent == '' then parent = '.' end
+    if fs.absolute(parent) == parent then return path, nil end
+
+    local folder, unresolved = resolved(parent)
+    if not folder then
+      return nil, `Explicit --openmw-cfg path {parent} could not be resolved: {unresolved}`
+    end
+
+    return fs.join(folder, 'openmw.cfg'), nil
+  end
+
+  local folder, unresolved = resolved(path)
+  if not folder then
+    return nil, `Explicit --openmw-cfg path {path} could not be resolved: {unresolved}`
+  end
+
+  if fs.isDir(folder) and fs.isFile(fs.join(folder, 'openmw.cfg')) then
+    return fs.join(folder, 'openmw.cfg'), nil
+  end
+
+  return nil, `Explicit --openmw-cfg path {path} must be a directory containing openmw.cfg`
+end
+
+--- The openmw.cfg `--config` or OPENMW_CONFIG names, as Jess's other tools resolve it: the file,
+--- or the openmw.cfg in the folder, found without regard to case.
+local function shared(path: string): (string?, string?)
+  if fs.isFile(path) then return path, nil end
+
+  if not fs.isDir(path) then
+    return nil, `The requested OpenMW config '{path}' does not exist or is not a file or directory.`
+  end
+
+  local names, problem = fs.list(path)
+  if not names then error(problem, 0) end
+
+  for _, name in names do
+    if string.lower(name) == 'openmw.cfg' then return fs.join(path, name), nil end
+  end
+
+  return nil, `No openmw.cfg found in '{path}'.`
+end
+
+--- The openmw.cfg a command runs on: the one `-c`/`--openmw-cfg` names, else `--config`'s, else
+--- `environment`'s, which is what OPENMW_CONFIG holds. Nil and the reason when none names one, or
+--- the one named isn't there.
+local function configuration(
+  {openmwCfg, config}: Command,
+  environment: string?
+): (string?, string?)
+  if openmwCfg then return original(openmwCfg) end
+
+  local selected = config or environment
+  if selected and selected ~= '' then return shared(selected) end
+
+  return nil,
+    'no OpenMW configuration was given, and this port can\'t look for OpenMW\'s own as the original does: pass --openmw-cfg <folder holding openmw.cfg> or --config <openmw.cfg or its folder>, or set OPENMW_CONFIG'
+end
+
+--- Says why the run stopped: the error's message, without the script position `error` puts in
+--- front of it, and named for the tool unless it already is, as an option's refusal is.
+local function failed(caught: unknown): number
+  local message = string.gsub(tostring(caught), '^[^\n]-:%d+: ', '')
+  if string.sub(message, 1, 14) ~= 's3lightfixes: ' then message = `s3lightfixes: {message}` end
+
+  err(message)
+  return Exit.runtime
+end
+
+local function run(argv: { string }): number
+  local command, message = parse(argv)
+  if not command then return usage(message :: string) end
+
+  if command.action == 'help' then
+    out(Usage)
+    return Exit.ok
+  end
+
+  if command.action == 'version' then
+    out(`s3lightfixes {Version}`)
+    return Exit.ok
+  end
+
+  -- The environment is read only when no flag names the configuration.
+  local named = command.openmwCfg or command.config
+  local path, missing = configuration(command, if named then nil else process.env 'OPENMW_CONFIG')
+  if not path then return usage(missing :: string) end
+
+  -- `openmw.new` raises on an openmw.cfg, or one it includes, that can't be read or isn't one.
+  local loaded, context = pcall(openmw.new, path, nil)
+  if not loaded then return failed(context) end
+
+  -- The tool raises where the original shows its message and exits non-zero.
+  local ran, failure = pcall(s3lightfixes, { s3lightfixes = command.options }, context)
+  if not ran then return failed(failure) end
+
+  return Exit.ok
+end
+
+return table.freeze { Exit = Exit, configuration = configuration, parse = parse, run = run }

@@ -1,0 +1,17 @@
+# Package tests compare text and generated fixtures byte for byte.
+* text=auto eol=lf
+
+# Bethesda/game assets are binary fixtures.
+*.esp binary
+*.esm binary
+*.omwaddon binary
+*.omwgame binary
+*.omwsave binary
+*.ess binary
+*.nif binary
+*.kf binary
+*.bsa binary
+*.ba2 binary
+*.dds binary
+*.tga binary
+*.png binary

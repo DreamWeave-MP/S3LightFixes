@@ -1,0 +1,570 @@
+--!strict
+-- `@s3lightfixes/cli`: each of S3LightFixes 0.4.59's flags onto the option it stands for, the
+-- argument lists it refuses and why, the configuration each spelling names, the exit status of
+-- each way a command can end, and whole runs against the original's own output. Its messages go
+-- to the suite's own standard error.
+local cli = require '@s3lightfixes/cli'
+local fs = require '@dream/fs'
+local orders = require './order'
+local test = require '@jess/test'
+
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
+local expect = test.expect
+local suite = test.new()
+
+type Options = { [string]: unknown }
+
+-- Every flag under each of its spellings, and the options it comes to.
+local Read: { { argv: { string }, options: Options } } = {
+  { argv = {}, options = {} },
+  { argv = { '--classic' }, options = { disableInteriorSun = true } },
+  { argv = { '-7' }, options = { disableInteriorSun = true } },
+  { argv = { '--output', 'out dir' }, options = { output = 'out dir' } },
+  { argv = { '-o', 'out dir' }, options = { output = 'out dir' } },
+  { argv = { '--auto-enable' }, options = { autoEnable = true } },
+  { argv = { '-e' }, options = { autoEnable = true } },
+  { argv = { '--no-notifications' }, options = { noNotifications = true } },
+  { argv = { '-n' }, options = { noNotifications = true } },
+  { argv = { '--debug' }, options = { debug = true } },
+  { argv = { '-d' }, options = { debug = true } },
+  { argv = { '--dry-run' }, options = { dryRun = true } },
+  { argv = { '--dry-run', 'true' }, options = { dryRun = true } },
+  { argv = { '--dry-run', 'false' }, options = { dryRun = false } },
+  { argv = { '--dry-run=false' }, options = { dryRun = false } },
+  { argv = { '--validate-config' }, options = { validateConfig = true } },
+  { argv = { '--validate-config', 'false' }, options = { validateConfig = false } },
+  { argv = { '--validate-config=true' }, options = { validateConfig = true } },
+  { argv = { '--no-flicker', 'false' }, options = { disableFlickering = false } },
+  { argv = { '-f', 'true' }, options = { disableFlickering = true } },
+  { argv = { '--no-pulse', 'true' }, options = { disablePulse = true } },
+  { argv = { '-p', 'false' }, options = { disablePulse = false } },
+  {
+    argv = { '--disable-negative-lights', 'false' },
+    options = { disableNegativeLights = false },
+  },
+  { argv = { '--standard-hue', '0.5' }, options = { standardHue = 0.5 } },
+  { argv = { '--standard-saturation', '0.25' }, options = { standardSaturation = 0.25 } },
+  { argv = { '-s', '0.25' }, options = { standardSaturation = 0.25 } },
+  { argv = { '--standard-value', '2' }, options = { standardValue = 2 } },
+  { argv = { '-v', '2' }, options = { standardValue = 2 } },
+  { argv = { '--standard-radius', '1.5' }, options = { standardRadius = 1.5 } },
+  { argv = { '-r', '1.5' }, options = { standardRadius = 1.5 } },
+  { argv = { '--colored-hue', '.5' }, options = { coloredHue = 0.5 } },
+  { argv = { '-H', '.5' }, options = { coloredHue = 0.5 } },
+  { argv = { '--colored-saturation', '5.' }, options = { coloredSaturation = 5 } },
+  { argv = { '-S', '5.' }, options = { coloredSaturation = 5 } },
+  { argv = { '--colored-value', '+1' }, options = { coloredValue = 1 } },
+  { argv = { '--colored-radius', '1e1' }, options = { coloredRadius = 10 } },
+  { argv = { '-R', '1e1' }, options = { coloredRadius = 10 } },
+  { argv = { '--duration-mult', '-0.5' }, options = { durationMult = -0.5 } },
+  { argv = { '-M', 'inf' }, options = { durationMult = math.huge } },
+  { argv = { '--excluded-ids', 'purple,glow$' }, options = { excludedIds = { 'purple', 'glow$' } } },
+  { argv = { '-x', 'purple', '-x', 'a,b' }, options = { excludedIds = { 'purple', 'a', 'b' } } },
+  { argv = { '--excluded-plugins', 'TestC.*' }, options = { excludedPlugins = { 'TestC.*' } } },
+  {
+    argv = { '-X', 'TestC.*', '--excluded-plugins=Extra.esp' },
+    options = { excludedPlugins = { 'TestC.*', 'Extra.esp' } },
+  },
+  { argv = { '--update-light-config' }, options = { updateLightConfig = true } },
+  { argv = { '-U' }, options = { updateLightConfig = true } },
+  -- Flags that take no value share a dash, and the last can take a value, attached or not.
+  {
+    argv = { '-end7U' },
+    options = {
+      autoEnable = true,
+      noNotifications = true,
+      debug = true,
+      disableInteriorSun = true,
+      updateLightConfig = true,
+    },
+  },
+  { argv = { '-eo', 'out' }, options = { autoEnable = true, output = 'out' } },
+  { argv = { '-eoout' }, options = { autoEnable = true, output = 'out' } },
+  { argv = { '-o=out', '--standard-hue=0.5' }, options = { output = 'out', standardHue = 0.5 } },
+  { argv = { '--output', '--debug' }, options = { output = '--debug' } },
+  -- A word after --dry-run that isn't true or false isn't its value.
+  { argv = { '--dry-run', '-e' }, options = { dryRun = true, autoEnable = true } },
+}
+
+-- Each argument list `parse` refuses, and what it says of it.
+local Refused: { { argv: { string }, message: string } } = {
+  { argv = { 'S3LightFixes.omwaddon' }, message = 'unexpected argument \'S3LightFixes.omwaddon\'' },
+  { argv = { '--dry-run', 'maybe' }, message = 'unexpected argument \'maybe\'' },
+  { argv = { '--bogus' }, message = 'unknown option \'--bogus\'' },
+  { argv = { '--bogus=1' }, message = 'unknown option \'--bogus=1\'' },
+  { argv = { '--' }, message = 'unknown option \'--\'' },
+  { argv = { '--Debug' }, message = 'unknown option \'--Debug\'' },
+  { argv = { '-z' }, message = 'unknown option \'-z\'' },
+  { argv = { '-ez' }, message = 'unknown option \'-z\'' },
+  { argv = { '--output' }, message = '--output requires a value' },
+  { argv = { '-o' }, message = '-o requires a value' },
+  { argv = { '-eo' }, message = '-o requires a value' },
+  { argv = { '--standard-hue' }, message = '--standard-hue requires a value' },
+  { argv = { '--light' }, message = '--light requires a value' },
+  { argv = { '--debug=true' }, message = '--debug takes no value' },
+  { argv = { '--classic=1' }, message = '--classic takes no value' },
+  { argv = { '--dry-run=maybe' }, message = '--dry-run takes true or false, not \'maybe\'' },
+  { argv = { '--no-flicker', 'yes' }, message = '--no-flicker takes true or false, not \'yes\'' },
+  { argv = { '-p', 'True' }, message = '-p takes true or false, not \'True\'' },
+  {
+    argv = { '--disable-negative-lights', '1' },
+    message = '--disable-negative-lights takes true or false, not \'1\'',
+  },
+  { argv = { '--standard-hue', '0x10' }, message = '--standard-hue takes a number, not \'0x10\'' },
+  { argv = { '-s', 'half' }, message = '-s takes a number, not \'half\'' },
+  { argv = { '-M', '1e' }, message = '-M takes a number, not \'1e\'' },
+  { argv = { '-R', ' 1' }, message = '-R takes a number, not \' 1\'' },
+  { argv = { '-o', 'a', '--output', 'b' }, message = '--output can be given only once' },
+  { argv = { '-e', '--auto-enable' }, message = '--auto-enable can be given only once' },
+  { argv = { '-ee' }, message = '-e can be given only once' },
+  { argv = { '-s', '1', '-s', '2' }, message = '-s can be given only once' },
+  { argv = { '--dry-run', '--dry-run' }, message = '--dry-run can be given only once' },
+  { argv = { '-c', 'a', '--openmw-cfg', 'b' }, message = '--openmw-cfg can be given only once' },
+  { argv = { '--config', 'a', '--config', 'b' }, message = '--config can be given only once' },
+  {
+    argv = { '-c', 'a', '--config', 'b' },
+    message = '-c and --config both name the configuration; give one',
+  },
+  {
+    argv = { '--config', 'b', '--openmw-cfg', 'a' },
+    message = '--openmw-cfg and --config both name the configuration; give one',
+  },
+  {
+    argv = { '--dry-run', '--validate-config' },
+    message = '--dry-run can\'t be used with --validate-config',
+  },
+  {
+    argv = { '--validate-config=false', '--dry-run=false' },
+    message = '--dry-run can\'t be used with --validate-config',
+  },
+  {
+    argv = { '--generate-completion', 'bash' },
+    message = '--generate-completion is not part of this port: it has no shell completion scripts to generate',
+  },
+  {
+    argv = { '--generate-manpage' },
+    message = '--generate-manpage is not part of this port: it has no manpage to generate',
+  },
+  {
+    argv = { '--light', 'torch' },
+    message = 'invalid value \'torch\' for --light: Expected key=value pair, got: `torch`',
+  },
+  {
+    argv = { '--light', 'torch=radius' },
+    message = 'invalid value \'torch=radius\' for --light: Expected key=value pair, got: `radius`',
+  },
+  {
+    argv = { '--light', 'torch=glow=1' },
+    message = 'invalid value \'torch=glow=1\' for --light: Unknown field: `glow`',
+  },
+  {
+    argv = { '--light', 'torch=radiusMult=1' },
+    message = 'invalid value \'torch=radiusMult=1\' for --light: Unknown field: `radiusMult`',
+  },
+  {
+    argv = { '--light', 'torch=radius=-5' },
+    message = 'invalid value \'torch=radius=-5\' for --light: Invalid number for `radius`: `-5`',
+  },
+  {
+    argv = { '--light', 'torch=red=1.5' },
+    message = 'invalid value \'torch=red=1.5\' for --light: Invalid number for `red`: `1.5`',
+  },
+  {
+    argv = { '--light', 'a=radius=1:torch=hue_mult=x' },
+    message = 'invalid value \'torch=hue_mult=x\' for --light: Invalid number for `hue_mult`: `x`',
+  },
+  {
+    argv = { '--ambient', 'cave' },
+    message = 'invalid value \'cave\' for --ambient: Expected key=value pair, got: `cave`',
+  },
+  {
+    argv = { '--ambient', 'cave=glow=1' },
+    message = 'invalid value \'cave=glow=1\' for --ambient: Unknown field: `glow`',
+  },
+  {
+    argv = { '--ambient', 'cave=fog_density=thick' },
+    message = 'invalid value \'cave=fog_density=thick\' for --ambient: Invalid color for `fog_density`: `thick`',
+  },
+  {
+    argv = { '--ambient', 'cave=fog=red=1,hue=2' },
+    message = 'invalid value \'cave=fog=red=1,hue=2\' for --ambient: Invalid color for `fog`: Unknown field: `hue`',
+  },
+  {
+    argv = { '--ambient', 'cave=fog=red=256.5' },
+    message = 'invalid value \'cave=fog=red=256.5\' for --ambient: Invalid color for `fog`: Invalid value for `red`: `256.5`',
+  },
+  {
+    argv = { '--ambient', 'cave=fog=red' },
+    message = 'invalid value \'cave=fog=red\' for --ambient: Invalid color for `fog`: Expected key=value pair, got: `red`',
+  },
+}
+
+local function read(path: string): string return ((readText(path) or error(`no {path}`, 0))) end
+
+suite.describe('parse', function()
+  suite.it('reads every flag, under each spelling, onto its option', function()
+    for _, case in Read do
+      local command, message = cli.parse(case.argv)
+      expect({ argv = case.argv, command = command, message = message }).toEqual {
+        argv = case.argv,
+        command = { action = 'run', options = case.options },
+      }
+    end
+  end)
+
+  suite.it('reads a NaN as the number it is', function()
+    local command = assert(cli.parse { '--colored-value', 'NaN' })
+    local value = command.options.coloredValue
+    expect(value ~= value).toBe(true)
+  end)
+
+  suite.it('reads light overrides, colon-separated or flag by flag', function()
+    local first = 'Torch_001=radius=255,red=255,green=128,blue=64,hue=220,blue_mult=0.5,duration=1200,flag=FLICKER_SLOW'
+    local second = 'Torch_002=radius_mult=2.0,hue_mult=1.3,red_mult=1.1,duration_mult=5.0,flag=CAN_CARRY|PULSE_SLOW'
+    local overrides = {
+      {
+        id = 'Torch_001',
+        radius = 255,
+        red = 255,
+        green = 128,
+        blue = 64,
+        hue = 220,
+        blueMult = 0.5,
+        duration = 1200,
+        flag = 'FLICKER_SLOW',
+      },
+      {
+        id = 'Torch_002',
+        radiusMult = 2,
+        hueMult = 1.3,
+        redMult = 1.1,
+        durationMult = 5,
+        flag = 'CAN_CARRY|PULSE_SLOW',
+      },
+    }
+
+    local repeated = assert(cli.parse { '--light', first, '--light', second })
+    local joined = assert(cli.parse { '--light', `{first}:{second}` })
+    expect(repeated.options).toEqual { lightOverrides = overrides }
+    expect(joined.options).toEqual { lightOverrides = overrides }
+  end)
+
+  suite.it('reads every light override field, trimmed, onto the option\'s', function()
+    local command = assert(cli.parse {
+      '--light= ^lamp =saturation=0.5, value = 0.25 ,green_mult=2,saturation_mult=3,value_mult=4,,',
+    })
+
+    expect(command.options).toEqual {
+      lightOverrides = {
+        {
+          id = ' ^lamp ',
+          saturation = 0.5,
+          value = 0.25,
+          greenMult = 2,
+          saturationMult = 3,
+          valueMult = 4,
+        },
+      },
+    }
+  end)
+
+  suite.it('reads ambient overrides, their fields separated by semicolons', function()
+    local command = assert(cli.parse {
+      '--ambient',
+      'caius cosades\' house=sunlight=red=255,green=255,blue=255;ambient=red=64,green=48,blue=32',
+      '--ambient',
+      'cave=fog= red = 1 ,green=2,blue=3;;fog_density=0.5:shared.*=fog_density=0.125',
+    })
+
+    expect(command.options).toEqual {
+      ambientOverrides = {
+        {
+          id = 'caius cosades\' house',
+          sunlight = { red = 255, green = 255, blue = 255 },
+          ambient = { red = 64, green = 48, blue = 32 },
+        },
+        { id = 'cave', fog = { red = 1, green = 2, blue = 3 }, fogDensity = 0.5 },
+        { id = 'shared.*', fogDensity = 0.125 },
+      },
+    }
+  end)
+
+  suite.it('keeps the configuration each spelling names apart from the options', function()
+    expect((cli.parse { '-c', 'folder', '-n' })).toEqual {
+      action = 'run',
+      options = { noNotifications = true },
+      openmwCfg = 'folder',
+    }
+
+    expect((cli.parse { '--openmw-cfg=folder/openmw.cfg' })).toEqual {
+      action = 'run',
+      options = {},
+      openmwCfg = 'folder/openmw.cfg',
+    }
+
+    expect((cli.parse { '--config', 'some.cfg', '--dry-run' })).toEqual {
+      action = 'run',
+      options = { dryRun = true },
+      config = 'some.cfg',
+    }
+  end)
+
+  suite.it('reads help and version wherever they are, before anything after them', function()
+    for _, argv in { { '--help' }, { '-h' }, { '-eh', '--bogus' }, { '--help', '--bogus' } } do
+      expect((cli.parse(argv))).toEqual { action = 'help', options = {} }
+    end
+
+    for _, argv in { { '--version' }, { '-V' }, { '-nV', 'stray' } } do
+      expect((cli.parse(argv))).toEqual { action = 'version', options = {} }
+    end
+  end)
+
+  suite.it('refuses what it can\'t read, and says why', function()
+    for _, case in Refused do
+      local command, message = cli.parse(case.argv)
+      expect({ argv = case.argv, command = command, message = message }).toEqual {
+        argv = case.argv,
+        message = case.message,
+      }
+    end
+  end)
+
+  suite.it('leaves the argument list as it was', function()
+    local argv = { '-eo', 'out', '--dry-run', 'false', '--light', 'a=radius=1:b=radius=2' }
+    cli.parse(argv)
+    expect(argv).toEqual { '-eo', 'out', '--dry-run', 'false', '--light', 'a=radius=1:b=radius=2' }
+  end)
+end)
+
+suite.describe('configuration', function()
+  local function named(argv: { string }, environment: string?): (string?, string?)
+    return cli.configuration(assert(cli.parse(argv)), environment)
+  end
+
+  suite.it('takes the folder or the openmw.cfg that --openmw-cfg names, as the original does', function()
+    local order = orders.new 'cli-openmw-cfg'
+    expect((named { '-c', order.config })).toBe(order.cfg)
+    expect((named { '--openmw-cfg', order.cfg })).toBe(order.cfg)
+    -- A flag wins over the environment.
+    expect((named({ '-c', order.config }, fs.join(order.root, 'elsewhere')))).toBe(order.cfg)
+
+    local other = fs.join(order.config, 'other.cfg')
+    local done, problem = fs.writeFile(other, read(order.cfg), { atomic = true, createParents = true })
+    if not done then error(problem, 0) end
+
+    local _, misnamed = named { '-c', other }
+    expect(misnamed).toBe(`Explicit --openmw-cfg file {other} must be named openmw.cfg`)
+
+    local _, empty = named { '-c', order.out }
+    expect(empty).toBe(
+      `Explicit --openmw-cfg path {order.out} must be a directory containing openmw.cfg`
+    )
+
+    -- What follows is the operating system's reason, in its own words.
+    local missing = fs.join(order.root, 'missing')
+    local _, unresolved = named { '-c', missing }
+    expect(unresolved).toContain(`Explicit --openmw-cfg path {missing} could not be resolved: `)
+  end)
+
+  suite.it('resolves the folder --openmw-cfg names, as the original does', function()
+    local order = orders.new 'cli-resolved'
+    local upAndBack = fs.join(order.out, '..', 'config')
+    expect((named { '-c', upAndBack })).toBe(order.cfg)
+  end)
+
+  suite.it('takes any file or its folder for --config, and for the environment', function()
+    local order = orders.new 'cli-config'
+    local other = fs.join(order.out, 'Other.CFG')
+    local done, problem = fs.writeFile(other, read(order.cfg), { atomic = true, createParents = true })
+    if not done then error(problem, 0) end
+
+    expect((named { '--config', order.cfg })).toBe(order.cfg)
+    expect((named { '--config', order.config })).toBe(order.cfg)
+    expect((named { '--config', other })).toBe(other)
+    expect((named({}, order.config))).toBe(order.cfg)
+    expect((named({}, other))).toBe(other)
+    expect((named({ '--config', other }, order.cfg))).toBe(other)
+
+    local missing = fs.join(order.root, 'missing')
+    local _, absent = named { '--config', missing }
+    expect(absent).toBe(
+      `The requested OpenMW config '{missing}' does not exist or is not a file or directory.`
+    )
+
+    local data = fs.join(order.root, 'data')
+    local _, empty = named({}, data)
+    expect(empty).toBe(`No openmw.cfg found in '{data}'.`)
+  end)
+
+  suite.it('finds the openmw.cfg in --config\'s folder whatever its case', function()
+    local order = orders.new 'cli-config-case'
+    local shouted = fs.join(order.out, 'OpenMW.cfg')
+    local done, problem = fs.writeFile(shouted, read(order.cfg), { atomic = true, createParents = true })
+    if not done then error(problem, 0) end
+
+    -- A file system that ignores case finds it under either spelling.
+    local found = named { '--config', order.out }
+    expect(string.lower(assert(found))).toBe(string.lower(shouted))
+  end)
+
+  suite.it('refuses to go looking when nothing names one, and says how to name one', function()
+    for _, environment in { nil :: string?, '' } do
+      local path, message = named({ '-n' }, environment)
+      expect(path).toBeNil()
+      expect(message).toContain 'no OpenMW configuration was given'
+      expect(message).toContain 'this port can\'t look for OpenMW\'s own as the original does'
+      expect(message).toContain '--openmw-cfg <folder holding openmw.cfg>'
+      expect(message).toContain '--config <openmw.cfg or its folder>'
+      expect(message).toContain 'OPENMW_CONFIG'
+    end
+  end)
+end)
+
+suite.describe('run', function()
+  suite.it(
+    'numbers its exit statuses as Jess\'s other tools do',
+    function() expect(cli.Exit).toEqual { ok = 0, invalidInput = 8, runtime = 9 } end
+  )
+
+  suite.it('returns 0 for help and for the version', function()
+    for _, argument in { '--help', '-h', '--version', '-V' } do
+      expect(cli.run { argument }).toBe(0)
+    end
+  end)
+
+  suite.it('returns 8 for every command line parse refuses', function()
+    for _, case in Refused do
+      expect({ argv = case.argv, status = cli.run(case.argv) }).toEqual {
+        argv = case.argv,
+        status = 8,
+      }
+    end
+  end)
+
+  suite.it('returns 8 for a configuration that isn\'t there, and writes nothing', function()
+    local order = orders.new 'cli-missing'
+    local missing = fs.join(order.root, 'missing')
+    expect(cli.run { '--config', missing }).toBe(8)
+    expect(cli.run { '--openmw-cfg', missing }).toBe(8)
+    expect(cli.run { '-c', order.out }).toBe(8)
+    expect(cli.run { '-c', fs.join(order.root, 'data', 'TestA.esp') }).toBe(8)
+    expect((fs.exists(missing))).toBe(false)
+    local listed, problem = fs.list(order.out)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual {}
+    local listed, problem = fs.list(order.config)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual { 'openmw.cfg' }
+  end)
+
+  suite.it('returns 9 for a configuration that can\'t be loaded', function()
+    local order = orders.empty('cli-unloadable', 'encoding=klingon\ncontent=TestA.esp\n')
+    expect(cli.run { '-c', order.config }).toBe(9)
+    local listed, problem = fs.list(order.out)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual {}
+    local listed, problem = fs.list(order.config)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual { 'openmw.cfg' }
+  end)
+
+  suite.it('returns 9 when the run raises, as it does for a bad pattern', function()
+    -- Each on a load order of its own: a run saves a new lightconfig.toml, bad pattern and
+    -- all, before it compiles the patterns, as the original does.
+    local raising: { { string } } = {
+      { '-x', '(' },
+      { '--light', 'x=radius=1,radius_mult=2' },
+      { '--light', 'x=red=300,green=0,blue=0' },
+      { '--ambient', 'x=fog=red=1' },
+      { '-o', 'no such folder under the working one' },
+    }
+
+    for index, flags in raising do
+      local order = orders.new(`cli-raising-{index}`)
+      local argv = { '-c', order.config }
+      table.move(flags, 1, #flags, #argv + 1, argv)
+
+      expect({ argv = flags, status = cli.run(argv) }).toEqual { argv = flags, status = 9 }
+      local listed, problem = fs.list(order.out)
+      if not listed then error(problem, 0) end
+      expect(listed).toEqual {}
+    end
+  end)
+
+  suite.it('writes nothing on a dry run or a validation', function()
+    local order = orders.new 'cli-dry'
+    orders.output()
+    expect(cli.run { '-c', order.config, '--dry-run' }).toBe(0)
+    expect(orders.output()).toContain 'Dry run: no files written'
+    expect(cli.run { '--config', order.cfg, '--validate-config' }).toBe(0)
+    expect(orders.output()).toContain 'successfully'
+    local listed, problem = fs.list(order.out)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual {}
+    local listed, problem = fs.list(order.config)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual { 'openmw.cfg' }
+  end)
+
+  suite.it('matches the original by default', function()
+    local order = orders.new 'cli-default'
+    orders.output()
+    expect(cli.run { '--openmw-cfg', order.config, '--no-notifications' }).toBe(0)
+    expect(orders.output()).toContain '# changed lights: 63'
+    orders.expectOriginal(order, 'default')
+    expect((string.find(read(order.cfg), 'S3LightFixes', 1, true))).toBeNil()
+  end)
+
+  suite.it('matches the original with a config and flags', function()
+    local order = orders.new 'cli-configured'
+    local done, problem = fs.writeFile(
+      fs.join(order.config, 'lightConfig.toml'),
+      orders.golden 'lightConfig.toml',
+      { atomic = true, createParents = true }
+    )
+    if not done then error(problem, 0) end
+
+    local status = cli.run {
+      '-c',
+      order.cfg,
+      '-U',
+      '--light',
+      'grey_light=radius=5,duration_mult=4.0',
+      '--ambient',
+      'shared.*=fog_density=0.125',
+      '-x',
+      'excl.*',
+    }
+
+    expect(status).toBe(0)
+    orders.expectOriginal(order, 'configured')
+  end)
+
+  suite.it('enables the plugin with --auto-enable, backing openmw.cfg up', function()
+    local order = orders.new 'cli-enable'
+    local before = read(order.cfg)
+    expect(cli.run { '--config', order.config, '-e' }).toBe(0)
+    expect(read(order.cfg)).toContain 'content=S3LightFixes.omwaddon'
+    expect(read(`{order.cfg}.bak`)).toBe(before)
+  end)
+
+  suite.it('disables interior sunlight everywhere with --classic', function()
+    local order = orders.new 'cli-classic'
+    expect(cli.run { '-c', order.config, '-7n' }).toBe(0)
+    expect(orders.written(order, 'lightconfig.toml')).toContain 'disable_interior_sun = true\n'
+
+    local log = orders.written(order, 'lightconfig.log')
+    expect(log).toContain '# changed cells: 2\n'
+    expect(log).toContain 'CELL "dark cave" from "TestB.omwaddon": sunlight [41, 51, 61, 0] -> [0, 0, 0, 0]\n'
+  end)
+end)
+
+return suite

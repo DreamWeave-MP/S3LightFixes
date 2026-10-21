@@ -1,0 +1,702 @@
+--!strict
+-- @s3lightfixes over load orders built in scratch, checked against S3LightFixes 0.4.59's own
+-- output: the goldens in `golden/` are what the original wrote for the plugins `build.jsl`
+-- makes, with the run's folder written as `<root>`. The `configured` goldens differ from the
+-- original's only in listing ambient overrides in the order `lightConfig.toml` does and in
+-- leaving `CAN_CARRY` alone under flag overrides.
+local bytes = require '@dream/bytes'
+local fs = require '@dream/fs'
+local orders = require './order'
+local s3lightfixes = require '@s3lightfixes'
+local tes3 = require '@esm'
+local test = require '@jess/test'
+
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
+local expect = test.expect
+local suite = test.new()
+
+local function read(path: string): string return ((readText(path) or error(`no {path}`, 0))) end
+
+--- The first line of `output` that starts with `prefix`.
+local function line(output: string, prefix: string): string
+  for _, candidate in string.split(output, '\n') do
+    if string.sub(candidate, 1, #prefix) == prefix then return candidate end
+  end
+
+  return error(`no line starts with {prefix} in:\n{output}`)
+end
+
+local function endsWith(text: string, ending: string): boolean
+  return string.sub(text, -#ending) == ending
+end
+
+--- The cells a run's log shows losing their sunlight.
+local function sunless(output: string): { string }
+  local cells = {}
+
+  for _, candidate in string.split(output, '\n') do
+    if string.sub(candidate, 1, 5) ~= 'CELL ' then continue end
+    if not string.find(candidate, '-> [0, 0, 0, 0]', 1, true) then continue end
+
+    local name = string.match(candidate, '"([^"]*)"')
+    if name then table.insert(cells, name) end
+  end
+
+  return cells
+end
+
+local function sorted(names: { string }): { string }
+  table.sort(names)
+  return names
+end
+
+suite.describe('the fixtures', function()
+  suite.it('are the plugins the original recorded as its masters', function()
+    local order = orders.new 'fixtures'
+    local data = fs.join(order.root, 'data')
+    local fileStat, problem = fs.stat(fs.join(data, 'TestA.esp'))
+    if not fileStat then error(problem, 0) end
+    expect(fileStat.size).toBe(6685)
+    local fileStat, problem = fs.stat(fs.join(data, 'TestB.omwaddon'))
+    if not fileStat then error(problem, 0) end
+    expect(fileStat.size).toBe(628)
+    local fileStat, problem = fs.stat(fs.join(data, 'TestC.esp'))
+    if not fileStat then error(problem, 0) end
+    expect(fileStat.size).toBe(370)
+
+    local original = tes3.open(buffer.fromstring(orders.golden 'default.omwaddon'))
+    local masters = [for {name, size} in original:masters() => { name = name, size = size }]
+
+    expect(masters).toEqual {
+      { name = 'TestA.esp', size = 6685 },
+      { name = 'TestB.omwaddon', size = 628 },
+    }
+  end)
+end)
+
+suite.describe('against the original', function()
+  suite.it('matches it by default', function()
+    local order = orders.new 'default'
+    local output, options = orders.run(order, { noNotifications = true })
+    expect(output).toContain '# changed lights: 63'
+    -- Infinite (-1) durations stay infinite.
+    expect(output).toContain 'LIGH "Hue_Light_1" from "TestA.esp": color [76, 0, 0, 0] -> [53, 5, 5, 0], radius 64 -> 70\n'
+    orders.expectOriginal(order, 'default')
+    expect((string.find(read(order.cfg), 'S3LightFixes', 1, true))).toBeNil()
+
+    local report = assert(options.report)
+    expect(report.output).toBe(fs.join(order.out, orders.PluginName))
+    expect(report.masters).toBe(2)
+    expect(report.objects).toBe(63)
+    expect(report.lights).toBe(63)
+    expect(report.cells).toBe(0)
+    expect(report.enabled).toBe(false)
+    expect(#assert(report.logs)).toBe(63)
+    expect(assert(report.logs)[1]).toEqual {
+      kind = 'LIGH',
+      plugin = 'TestB.omwaddon',
+      id = 'shared_light',
+      changes = {
+        'color [10, 200, 30, 0] -> [20, 140, 33, 0]',
+        'radius 333 -> 366',
+        'duration 20 -> 50',
+      },
+    }
+  end)
+
+  suite.it('matches it with a config and options', function()
+    local order = orders.new 'configured'
+    local input = orders.golden 'lightConfig.toml'
+    local done, problem = fs.writeFile(fs.join(order.config, 'lightConfig.toml'), input, { atomic = true, createParents = true })
+    if not done then error(problem, 0) end
+
+    orders.run(order, {
+      updateLightConfig = true,
+      lightOverrides = { { id = 'grey_light', radius = 5, durationMult = 4.0 } },
+      ambientOverrides = { { id = 'shared.*', fogDensity = 0.125 } },
+      excludedIds = { 'excl.*' },
+    })
+    orders.expectOriginal(order, 'configured')
+
+    -- The original saves lightconfig.toml lowercase, beside the file it read. A case-insensitive
+    -- file system (Windows, and macOS by default) makes those one file.
+    if not fs.exists(fs.join(order.config, 'OPENMW.CFG')) then
+      expect(read(fs.join(order.config, 'lightConfig.toml'))).toBe(input)
+    end
+  end)
+end)
+
+suite.describe('overrides', function()
+  suite.it('keep infinite durations', function()
+    local order = orders.new 'infinite'
+    local output = orders.run(order, {
+      lightOverrides = {
+        { id = '^hue_light_1$', duration = 50 },
+        { id = '^hue_light_2$', duration = 50 },
+        { id = '^hue_light_4$', durationMult = 3 },
+      },
+    })
+
+    local changes = {
+      { light = 'Hue_Light_1', change = 'radius 64 -> 70' },
+      { light = 'Hue_Light_2', change = 'radius 71 -> 78, duration 21 -> 50' },
+      { light = 'Hue_Light_4', change = 'radius 85 -> 102' },
+    }
+
+    for _, expected in changes do
+      local found = line(output, `LIGH "{expected.light}"`)
+      expect({ line = found, ends = endsWith(found, expected.change) }).toEqual {
+        line = found,
+        ends = true,
+      }
+    end
+  end)
+
+  suite.it('never change whether a light can be carried', function()
+    local order = orders.new 'carry'
+    local output = orders.run(order, {
+      lightOverrides = {
+        { id = '^torch_flicker$', flag = 'FIRE' },
+        { id = '^hue_light_1$', flag = 'CAN_CARRY | FIRE' },
+      },
+    })
+
+    expect(line(output, 'LIGH "Torch_Flicker"')).toContain '-> LightFlags(CAN_CARRY | FIRE)'
+    expect(line(output, 'LIGH "Hue_Light_1"')).toContain '-> LightFlags(FIRE)'
+  end)
+
+  suite.it('apply in the order they are listed', function()
+    local order = orders.new 'order'
+    local done, problem = fs.writeFile(
+      fs.join(order.config, 'lightconfig.toml'),
+      '[light_overrides."torch_.*"]\nradius = 100\n\n[light_overrides."^torch"]\nradius = 200\n',
+      { atomic = true, createParents = true }
+    )
+    if not done then error(problem, 0) end
+
+    local output = orders.run(order, {
+      updateLightConfig = true,
+      lightOverrides = { { id = 'torch_p', radius = 7 } },
+    })
+
+    local function radius(light: string): string
+      local found = line(output, `LIGH "{light}"`)
+      for _, change in string.split(found, ', ') do
+        if string.sub(change, 1, 6) == 'radius' then return change end
+      end
+
+      return error(`no radius change in {found}`)
+    end
+
+    expect(radius 'Torch_Flicker').toBe 'radius 256 -> 100'
+    expect(radius 'Torch_Pulse').toBe 'radius 128 -> 100'
+
+    local saved = read(fs.join(order.config, 'lightconfig.toml'))
+
+    local function position(key: string): number
+      return (assert(string.find(saved, key, 1, true), `{key} in {saved}`))
+    end
+
+    expect(position '"torch_.*"' < position '"^torch"').toBe(true)
+    expect(position '"^torch"' < position 'torch_p').toBe(true)
+  end)
+
+  suite.it('match their patterns ignoring case', function()
+    local order = orders.new 'override-case'
+    local done, problem = fs.writeFile(
+      fs.join(order.config, 'lightconfig.toml'),
+      '[light_overrides.Torch_Flicker]\nradius = 7\n\n[ambient_overrides."^Dark Cave$"]\nfog_density = 0.5\n',
+      { atomic = true, createParents = true }
+    )
+    if not done then error(problem, 0) end
+
+    local output = orders.run(order, {})
+    expect(line(output, 'LIGH "Torch_Flicker"')).toContain 'radius 256 -> 7'
+    expect(line(output, 'CELL "dark cave"')).toContain '-> 0.5'
+  end)
+end)
+
+suite.describe('interior sun', function()
+  suite.it('is disabled in the cells lightconfig.toml lists', function()
+    local order = orders.new 'sun-cells'
+    local config = fs.join(order.config, 'lightconfig.toml')
+    local done, problem = fs.writeFile(config, 'disable_interior_sun = ["^Caius"]\n', { atomic = true, createParents = true })
+    if not done then error(problem, 0) end
+
+    local output = orders.run(order, { updateLightConfig = true })
+    expect(sunless(output)).toEqual { 'caius cosades\' house' }
+
+    local saved = read(config)
+    expect(saved).toContain 'disable_interior_sun = ['
+    expect(saved).toContain '^Caius'
+  end)
+
+  suite.it('is disabled in the cells the option lists', function()
+    local order = orders.new 'sun-cells-option'
+    local output = orders.run(order, { disableInteriorSun = { 'cave' } })
+    expect(sunless(output)).toEqual { 'dark cave' }
+  end)
+end)
+
+suite.describe('what a run writes', function()
+  suite.it('is nothing on a dry run', function()
+    local order = orders.new 'dry'
+    local output, options = orders.run(order, { dryRun = true })
+    expect(output).toContain 'Dry run: no files written'
+    expect(output).toContain '# changed lights: 63'
+    local listed, problem = fs.list(order.out)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual {}
+    local listed, problem = fs.list(order.config)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual { 'openmw.cfg' }
+
+    local report = assert(options.report)
+    expect(report.dryRun).toBe(true)
+    expect(report.masters).toBe(2)
+    expect(report.objects).toBe(63)
+    expect(#assert(report.logs)).toBe(63)
+  end)
+
+  suite.it('is nothing on a validation', function()
+    local order = orders.new 'validate'
+    local done, problem = fs.writeFile(
+      fs.join(order.config, 'lightconfig.toml'),
+      orders.golden 'lightConfig.toml',
+      { atomic = true, createParents = true }
+    )
+    if not done then error(problem, 0) end
+
+    local output, options = orders.run(order, { validateConfig = true })
+    expect(output).toContain 'successfully'
+    local listed, problem = fs.list(order.out)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual {}
+    expect((fs.exists(fs.join(order.config, 'lightconfig.log')))).toBe(false)
+    expect(options.report).toEqual { validated = true }
+  end)
+
+  suite.it('includes openmw.cfg only when asked to enable the plugin', function()
+    local order = orders.new 'enable'
+    local before = read(order.cfg)
+    local _, options = orders.run(order, { autoEnable = true })
+    expect(read(order.cfg)).toContain 'content=S3LightFixes.omwaddon'
+    expect(read(`{order.cfg}.bak`)).toBe(before)
+    expect(assert(options.report).enabled).toBe(true)
+  end)
+
+  suite.it('leaves a plugin outside the data folders disabled', function()
+    local elsewhere = fs.join(orders.fresh 'elsewhere-output', 'elsewhere')
+    local done, problem = fs.mkdir(elsewhere, { recursive = true })
+    if not done then error(problem, 0) end
+
+    local order = orders.new 'elsewhere'
+    local before = read(order.cfg)
+    local output, options = orders.run(order, { autoEnable = true, output = elsewhere })
+    expect((fs.isFile(fs.join(elsewhere, orders.PluginName)))).toBe(true)
+    expect(output).toContain 'Refusing to auto-enable'
+    expect(read(order.cfg)).toBe(before)
+    expect((fs.exists(`{order.cfg}.bak`))).toBe(false)
+    expect(assert(options.report).enabled).toBe(false)
+    local listed, problem = fs.list(order.out)
+    if not listed then error(problem, 0) end
+    expect(listed).toEqual {}
+  end)
+
+  suite.it('lists each exclusion once, however often it is saved', function()
+    local order = orders.new 'exclusions'
+    local config = fs.join(order.config, 'lightconfig.toml')
+    local done, problem = fs.writeFile(
+      config,
+      'excluded_ids = ["purple", "glow$", "glow$"]\nexcluded_plugins = ["TestC.*"]\n',
+      { atomic = true, createParents = true }
+    )
+    if not done then error(problem, 0) end
+
+    for _ = 1, 2 do
+      orders.run(order, {
+        updateLightConfig = true,
+        excludedIds = { 'excl.*', 'purple', 'excl.*', 'Purple' },
+        excludedPlugins = { 'testc.*', 'Extra.esp' },
+      })
+    end
+
+    local saved = read(config)
+    expect(saved).toContain 'excluded_ids = [\n    "purple",\n    "glow$",\n    "excl.*",\n    "Purple",\n]'
+    expect(saved).toContain 'excluded_plugins = [\n    "TestC.*",\n    "Extra.esp",\n]'
+  end)
+
+  suite.it('goes to data-local, or else the working folder, never another data folder', function()
+    local order = orders.new 'no-data-local'
+    local data = fs.join(order.root, 'data')
+    local done, problem = fs.writeFile(
+      order.cfg,
+      `data="{data}"\ncontent=TestA.esp\ncontent=TestB.omwaddon\ncontent=TestC.esp\n`,
+      { atomic = true, createParents = true }
+    )
+    if not done then error(problem, 0) end
+
+    -- A dry run says where the plugin would go without writing it there.
+    local output = orders.run(order, { dryRun = true })
+    local current, problem = fs.cwd()
+    if not current then error(problem, 0) end
+    local working = fs.join(current, orders.PluginName)
+    expect(line(output, '# output: ')).toBe(`# output: {working}`)
+    local listed, problem = fs.list(data)
+    if not listed then error(problem, 0) end
+    expect(sorted(listed)).toEqual { 'TestA.esp', 'TestB.omwaddon', 'TestC.esp' }
+  end)
+end)
+
+suite.describe('what a run reads', function()
+  suite.it('is an explicit configuration', function()
+    expect(function() s3lightfixes({}) end).toThrow 'S3LightFixes needs an OpenMW config'
+  end)
+
+  suite.it('stops at a pattern that does not compile', function()
+    local order = orders.new 'bad'
+    expect(function() orders.run(order, { excludedIds = { '(' } }) end).toThrow 'Couldn\'t compile excluded id regex'
+    expect((fs.exists(fs.join(order.out, orders.PluginName)))).toBe(false)
+  end)
+
+  suite.it('stops at an override that sets a value and its multiplier', function()
+    local order = orders.new 'bad-override'
+    expect(
+      function()
+        orders.run(order, { lightOverrides = { { id = 'x', radius = 1, radiusMult = 2 } } })
+      end
+    ).toThrow 'light override x: Fields `radius` and `radius_mult` are mutually exclusive'
+  end)
+
+  suite.it('names each plugin by its file, however openmw.cfg spells it', function()
+    local order = orders.new 'spelling'
+    local data, out = fs.join(order.root, 'data'), order.out
+    local done, problem = fs.writeFile(
+      order.cfg,
+      `data="{data}"\ndata-local="{out}"\ncontent=testa.ESP\ncontent=TESTB.omwaddon\n`,
+      { atomic = true, createParents = true }
+    )
+    if not done then error(problem, 0) end
+
+    local output, options = orders.run(order, { noNotifications = true })
+    expect(output).toContain 'LIGH "Hue_Light_1" from "TestA.esp"'
+    expect(output).toContain 'LIGH "shared_light" from "TestB.omwaddon"'
+
+    local fileBytes, problem = fs.readFile(assert(assert(options.report).output))
+    if not fileBytes then error(problem, 0) end
+    local plugin = tes3.open(fileBytes)
+    local masters = [for {name, size} in plugin:masters() => { name = name, size = size }]
+
+    expect(masters).toEqual {
+      { name = 'TestA.esp', size = 6685 },
+      { name = 'TestB.omwaddon', size = 628 },
+    }
+  end)
+
+  suite.it('reads plugins last to first, and warns of one it cannot open', function()
+    local order = orders.new 'unreadable'
+    local broken = fs.join(order.root, 'data', 'Broken.esp')
+    local written, problem = fs.writeFile(broken, 'not a plugin', { atomic = true, createParents = true })
+    if not written then error(problem, 0) end
+    local done, problem = fs.writeFile(order.cfg, read(order.cfg) .. 'content=Broken.esp\n', { atomic = true, createParents = true })
+    if not done then error(problem, 0) end
+
+    local output, options = orders.run(order, { noNotifications = true })
+    expect(output).toContain(
+      `[ WARNING ]: Plugin {broken}: could not be loaded due to error: failed to parse '{broken}': truncated record header at offset 0. Continuing light fixes without this mod`
+    )
+    expect(output).toContain '# content files: 5\n# loaded plugins: 3\n# masters: 2\n'
+
+    -- The override in TestB, which loads after TestA, is the one fixed.
+    local logs = assert(assert(options.report).logs)
+    expect(logs[1].plugin).toBe 'TestB.omwaddon'
+    expect(logs[1].id).toBe 'shared_light'
+    expect(logs[#logs].plugin).toBe 'TestA.esp'
+  end)
+
+  suite.it('is in the configured encoding, and so is what it writes', function()
+    local order = orders.empty('encoding', 'encoding=win1251\ncontent=Russian.esp\n')
+    local russian = tes3.new(nil, { encoding = 'win1251' })
+    russian:insertValue(russian:count(), {
+      type = 'Light',
+      id = 'Факел',
+      data = {
+        weight = 1,
+        value = 5,
+        time = 10,
+        radius = 100,
+        color = { 255, 160, 60, 0 },
+        flags = '',
+      },
+    })
+    russian:updateRecordCount()
+    local written, problem = fs.writeFile(fs.join(order.root, 'data', 'Russian.esp'), russian:save(), { atomic = true, createParents = true })
+    if not written then error(problem, 0) end
+
+    -- Ids read in the wrong encoding would log as mojibake.
+    local output = orders.run(order, {})
+    expect(output).toContain 'LIGH "Факел" from "Russian.esp"'
+
+    local written, problem = fs.readFile(fs.join(order.out, orders.PluginName))
+    if not written then error(problem, 0) end
+    local plugin = tes3.open(written, { encoding = 'win1251' })
+    local ids = {}
+    for index = 0, plugin:count() - 1 do
+      if plugin:tag(index) == 'LIGH' then table.insert(ids, tes3.records.id(plugin, index)) end
+    end
+
+    expect(ids).toEqual { 'Факел' }
+  end)
+end)
+
+local Bright = { 255, 160, 60, 0 }
+
+--- A load order of one plugin, `Patterns.esp`, of a light under each of `lights` and an interior
+--- under each of `cells`.
+local function orderOf(name: string, lights: { string }, cells: { string }): orders.Order
+  local order = orders.empty(name, 'content=Patterns.esp\n')
+  local plugin = tes3.new()
+
+  for index, id in lights do
+    plugin:insertValue(plugin:count(), {
+      type = 'Light',
+      id = id,
+      data = {
+        weight = 1,
+        value = 5,
+        time = 10 + index,
+        radius = 100 + index,
+        color = Bright,
+        flags = 'DYNAMIC',
+      },
+    })
+  end
+
+  for _, cell in cells do
+    plugin:insertValue(plugin:count(), {
+      type = 'Cell',
+      name = cell,
+      data = { flags = 'IS_INTERIOR', grid = { 0, 0 } },
+      atmosphereData = {
+        ambientColor = { 10, 20, 30, 0 },
+        sunlightColor = { 40, 50, 60, 0 },
+        fogColor = { 70, 80, 90, 0 },
+        fogDensity = 0.5,
+      },
+    })
+  end
+
+  plugin:updateRecordCount()
+  local done, problem = fs.writeFile(fs.join(order.root, 'data', 'Patterns.esp'), plugin:save(), { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
+
+  return order
+end
+
+type Relit = { sunless: boolean, density: number }
+
+type Written = { lights: { [string]: number }, cells: { [string]: Relit } }
+
+type LightRecord = { id: string, data: { radius: number } }
+
+type CellRecord = {
+  name: string,
+  atmosphereData: { sunlightColor: { number }, fogDensity: number },
+}
+
+--- What the plugin a run wrote holds: each light's radius by its id, and for each cell whether it
+--- lost its sunlight and how dense its fog is.
+local function writtenBy(options: s3lightfixes.Options): Written
+  local fileBytes, problem = fs.readFile(assert(assert(options.report).output))
+  if not fileBytes then error(problem, 0) end
+  local plugin = tes3.open(fileBytes)
+  local written: Written = { lights = {}, cells = {} }
+
+  for index = 0, plugin:count() - 1 do
+    if plugin:tag(index) == 'LIGH' then
+      local light = (plugin:decode(index) :: unknown) :: LightRecord
+      written.lights[light.id] = light.data.radius
+    elseif plugin:tag(index) == 'CELL' then
+      local cell = (plugin:decode(index) :: unknown) :: CellRecord
+      local sunlight = cell.atmosphereData.sunlightColor
+      written.cells[cell.name] = {
+        sunless = sunlight[1] + sunlight[2] + sunlight[3] == 0,
+        density = cell.atmosphereData.fogDensity,
+      }
+    end
+  end
+
+  return written
+end
+
+--- Where in `patterns` the ones that match `id` are, each tried on its own as the tool's
+--- settings say a pattern is: against the id in lower case, ignoring case.
+local function matching(patterns: { string }, id: string): { number }
+  local lowered = string.lower(id)
+
+  return [
+    for index, pattern in enumerate(patterns)
+    if bytes.regex(pattern, { caseInsensitive = true }):isMatch(lowered)
+    => index
+  ]
+end
+
+local PatternLights = {
+  'Lamp_A_1',
+  'lamp_b_2',
+  'UPPER_3',
+  'paren)4',
+  'back\\slash_5',
+  'Torch_6',
+  'hash#7',
+  'candle_8',
+  'Candle_9',
+  'lantern_10',
+  'sconce(11)',
+  'brazier_12',
+}
+
+local PatternCells = {
+  'Dark Cave',
+  'Light House',
+  'Upper Hall',
+  'Cellar (East)',
+  'Tower#3',
+  'Guild\\Vault',
+  'Plain Room',
+}
+
+-- Patterns that only mean what they say when each stands alone: alternatives at the top, flags
+-- set for the rest of a pattern, a parenthesis in a class, and a pattern ending in a backslash.
+local Patterns = {
+  '^lamp_a_1$|^torch',
+  '(?-i)UPPER|(?-i)Hall',
+  'PAREN[)]4$',
+  'slash_5|back\\\\',
+  '(?i)CANDLE_8',
+  '\\(1+\\)',
+  'CAVE$|^Plain',
+  'vault|guild\\\\',
+}
+
+-- The same, and two with the character that starts a comment in a pattern that allows them,
+-- the second followed by a pattern with the line break such a comment ends at.
+local HashPatterns = table.clone(Patterns)
+table.insert(HashPatterns, 2, 'h#7$|r#3$')
+table.insert(HashPatterns, '(?x)lantern _10 # and a comment')
+table.insert(HashPatterns, 'no such|light\nat all')
+
+-- The same, and two that give a group the same name, which one pattern can't do twice: among
+-- the exclusions and overrides, and second and third of the three sun cells.
+local NamedPatterns = table.clone(Patterns)
+table.insert(NamedPatterns, 2, '(?P<kind>lantern)_1')
+table.insert(NamedPatterns, '(?P<kind>brazier)|(?P<room>tower)')
+table.insert(NamedPatterns, 'house$')
+
+local PatternLists = {
+  { label = 'plain', patterns = Patterns },
+  { label = 'with comments', patterns = HashPatterns },
+  { label = 'named groups', patterns = NamedPatterns },
+}
+
+suite.describe('several patterns', function()
+  for _, list in PatternLists do
+    local label, patterns = list.label, list.patterns
+
+    suite.it(`exclude what any one of them matches ({label})`, function()
+      local order = orderOf('excluded-' .. string.sub(label, 1, 4), PatternLights, PatternCells)
+      local _, options = orders.run(order, { excludedIds = patterns, disableInteriorSun = true })
+      local written = writtenBy(options)
+
+      for _, id in PatternLights do
+        local kept = #matching(patterns, id) == 0
+        expect({ id = id, written = written.lights[id] ~= nil }).toEqual { id = id, written = kept }
+      end
+
+      for _, cell in PatternCells do
+        local kept = #matching(patterns, cell) == 0
+        expect({ id = cell, written = written.cells[cell] ~= nil }).toEqual {
+          id = cell,
+          written = kept,
+        }
+      end
+    end)
+
+    suite.it(`override a light by the first that matches it, a cell by all ({label})`, function()
+      local order = orderOf('overridden-' .. string.sub(label, 1, 4), PatternLights, PatternCells)
+      local lightOverrides: { s3lightfixes.LightOverrideOption } = [
+        for index, pattern in enumerate(patterns)
+          => { id = pattern, radius = 1000 + index } :: s3lightfixes.LightOverrideOption
+      ]
+
+      local ambientOverrides: { s3lightfixes.AmbientOverrideOption } = [
+        for index, pattern in enumerate(patterns)
+          => { id = pattern, fogDensity = index / 16 } :: s3lightfixes.AmbientOverrideOption
+      ]
+
+      local sun = { patterns[1], patterns[#patterns - 1], patterns[2] }
+      local _, options = orders.run(order, {
+        lightOverrides = lightOverrides,
+        ambientOverrides = ambientOverrides,
+        disableInteriorSun = sun,
+      })
+      local written = writtenBy(options)
+
+      -- A light no pattern matches is written with its radius scaled, which leaves it under 1000.
+      for _, id in PatternLights do
+        local first = matching(patterns, id)[1]
+        local radius = assert(written.lights[id], `{id} wasn't written`)
+        expect({ id = id, override = if radius > 1000 then radius - 1000 else nil }).toEqual {
+          id = id,
+          override = first,
+        }
+      end
+
+      for _, cell in PatternCells do
+        local found = matching(patterns, cell)
+        local last = found[#found]
+        local sunless = #matching(sun, cell) > 0
+        local expected = if last or sunless
+          then { sunless = sunless, density = if last then last / 16 else 0.5 }
+          else nil
+        expect({ id = cell, relit = written.cells[cell] }).toEqual { id = cell, relit = expected }
+      end
+    end)
+  end
+end)
+
+suite.describe('the log', function()
+  suite.it('names a record as Rust shows a string, escapes and all', function()
+    local order = orderOf(
+      'escapes',
+      { 'Quote"Light', 'Tab\tLight', 'Back\\Slash', 'Bell\7Light', 'Rub\127out', 'Caf\u{e9}_Light' },
+      { 'A "Quoted" Cellar\r' }
+    )
+    local output = orders.run(order, { disableInteriorSun = true })
+
+    for _, expected in {
+      'LIGH "Quote\\"Light" from',
+      'LIGH "Tab\\tLight" from',
+      'LIGH "Back\\\\Slash" from',
+      'LIGH "Bell\\u{7}Light" from',
+      'LIGH "Rub\\u{7f}out" from',
+      'LIGH "Caf\u{e9}_Light" from',
+      'CELL "a \\"quoted\\" cellar\\r" from "Patterns.esp": sunlight',
+    } do
+      expect(output).toContain(expected)
+    end
+  end)
+end)
+
+-- Not here: the harness's comparison with the original binary over a real load order, which
+-- needs that binary and a real openmw.cfg (JESS_S3LIGHTFIXES_BIN, JESS_S3LIGHTFIXES_CFG).
+
+return suite

@@ -1,0 +1,34 @@
+disable_interior_sun = false
+disable_flickering = true
+disable_pulse = false
+disable_negative_lights = true
+auto_enable = false
+no_notifications = true
+debug = false
+dry_run = false
+validate_config = false
+standard_hue = 0.62
+standard_saturation = 0.8
+standard_value = 0.57
+standard_radius = 1.2
+colored_hue = 1.0
+colored_saturation = 0.9
+colored_value = 0.7
+colored_radius = 1.1
+duration_mult = 2.5
+excluded_plugins = [
+    "deleted_groundcover.omwaddon",
+    "Clean_Argonian Full Helms Lore Integrated.ESP",
+    "Baldurwind.omwaddon",
+    "Crassified Navigation.omwaddon",
+    "LuaMultiMark.omwaddon",
+    "S3maphore.esp",
+    "Toolgun.omwaddon",
+]
+excluded_ids = []
+output_dir = "<root>/out"
+save_config = false
+
+[light_overrides]
+
+[ambient_overrides]
