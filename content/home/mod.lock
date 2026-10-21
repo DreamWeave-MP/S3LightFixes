@@ -1,5 +1,5 @@
 {
-  "schema_version": "2",
+  "schema_version": "3",
   "document": "lock",
   "project": "55e873c9-1ddc-4b13-b59a-0eb790bb2565",
   "note": "Written by CI when a release tag is pushed: what each published release's archive contains. Do not edit.",
@@ -574,6 +574,51 @@
           "arch": "x86_64"
         }
       ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "S3LightFixes",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "1.0.0",
+      "locked_from": "128f85d19ff3aeeec6abbeb17ddef01153aeb0f9",
+      "artifacts": [
+        {
+          "id": "jpk",
+          "format": "jpk",
+          "filename": "org.dreamweave.s3lightfixes-1.0.0.jpk",
+          "media_type": "application/vnd.jess.jpk",
+          "size": 73985,
+          "digests": {
+            "sha256": "daa4dfe1fc0cb5191f66b10f8a07dd6d9c6b61c1deb3488386ddecc663fd33dd"
+          },
+          "jess": {
+            "package": "org.dreamweave.s3lightfixes",
+            "jess_api": "1",
+            "content_digest": "f0c8c2a9b5ee74a6525883b4f38cf0098ac98d994e29e88abd2083dae75d598f",
+            "dependencies": {
+              "org.dreamweave.esm": "0.1",
+              "org.dreamweave.openmw-content": "0.1",
+              "org.dreamweave.openmw-install": "0.1"
+            }
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
       "provides": [],
       "relationships": [],
       "components": [
