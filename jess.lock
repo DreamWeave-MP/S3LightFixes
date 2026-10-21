@@ -1,0 +1,93 @@
+# Written by `jess workspace sync`: what the members depend on beyond each other, pinned.
+# Change a member's dependencies and sync again rather than editing this.
+lock_version = 2
+
+[[package]]
+id = "org.dreamweave.dream-archive"
+version = "2.0.0"
+digest = "2542758bf2af0319bcecca13eb44158c43b87733d207eb02f13d647412ee9dc1"
+source = "publisher"
+manifest = "https://dreamweave-mp.github.io/dream_archive/dreamweave/projects/a8ec99fb-1938-42cc-8b9f-87994e046594.json"
+artifact_sha256 = "281c27bf86a2b9ea14dc9baa4959a9a9d213784332acfefcc9a9a9e623035730"
+dependencies = []
+
+[[package]]
+id = "org.dreamweave.esm"
+version = "0.1.0"
+digest = "9556ec3f108f888c6d93cab21ca3937f3b96b048dfa75693f270be6882c4c72f"
+source = "publisher"
+manifest = "https://dreamweave-mp.github.io/esm/dreamweave/projects/4a20d171-25a6-471f-8e22-6e554c9e859c.json"
+artifact_sha256 = "2d139f7a5af74d9730ee8ebc4469ba32cfe0924b5aa54db037d9ff91e6db0b3a"
+dependencies = []
+
+[[package]]
+id = "org.dreamweave.magick"
+version = "0.1.2"
+digest = "9fe109d661f8251021f1fe8ae7a7b1c3f4ae4cb09ac00b4143e412e5199220c5"
+source = "publisher"
+manifest = "https://dreamweave-mp.github.io/magick/dreamweave/projects/4aefcc8f-913f-48f5-8980-2326173a7288.json"
+artifact_sha256 = "5abad13ac9fbd5f1982363cc7645af0bcef4a276ed0d8bd0b69839a9ee4a136c"
+dependencies = []
+
+[[package]]
+id = "org.dreamweave.mod-template"
+version = "0.3.0"
+digest = "88cf661aa324ed1b3e634a73720e7cf7097d65a065433a99d24774512e04eb85"
+source = "publisher"
+manifest = "https://dreamweave-mp.github.io/DreamWeave-Mod-Template/dreamweave/projects/74143198-50bf-434b-938e-816699a5d0a4.json"
+artifact_sha256 = "5540eb01a8fd7f6746d4f118f8c129088540f05b275b860c8d99c2ac6b07361e"
+dependencies = ["org.dreamweave.magick", "org.dreamweave.site", "org.dreamweave.theme", "org.dreamweave.vfs"]
+
+[[package]]
+id = "org.dreamweave.openmw-config"
+version = "4.0.0"
+digest = "6dcb1c58d78004821234dfef5fc37f3c1a6de5d19cea8731ce4212322f159d20"
+source = "publisher"
+manifest = "https://dreamweave-mp.github.io/Openmw_Config/dreamweave/projects/3aaf4fe0-616f-41a3-b520-306eda9347b0.json"
+artifact_sha256 = "741f6da8530e3e8b280799b3836aa29163d4436c118595b97d6d063cbfe235c0"
+dependencies = []
+
+[[package]]
+id = "org.dreamweave.openmw-content"
+version = "0.1.0"
+digest = "e3b97afa3214cd00d409b1878f9edeced100e5916aa260e70574bedb288bf833"
+source = "publisher"
+manifest = "https://dreamweave-mp.github.io/openmw-content/dreamweave/projects/09a3fe95-b7c6-4026-9682-a6a75c9f6390.json"
+artifact_sha256 = "16bf4aead793f6d48459db7a55081bad722c656aa73b6ffeadc32caf1f02469d"
+dependencies = ["org.dreamweave.esm"]
+
+[[package]]
+id = "org.dreamweave.openmw-install"
+version = "0.1.0"
+digest = "d148659c977dc5a08240357b26ff38fb2d012a64e7e51370c0b0d699c43c6e6d"
+source = "publisher"
+manifest = "https://dreamweave-mp.github.io/openmw-install/dreamweave/projects/34eff1d9-fd7e-4c17-bf34-cdb8bf3ad546.json"
+artifact_sha256 = "bccf5abf697d83b5b8083346f6f8da251535d8b41dbd431d1a236b3a52c82ad5"
+dependencies = ["org.dreamweave.openmw-config", "org.dreamweave.vfs"]
+
+[[package]]
+id = "org.dreamweave.site"
+version = "0.1.1"
+digest = "d2d4af2903e741bf046ead35361609644c4272c588668988327937a5cdd1d071"
+source = "publisher"
+manifest = "https://dreamweave-mp.github.io/dreamweave-site/dreamweave/projects/0d00eb81-e2ac-4e51-a4ae-718241adc828.json"
+artifact_sha256 = "b922b403f8ed33384f861df12a52d7a8a4afdd4b1d6494ce0992bce97f5da412"
+dependencies = []
+
+[[package]]
+id = "org.dreamweave.theme"
+version = "0.2.0"
+digest = "764dae524a028a2734220399dc7cbc8e8593f86ba06b34ecc5fc576c5073480c"
+source = "publisher"
+manifest = "https://dreamweave-mp.github.io/dreamweave-theme/dreamweave/projects/817cd62f-bacb-4786-815c-fb47ab2fe80a.json"
+artifact_sha256 = "4de27968cf2245937cf40a1eadb7b0eccdfb2de9cb04d97757ccb921b06e7da4"
+dependencies = []
+
+[[package]]
+id = "org.dreamweave.vfs"
+version = "2.0.0"
+digest = "b501db857f2b619c32963763173330348ea57602f1e53303a487fa6025994fab"
+source = "publisher"
+manifest = "https://dreamweave-mp.github.io/vfstool/dreamweave/projects/b5412bc5-4c2c-49d6-b488-dd772a1046fa.json"
+artifact_sha256 = "66df02c8b706cc1a2579bb956521d4cfca970d4b9216a23028f51a6a20018401"
+dependencies = ["org.dreamweave.dream-archive"]
