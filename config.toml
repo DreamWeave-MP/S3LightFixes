@@ -50,7 +50,7 @@ menu_items = [
     { name = "Guide", url = "@/docs/_index.md" },
     { name = "Command line", url = "@/docs/cli.md" },
     { name = "lightconfig.toml", url = "@/docs/lightconfig.md" },
-    { name = "Rust API", url = "@/docs/api/_index.md" },
+    { name = "Network", url = "@/network.md" },
 ]
 
 # DreamWeave's own page-view counter: this is DreamWeave's site.

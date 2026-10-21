@@ -1,31 +1,19 @@
-# AGENTS.md
+# Agent guidance for S3LightFixes
 
-## Repo shape
-- Single Rust 2024 package: `s3lightfixes` exposes both `src/lib.rs` and the `s3lightfixes` binary (`src/main.rs` only calls `s3lightfixes::run()`).
-- The binary generates `S3LightFixes.omwaddon` from the OpenMW config/content list; that generated plugin is intentionally gitignored.
-- Main flow lives in `src/app.rs`; CLI schema in `src/light_args.rs`; TOML schema/merge/save logic in `src/light_config.rs`; per-light math in `src/light_processing.rs`; override parsers/types in `src/light_override.rs`; defaults and baked-in plugin exclusions in `src/default.rs`.
+The package is the Luau program at the repository root: `jess.toml`, `src/`, `tests/`, `bench/`;
+its command target is `s3lightfixes`. The website beside it (`config.toml`, `content/`,
+`sass/brand.sass`, `static/img`, `static/js`, `data/schematics`) is its project site, built by the
+DreamWeave Mod Template through jess (`jess-workspace.toml` names the template; `jess.lock` pins
+it). The Rust program lives on the `rust` branch and is not developed here.
 
-## Commands
-- Full local verification: `cargo fmt --check && cargo test && cargo clippy --all-targets -- -D warnings`.
-- Focused test: `cargo test <test_name>` (there is only one package, so no `-p` needed).
-- Run without GUI dialogs during manual checks: `S3L_NO_NOTIFICATIONS=1 cargo run -- ...` or pass `--no-notifications`.
-- Non-writing checks: `cargo run -- --validate-config` validates config/regexes only; `cargo run -- --dry-run` also loads plugins and prints planned record changes without writing plugin/log/config files.
-- Generate shell completions/manpage without needing an OpenMW install: `cargo run -- --generate-completion bash` or `cargo run -- --generate-manpage`.
+## Verification
 
-## Runtime/config gotchas
-- `--openmw-cfg/-c` accepts either a directory containing `openmw.cfg` or a file named exactly `openmw.cfg`; if omitted, discovery is `openmw-config`'s `from_env_or_user_config` (`OPENMW_CONFIG`, `OPENMW_CONFIG_DIR`, an `openmw.cfg` beside the executable, the Linux global config, then the user config), with `discovered_or_user_config` in `src/app.rs` adding the user-config fallback openmw-config 1.1 skips on Windows and macOS.
-- `lightconfig.toml` is read/written next to the selected OpenMW user config unless a local config is supplied next to the executable; CLI values override TOML values, and list-style exclusions are merged rather than replaced.
-- Output selection is not “any file path”: `--output/-o` must be an existing directory; without it, output goes to OpenMW `data-local`, falling back to cwd.
-- `--auto-enable/-e` edits the selected OpenMW config to enable the generated plugin; avoid using it in tests unless that is exactly what you mean.
-- Auto-enable backs up the selected OpenMW config to `<config-file>.s3lightfixes.bak` before editing; if the backup fails, it refuses to edit.
-- `.cargo/config.toml` forces `git-fetch-with-cli = true`; dependency resolution for the git `tes3` dependency expects the `git` executable.
+```sh
+jess workspace sync --locked
+jess workspace test
+jess workspace run --trusted dreamweave-check
+```
 
-## Behavior worth preserving
-- Only `CELL` and `LIGH` records are loaded from source plugins; generated output sorts objects and writes metadata plus record deltas to `lightconfig.log` next to the OpenMW config.
-- Negative-light nulling defaults on but is user-configurable; flicker/pulse disabling, HSV/RGB overrides, and ambient/fog/sunlight overrides are user-facing compatibility behavior, not cosmetic refactors.
-- `default::excluded_plugins()` contains specific known-bad plugin names with comments explaining parser failures; do not “clean up” those exclusions without reproducing the affected mods.
-- CI delegates to `DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v51` with `mod_template: true` and builds binary name `s3lightfixes`; keep release assumptions aligned with that workflow.
-
-## The site
-- `content/`, `templates/`, `sass/`, `static/`, `tools/` and `buildSite` are a DreamWeave Mod Template (V5) site, built and deployed by StroggForge. `content/home/mod.toml` declares the program and its releases (`versioning = "decimal"`: 0.4.58 came before 0.4.6); CI writes `content/home/mod.lock`. Template files other than `sass/brand.sass` are copied from the template, not edited here.
-- The docs in `content/docs/` describe the code on the default branch. When behavior, an option or a default changes, change the page that documents it in the same commit.
+`content/home/mod.toml` is the project: `format = "jpk"`, `jess` names the package, `[[releases]]`
+oldest first, each version matching `jess.toml` at its tag `s3lightfixes-<version>`. Never edit
+`content/home/mod.lock`; CI writes it.

@@ -19,55 +19,26 @@ name = "DreamWeave"
 url = "https://github.com/DreamWeave-MP"
 
 [links]
-documentation = "@/docs/_index.md"
 donate = "https://ko-fi.com/magicaldave"
 
-# A program: StroggForge's Rust workflow (.github/workflows/release.yaml) builds it once per
-# [[platforms]] entry and publishes each release. It is not on crates.io: it depends on tes3 from
-# git, which crates.io does not accept.
+# A Jess package: `jess` names the Package Source this project publishes, the repository root's
+# own jess.toml. Each release tag `s3lightfixes-<version>` is one version of the package, packed by
+# the Mod Template from that tag; every push to main packs a development build. Versions 0.5.0 and
+# below are the Rust program, which lives on the `rust` branch with its GitHub releases.
 [package]
-format = "binary"
-binary = "s3lightfixes"
-
-[[platforms]]
-os = "windows"
-arch = "x86_64"
-
-[[platforms]]
-os = "macos"
-arch = "aarch64"
-
-[[platforms]]
-os = "macos"
-arch = "x86_64"
-
-[[platforms]]
-os = "linux"
-arch = "x86_64"
-
-# A command-line program for a terminal such as Termux, not an app.
-[[platforms]]
-os = "android"
-arch = "aarch64"
-
-# The same program built for ARM64 Linux handhelds.
-[[platforms]]
-os = "linux"
-arch = "aarch64"
-variant = "portmaster"
+format = "jpk"
+jess = "org.dreamweave.s3lightfixes"
 
 [install]
 notes = """
-**Arch Linux**: the AUR package
-[`s3lightfixes-git`](https://aur.archlinux.org/packages/s3lightfixes-git) builds the default branch
-from source and installs `s3lightfixes` to `/usr/bin`. With an AUR helper, `yay -S
-s3lightfixes-git`; without one, `git clone https://aur.archlinux.org/s3lightfixes-git.git`, then
-`makepkg -si` in that folder. [Start here](@/docs/start-here.md#arch-linux) has the details.
+S3LightFixes runs through [jess](https://github.com/DreamWeave-MP/jess). In a workspace that names
+it under `[dev-dependencies]`, `jess workspace sync` fetches it and
+`jess workspace run --trusted s3lightfixes` runs it. [Start here](@/docs/start-here.md) walks
+through a first run.
 """
 post_install = """
-Run `s3lightfixes`. It reads your load order from `openmw.cfg` and writes
-`S3LightFixes.omwaddon`; enable that plugin last in your load order, and run the program again
-whenever your mods change. [Start here](@/docs/start-here.md) walks through a first run.
+It reads your load order from `openmw.cfg` and writes `S3LightFixes.omwaddon`; enable that plugin
+last in your load order, and run it again whenever your mods change.
 """
 
 [[credits]]
@@ -90,9 +61,8 @@ name = "Arrean"
 role = "Infinite lights that stay infinite"
 url = "https://github.com/McArren"
 
-# Every published version, oldest first. To release, add the next one here with the day you
-# publish it, set the same version in Cargo.toml, commit, and push its tag: git tag 0.5.1.
-# StroggForge builds and publishes it, then records it in mod.lock beside this file.
+# Every published version, oldest first. To release, add the next one here with the day you publish
+# it, set the same version in jess.toml, commit, and push its tag: git tag s3lightfixes-1.0.1.
 #
 # Releases from v0.1.1 to v0.3.3 (December 2024 to May 2025) were tagged with a v prefix, so each
 # names its tag. Their GitHub releases' archives are named for the machine that built them
@@ -481,4 +451,12 @@ fixed = [
     "Messages are printed when no dialog can be shown, such as on Linux without zenity, kdialog or yad.",
     "Saving rewrites `lightconfig.toml` under the name it was found with, instead of adding a second file on a case-sensitive system.",
     "A dry run piped into `head` no longer ends in an error.",
+]
+
+[[releases]]
+version = "1.0.0"
+date = 2026-10-21
+summary = "S3LightFixes is a Jess package, written in Luau; the Rust program continues on the rust branch at 0.5.0."
+breaking = [
+    "The tool is the Jess package `org.dreamweave.s3lightfixes`, run through jess rather than as a downloaded binary, so the per-platform downloads, the PortMaster build and the AUR package end with 0.5.0. The Rust program stays on its GitHub releases and this repository's `rust` branch, and is no longer developed on main.",
 ]

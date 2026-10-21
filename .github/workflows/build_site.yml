@@ -1,0 +1,37 @@
+name: Build, release and publish
+
+# Authors never run the template's tooling; StroggForge's modGlobalBuild does, on every push: it
+# restores the template, theme and generator jess.lock pins, validates, records and publishes
+# releases, and deploys the site. Rust repositories do not use this file:
+# their StroggForge workflow sets mod_template: true and runs the same stage after publishing.
+#
+# Pull requests and other branches: validate, test, build the site. Nothing is published.
+# The default branch: all of that, a fresh development release (`development`; `dev-build` in the
+# template's own repository), and the site. Release tags (<slug>-<version>): build that release
+# from the tag, record it in the project's mod.lock on the default branch (the only commit CI
+# ever makes), publish its archive, then start a default-branch run so the site lists it.
+
+on:
+  push:
+    branches: ['**']
+    # Release tags only: a version always starts with a digit, and slugs cannot contain '-'.
+    tags: ['*-[0-9]*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dreamweave-${{ github.ref }}
+  cancel-in-progress: ${{ !(github.event_name != 'pull_request' && (github.ref_type == 'tag' || github.ref_name == github.event.repository.default_branch)) }}
+
+jobs:
+  site:
+    permissions:
+      actions: write # the default-branch run a release tag starts
+      contents: write # releases, and the mod.lock commit
+      id-token: write # Sigstore and Pages
+      pages: write
+    uses: DreamWeave-MP/StroggForge/.github/workflows/modGlobalBuild.yml@v57
+    secrets: inherit

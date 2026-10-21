@@ -1,0 +1,10 @@
+# This repository as a jess workspace: its root is the package, and the DreamWeave Mod Template is
+# the tool that builds its site and releases, pinned in jess.lock and run as
+# `jess workspace run --trusted dreamweave-build`. No package here depends on the template.
+manifest_version = 1
+
+[workspace]
+members = ["."]
+
+[dev-dependencies]
+"org.dreamweave.mod-template" = "0.3"

@@ -3,7 +3,7 @@ title = "S3LightFixes"
 description = "Generate a plugin that retunes every light in your OpenMW load order: color, radius, duration and flicker, from one command."
 
 [taxonomies]
-tags = ["OpenMW", "Morrowind", "Lighting", "Rust", "PortMaster"]
+tags = ["OpenMW", "Morrowind", "Lighting", "Jess", "Luau"]
 +++
 
 S3LightFixes reads every plugin in your OpenMW load order and writes one more:
@@ -12,13 +12,13 @@ reaches further, colored lights keep their color, flicker stops, negative lights
 carried lights burn longer. Enable it last, and every light in the game follows the same rules,
 whichever mod it came from.
 
-The program is what you download; the plugin is not. It is built from your load order, on your
+The program is what jess fetches; the plugin is not. It is built from your load order, on your
 machine, and has to be built again when your mods change.
 
 {{ schematic(data_path="data/schematics/generate.json") }}
 
 ```sh
-s3lightfixes
+jess workspace run --trusted s3lightfixes
 ```
 
 That is a whole run: it finds your `openmw.cfg`, reads the lights, writes the plugin to your
@@ -38,8 +38,8 @@ Everything it does is a setting:
 - **Enabling**: `--auto-enable` adds the plugin to your `openmw.cfg`, after backing the file up.
 
 It descends from vtastek's Lightfixes.pl and wazabear's Waza-lightfixes, which did the same through
-tes3cmd. S3LightFixes is one program with nothing else to install, on Windows, macOS, Linux,
-Android and PortMaster handhelds.
+tes3cmd. S3LightFixes is a Jess package, `org.dreamweave.s3lightfixes`, written in Luau: it runs
+wherever jess does, with nothing else to install.
 
 ## Documentation
 
@@ -50,6 +50,5 @@ Android and PortMaster handhelds.
 - **[Command line](@/docs/cli.md)** and **[lightconfig.toml](@/docs/lightconfig.md)**: every option
   and setting.
 
-These pages describe the default branch, which the development build and the AUR package carry.
-Coming from 0.4.6 or earlier? [Upgrading from 0.4](@/docs/platforms.md#upgrading-from-0-4) lists
-what 0.5.0 changed.
+These pages describe the default branch, which the development build carries. The Rust program,
+0.5.0 and its downloads for each platform, lives on the `rust` branch.

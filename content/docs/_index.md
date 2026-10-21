@@ -16,6 +16,9 @@ hide_child_cards = true
 kind = "guide"
 +++
 
+These pages describe the tool as the Luau package behaves; where a page still says to download a
+binary or run `s3lightfixes` from a shell, read `jess workspace run --trusted s3lightfixes`.
+
 S3LightFixes is a program that writes a plugin. It reads the lights in every plugin your
 `openmw.cfg` loads, fixes them, and saves them into `S3LightFixes.omwaddon`, which you enable after
 everything else. Nothing is downloaded but the program; the plugin is always made on your machine,
@@ -24,7 +27,6 @@ from your load order.
 {% callout(kind="note", title="Which version these pages describe") %}
 These pages describe the program on the default branch, which is what the development build and
 the AUR package carry, and what releases are made from. 0.5.0 changed the command line: coming from
-0.4.6 or earlier, [Upgrading from 0.4](@/docs/platforms.md#upgrading-from-0-4) lists how.
 {% end %}
 
 ## Learn it
@@ -46,6 +48,3 @@ the AUR package carry, and what releases are made from. 0.5.0 changed the comman
 - **[Command line](@/docs/cli.md)**: every option, the environment variables, and the exit codes.
 - **[lightconfig.toml](@/docs/lightconfig.md)**: every setting, its default, and when the file is
   written.
-- **[Platforms, license and history](@/docs/platforms.md)**: what each download is, the AUR package,
-  how releases are signed, what is tested, and what changed since the last release.
-- **[Rust API](@/docs/api/_index.md)**: the library the program is built from.
