@@ -1,6 +1,6 @@
 # S3LightFixes benchmarks
 
-`bench/bench.jsl` times the tool the way a caller reaches it: `@s3lightfixes` over an `@openmw`
+`bench/bench.jsl` times the tool the way a caller reaches it: `@s3lightfixes` over an `@openmw-install`
 Context, and `@s3lightfixes/cli`, for an install the bench writes. The install is a master of
 1,200 lights and 1,500 cells (and 300 statics the tool is told to leave out) and 24 plugins of 60
 lights and 40 cells each, a third of which override an earlier record under an id in another
@@ -77,7 +77,7 @@ and then a great deal of text. The time went where the text was made:
   happen (a light is taken only when its id, lowered, is new). Luau orders strings by bytes
   itself, so the ids are sorted as strings with no comparator and the lights taken in that
   order: 5.9 ms to 0.7 ms for 2,160 lights.
-- **The flags.** A light's flags come from `@tes3` as text (`DYNAMIC | FIRE`), were split,
+- **The flags.** A light's flags come from `@esm` as text (`DYNAMIC | FIRE`), were split,
   trimmed and looked up for every light, and spelled back for every light. A load order has a
   handful of sets of flags, so each is read and spelled once a run.
 - **The log's text.** A change of color was two `table.concat`s inside an interpolation, a
@@ -95,7 +95,7 @@ and then a great deal of text. The time went where the text was made:
   before: where a pattern allows comments, a `#` starts one that would swallow the group's end.
 
 What didn't move is where the rest of the time is. At head a run of the lights spends 18.4 of
-its 32 ms in `@tes3` (decoding 2,640 records 5.8, encoding and inserting 2,160 9.7, opening 1.4,
+its 32 ms in `@esm` (decoding 2,640 records 5.8, encoding and inserting 2,160 9.7, opening 1.4,
 saving 1.5) and 2.1 printing and writing the log; a validation is the compiling of 57 patterns;
 the command line is read in 0.17 ms either way.
 

@@ -6,7 +6,7 @@
 local build = require './build'
 local bytes = require '@dream/bytes'
 local fs = require '@dream/fs'
-local openmw = require '@openmw'
+local openmw = require '@openmw-install'
 local s3lightfixes = require '@s3lightfixes'
 local test = require '@jess/test'
 

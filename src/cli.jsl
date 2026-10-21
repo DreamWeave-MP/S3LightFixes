@@ -32,7 +32,7 @@ as `s3lightfixes: <message>`; what the tool itself prints goes to standard outpu
 ]]
 
 local fs = require '@dream/fs'
-local openmw = require '@openmw'
+local openmw = require '@openmw-install'
 local process = require '@dream/process'
 local s3lightfixes = require '@s3lightfixes'
 

@@ -12,9 +12,9 @@ local started = os.clock()
 local bytes = require '@dream/bytes'
 local fs = require '@dream/fs'
 require '@dream/process'
-local tes3 = require '@tes3'
-require '@load-order'
-require '@openmw'
+local tes3 = require '@esm'
+require '@openmw-content'
+require '@openmw-install'
 local requiredBelow = os.clock() - started
 
 if not jess.bench.verified then

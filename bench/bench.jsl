@@ -15,9 +15,9 @@
 local bytes = require '@dream/bytes'
 local cli = require '@s3lightfixes/cli'
 local fs = require '@dream/fs'
-local openmw = require '@openmw'
+local openmw = require '@openmw-install'
 local s3lightfixes = require '@s3lightfixes'
-local tes3 = require '@tes3'
+local tes3 = require '@esm'
 
 --- The text of the file at `path`, raising the read's own message when there is none.
 local function readText(path: string): string

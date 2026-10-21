@@ -8,7 +8,7 @@ local bytes = require '@dream/bytes'
 local fs = require '@dream/fs'
 local orders = require './order'
 local s3lightfixes = require '@s3lightfixes'
-local tes3 = require '@tes3'
+local tes3 = require '@esm'
 local test = require '@jess/test'
 
 --- The text of the file at `path`, raising the read's own message when there is none.

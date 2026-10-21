@@ -2,7 +2,7 @@
 --!native
 --[[
 @s3lightfixes: S3LightFixes 0.4.59, as a function of (state, openmw), openmw being the load
-order's config from `@openmw`'s `new`.
+order's config from `@openmw-install`'s `new`.
 
 Settings come from lightconfig.toml next to the user's openmw.cfg, as they do for the original, with
 `state.s3lightfixes` laid over them:
@@ -56,9 +56,9 @@ SOFTWARE.
 
 local bytes = require '@dream/bytes'
 local fs = require '@dream/fs'
-local loadOrder = require '@load-order'
-local openmwPackage = require '@openmw'
-local tes3 = require '@tes3'
+local loadOrder = require '@openmw-content'
+local openmwPackage = require '@openmw-install'
+local tes3 = require '@esm'
 local toml = require '@jess/data/toml'
 
 type Regex = dream_bytes_Regex
@@ -114,7 +114,7 @@ type LightValues = { time: number, radius: number, color: { number }, flags: num
 
 type RecordLog = { kind: string, plugin: string, id: string, changes: { string } }
 
--- A LIGH and a CELL as `@tes3` decodes them: the fields this reads, and writes back.
+-- A LIGH and a CELL as `@esm` decodes them: the fields this reads, and writes back.
 type Light = {
   type: 'Light',
   flags: string,
@@ -492,7 +492,7 @@ local function debugString(text: string): string
 end
 
 -- A color's change as the log shows it, each color as Rust's Debug prints a [u8; 4]. Colors come
--- four bytes long from `@tes3`, and are made four bytes long here.
+-- four bytes long from `@esm`, and are made four bytes long here.
 local function colorChange(name: string, before: { number }, after: { number }): string
   return name
     .. ' ['
