@@ -31,11 +31,11 @@ dependencies = []
 
 [[package]]
 id = "org.dreamweave.mod-template"
-version = "0.3.1"
-digest = "c665584d180967801958bf26ce5fad271b32193c91406605082ef79b96502c84"
+version = "0.4.0"
+digest = "82bfe25be2eea1e163efc393c14bb3769579e1f6b03d70207135d4b42dac9f75"
 source = "publisher"
 manifest = "https://dreamweave-mp.github.io/DreamWeave-Mod-Template/dreamweave/projects/74143198-50bf-434b-938e-816699a5d0a4.json"
-artifact_sha256 = "4a360ce3345ed26224003773f0f8b1520eb4966364859f15fe7d11048b786c62"
+artifact_sha256 = "413c4ef2bf9ac05312fdc66e60685f172bf491b17d4fd11d8d49bbdd66fc4a08"
 dependencies = ["org.dreamweave.magick", "org.dreamweave.site", "org.dreamweave.theme", "org.dreamweave.vfs"]
 
 [[package]]

@@ -7,4 +7,4 @@ manifest_version = 1
 members = ["."]
 
 [dev-dependencies]
-"org.dreamweave.mod-template" = "0.3"
+"org.dreamweave.mod-template" = "0.4"
