@@ -11,6 +11,7 @@ tests = ["tests/run.jsl", "tests/cli.jsl", "tests/style.jsl"]
 [dependencies]
 "org.dreamweave.esm" = "0.1"
 "org.dreamweave.openmw-content" = "0.1"
+"org.dreamweave.openmw-config" = "4.2"
 "org.dreamweave.openmw-install" = "0.1"
 
 [modules]
@@ -24,7 +25,7 @@ tests = ["tests/run.jsl", "tests/cli.jsl", "tests/style.jsl"]
 
 [[layer]]
 id = "s3lightfixes.core"
-requires = ["esm.core", "openmw-content.core", "openmw-install.core"]
+requires = ["esm.core", "openmw-config.core", "openmw-content.core", "openmw-install.core"]
 exports = ["@s3lightfixes", "@s3lightfixes/cli"]
 
 # The command line: `src/main.jsl` hands its arguments to `@s3lightfixes/cli`. A run reads the

@@ -345,8 +345,8 @@ suite.describe('parse', function()
 end)
 
 suite.describe('configuration', function()
-  local function named(argv: { string }, environment: string?): (string?, string?)
-    return cli.configuration(assert(cli.parse(argv)), environment)
+  local function named(argv: { string }, environment: string?, own: string?): (string?, string?)
+    return cli.configuration(assert(cli.parse(argv)), environment, own)
   end
 
   suite.it('takes the folder or the openmw.cfg that --openmw-cfg names, as the original does', function()
@@ -415,12 +415,24 @@ suite.describe('configuration', function()
     expect(string.lower(assert(found))).toBe(string.lower(shouted))
   end)
 
-  suite.it('refuses to go looking when nothing names one, and says how to name one', function()
+  -- A run naming no configuration is never made here: it would read the machine's own OpenMW load
+  -- order and write a plugin into it, which is why `configuration` takes OPENMW_CONFIG's value and
+  -- OpenMW's own folder instead of reading them.
+  suite.it('is OpenMW\'s own when nothing names one, as the original looks for it', function()
+    local order = orders.new 'cli-own'
     for _, environment in { nil :: string?, '' } do
-      local path, message = named({ '-n' }, environment)
+      expect((named({ '-n' }, environment, order.config))).toBe(order.cfg)
+    end
+
+    expect((named({ '-n' }, order.cfg, fs.join(order.root, 'data')))).toBe(order.cfg)
+  end)
+
+  suite.it('says how to name one when nothing does and OpenMW\'s own folder has none', function()
+    local order = orders.new 'cli-unnamed'
+    for _, own in { nil :: string?, fs.join(order.root, 'data'), fs.join(order.root, 'missing') } do
+      local path, message = named({ '-n' }, nil, own)
       expect(path).toBeNil()
-      expect(message).toContain 'no OpenMW configuration was given'
-      expect(message).toContain 'this port can\'t look for OpenMW\'s own as the original does'
+      expect(message).toContain 'no OpenMW configuration was given, and OpenMW\'s own folder has none'
       expect(message).toContain '--openmw-cfg <folder holding openmw.cfg>'
       expect(message).toContain '--config <openmw.cfg or its folder>'
       expect(message).toContain 'OPENMW_CONFIG'

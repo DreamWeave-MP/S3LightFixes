@@ -40,11 +40,11 @@ dependencies = ["org.dreamweave.magick", "org.dreamweave.site", "org.dreamweave.
 
 [[package]]
 id = "org.dreamweave.openmw-config"
-version = "4.0.0"
-digest = "6dcb1c58d78004821234dfef5fc37f3c1a6de5d19cea8731ce4212322f159d20"
+version = "4.2.0"
+digest = "1a84e63664f790aee1f7f16fcb23a1f511b0458028dc3b8c78737954a197328f"
 source = "publisher"
 manifest = "https://dreamweave-mp.github.io/Openmw_Config/dreamweave/projects/3aaf4fe0-616f-41a3-b520-306eda9347b0.json"
-artifact_sha256 = "741f6da8530e3e8b280799b3836aa29163d4436c118595b97d6d063cbfe235c0"
+artifact_sha256 = "d90b667ff0791baf86de6926ee198ae31a94f5c5ea7fbdb38d5f59e7451254c4"
 dependencies = []
 
 [[package]]

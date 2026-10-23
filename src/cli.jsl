@@ -14,12 +14,12 @@ couldn't read. A flag is spelled `--name value`, `--name=value`, `-n value`, `-n
 `-n=value`, and flags that take no value can share a dash (`-end`). Only --excluded-ids,
 --excluded-plugins, --light, and --ambient can be given more than once.
 
-The configuration is named explicitly. `-c`/`--openmw-cfg` is the original's flag and keeps its
-rules: the folder holding openmw.cfg, or the file itself, which must be named exactly openmw.cfg.
-`--config` is the spelling Jess's other tools share: an openmw.cfg under any name, or its folder,
-in which the file is found ignoring case. With neither, the OPENMW_CONFIG environment variable is
-read as `--config` is. With none of the three the run is refused: the original then looks for
-OpenMW's own configuration, which this port can't do.
+`-c`/`--openmw-cfg` is the original's flag and keeps its rules: the folder holding openmw.cfg, or
+the file itself, which must be named exactly openmw.cfg. `--config` is the spelling Jess's other
+tools share: an openmw.cfg under any name, or its folder, in which the file is found ignoring case.
+With neither, the OPENMW_CONFIG environment variable is read as `--config` is. With none of the
+three, as the original does, it is OpenMW's own: the openmw.cfg in the folder OpenMW keeps it in
+on this platform. Its `?userconfig?` and `?userdata?` are OpenMW's own folders either way.
 
 Two of the original's flags stand for things this port doesn't do, --generate-completion and
 --generate-manpage, and are refused by name. Without --no-notifications the original shows its
@@ -33,6 +33,7 @@ as `s3lightfixes: <message>`; what the tool itself prints goes to standard outpu
 
 local fs = require '@dream/fs'
 local openmw = require '@openmw-install'
+local openmwConfig = require '@openmw-config'
 local process = require '@dream/process'
 local s3lightfixes = require '@s3lightfixes'
 
@@ -146,11 +147,12 @@ its values, and a lightconfig.toml that doesn't exist yet is saved with the valu
 
 Usage: s3lightfixes [OPTIONS]
 
-The configuration, which must be named: this port can't find OpenMW's own.
+The configuration:
   -c, --openmw-cfg <PATH>  The folder holding openmw.cfg, or the file itself, which must be
                            named exactly openmw.cfg
       --config <PATH>      An openmw.cfg under any name, or the folder holding it
-  With neither, the OPENMW_CONFIG environment variable is read as --config is.
+  With neither, the OPENMW_CONFIG environment variable is read as --config is, and without it
+  OpenMW's own is.
 
 Options:
   -7, --classic            Disable sunlight in every interior, for vtastek's shaders on OpenMW
@@ -584,19 +586,26 @@ local function shared(path: string): (string?, string?)
 end
 
 --- The openmw.cfg a command runs on: the one `-c`/`--openmw-cfg` names, else `--config`'s, else
---- `environment`'s, which is what OPENMW_CONFIG holds. Nil and the reason when none names one, or
+--- `environment`'s, which is what OPENMW_CONFIG holds, else the one in `own`, OpenMW's own
+--- configuration folder, as the original looks for it. Nil and the reason when none names one, or
 --- the one named isn't there.
 local function configuration(
   {openmwCfg, config}: Command,
-  environment: string?
+  environment: string?,
+  own: string?
 ): (string?, string?)
   if openmwCfg then return original(openmwCfg) end
 
   local selected = config or environment
   if selected and selected ~= '' then return shared(selected) end
 
+  if own and fs.isDir(own) then
+    local found = shared(own)
+    if found then return found, nil end
+  end
+
   return nil,
-    'no OpenMW configuration was given, and this port can\'t look for OpenMW\'s own as the original does: pass --openmw-cfg <folder holding openmw.cfg> or --config <openmw.cfg or its folder>, or set OPENMW_CONFIG'
+    'no OpenMW configuration was given, and OpenMW\'s own folder has none: pass --openmw-cfg <folder holding openmw.cfg> or --config <openmw.cfg or its folder>, or set OPENMW_CONFIG'
 end
 
 --- Says why the run stopped: the error's message, without the script position `error` puts in
@@ -625,11 +634,14 @@ local function run(argv: { string }): number
 
   -- The environment is read only when no flag names the configuration.
   local named = command.openmwCfg or command.config
-  local path, missing = configuration(command, if named then nil else process.env 'OPENMW_CONFIG')
+  local folders = openmwConfig.userFolders()
+  local environment = if named then nil else process.env 'OPENMW_CONFIG'
+  local path, missing = configuration(command, environment, folders.userConfig)
   if not path then return usage(missing :: string) end
 
+  local options: openmwConfig.Options = { tokens = folders }
   -- `openmw.new` raises on an openmw.cfg, or one it includes, that can't be read or isn't one.
-  local loaded, context = pcall(openmw.new, path, nil)
+  local loaded, context = pcall(openmw.new, path, options)
   if not loaded then return failed(context) end
 
   -- The tool raises where the original shows its message and exits non-zero.
