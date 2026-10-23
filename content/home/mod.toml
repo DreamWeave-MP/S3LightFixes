@@ -460,3 +460,11 @@ summary = "S3LightFixes is a Jess package, written in Luau; the Rust program con
 breaking = [
     "The tool is the Jess package `org.dreamweave.s3lightfixes`, run through jess rather than as a downloaded binary, so the per-platform downloads, the PortMaster build and the AUR package end with 0.5.0. The Rust program stays on its GitHub releases and this repository's `rust` branch, and is no longer developed on main.",
 ]
+
+[[releases]]
+version = "1.1.0"
+date = 2026-10-23
+summary = "S3LightFixes finds OpenMW's own configuration when none is named, as the original does."
+added = [
+    "With neither `--config` nor OPENMW_CONFIG, the openmw.cfg in the folder OpenMW keeps its own in on this platform: Documents\\My Games\\OpenMW on Windows, wherever Documents was moved, Library/Preferences/openmw on macOS, and the XDG config folder elsewhere. Its `?userconfig?` and `?userdata?` are OpenMW's own folders. Needs jess 0.2.1 or later.",
+]
